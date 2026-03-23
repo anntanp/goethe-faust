@@ -1,0 +1,54 @@
+htype_code,label_de,label_en
+htype_001,Abschnitt,Section
+htype_002,Anhang,Appendix
+htype_003,Beigefügtes oder enthaltenes Werk,Contained Work
+htype_004,Annotation,Annotation
+htype_005,Anrede,Address
+htype_006,Aufsatz,Article
+htype_007,Band,Volume
+htype_008,Beilage,Additional
+htype_009,Einleitung,Intro
+htype_010,Eintrag,Entry
+htype_011,Faszikel,Fascile
+htype_012,Fragment,Fragment
+htype_013,Handschrift,Manuscript
+htype_014,Heft,Issue
+htype_015,Illustration,Illustration
+htype_016,Index,Index
+htype_017,Inhaltsverzeichnis,Table of Contents
+htype_018,Kapitel,Chapter
+htype_019,Karte,Map
+htype_020,Mehrbändiges Werk,Multivolume Work
+htype_021,Monografie,Monograph
+htype_022,Musik,Music
+htype_023,Fortlaufendes Sammelwerk,Serial
+htype_024,Privilegie,Charter
+htype_025,Rezension,Review
+htype_026,Text,Text
+htype_027,Vers,Verse
+htype_028,Vorwort,Preface
+htype_029,Widmung,Dedication
+htype_030,"Bestand
+Findbuch Collection*","Holding
+Tektonik File*"
+htype_031,"Gliederung
+Findbuch Class",Classification
+htype_032,"Serie
+Findbuch Serie",Series
+htype_033,Unterserie,Subseries
+htype_034,"Archivale
+Findbuch File",File
+htype_035,"Teil
+Findbuch Item",Part
+htype_036,Bestandsserie,"Holding Series
+Tektonik Series"
+htype_037,Bestandsklassifikation,Holding Classification
+htype_038,Brief,Letter
+htype_039,Konvolut,Bundle
+htype_040,Mappe,Folder
+htype_041,Archiv,Archive
+htype_044,Zeitung,Newspaper
+htype_045,Jahrgang,Year
+htype_046,Monat,Month
+htype_047,Tag,Day
+htype_048,Tektonik,Tektonik

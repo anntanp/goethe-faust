@@ -6,6 +6,45 @@ any working directory.
 
 ---
 
+## Ontology alignment (run in order)
+
+### `profile_edm_fields.py`
+Profiles all field keys present under `edm.RDF.*` entity types in the JSONL
+data file. Needed as input for `align_ddbedm_to_mocho.py`.
+
+- **Input**: `data/items-all-goethe-faust.json`
+- **Output**: `output/edm_field_profile.json`, `output/edm_field_profile.csv`
+- **Usage**: `python3 scripts/profile_edm_fields.py`
+- **Notes**: Reports per-entity-type field names with record counts and
+  coverage percentages. Counts > 100% indicate array-valued entities
+  (multiple agents/concepts/events per record).
+
+### `align_ddbedm_to_mocho.py`
+Data-driven ontology alignment from DDB-EDM to mocho. Maps each EDM/DC
+property actually present in the data to its corresponding RDA properties
+in mocho, via the DC→RDA sub-property mapping from the mocho workflow.
+
+- **Input**: `output/edm_field_profile.json` (from above),
+  `~/Documents/claude/mocho/ontology/ddbedm_1.0.ttl`,
+  `~/Documents/claude/mocho/mocho-odk/src/ontology/mocho-full.owl`,
+  `~/Documents/claude/mocho/output/mapping_dct_to_rda.csv`
+- **Output**: `output/alignment_ddbedm_mocho.csv`,
+  `output/alignment_ddbedm_mocho.json`
+- **Usage**: `python3 scripts/align_ddbedm_to_mocho.py`
+- **Dependencies**: `rdflib`
+- **Notes**:
+  - One CSV row per (edm_field × rda_property) pair; high-fanout DC terms
+    (e.g. `dc:creator` → 232 RDA sub-properties) produce many rows per field
+  - 32 DC/DCT fields matched to RDA properties in mocho (1,271 alignment rows)
+  - 55 unmatched fields fall into expected categories: EDM-structural
+    (`edm:isShownAt`, `edm:begin/end`), DDB extensions (`ddb:hierarchyType`,
+    `ddb:aggregationEntity`), SKOS labels, geo coordinates, and two known
+    DCT→RDA gaps (`dc:identifier`, `dcterms:spatial`)
+  - `dcTermSubject` (DDB data variant of `dcterms:subject`) handled via
+    hard-coded override in `OVERRIDES` dict
+
+---
+
 ## Data pipeline (run in order)
 
 ### `fetch-search-all.py`

@@ -1,0 +1,446 @@
+[
+  {
+    "usage": "display",
+    "field": [
+      {
+        "id": "flex_arch_031",
+        "name": "Signatur",
+        "value": [
+          {
+            "content": "GSA 28/752",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "flex_arch_001",
+        "name": "Bestand",
+        "value": [
+          {
+            "content": "Bestand Goethe, Johann Wolfgang / Eingegangene Briefe",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "flex_arch_029",
+        "name": "Kontext",
+        "value": [
+          {
+            "content": "Bestand Goethe, Johann Wolfgang / Eingegangene Briefe >> Eingegangene Briefe >> Brief(e) von Rochlitz, Johann Friedrich an Goethe, Johann Wolfgang",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "flex_arch_008",
+        "name": "Laufzeit",
+        "value": [
+          {
+            "content": "13.02.1830",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "flex_arch_016",
+        "name": "Archivalientyp",
+        "value": [
+          {
+            "content": "Dokument",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "flex_arch_027",
+        "name": "Indexbegriffe Person/Institution",
+        "value": [
+          {
+            "content": "Rochlitz, Johann Friedrich - Verfasser",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          },
+          {
+            "content": "Goethe, Johann Wolfgang von - Adressat",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "flex_arch_030",
+        "name": "Archivalientitel",
+        "value": [
+          {
+            "content": "Brief(e) von Rochlitz, Johann Friedrich an Goethe, Johann Wolfgang",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      }
+    ]
+  },
+  {
+    "usage": "index",
+    "field": [
+      {
+        "id": "title",
+        "name": "Titel",
+        "value": [
+          {
+            "content": "Brief von Rochlitz, Johann Friedrich an Goethe, Johann Wolfgang von",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "license",
+        "name": "Lizenz",
+        "value": [
+          {
+            "content": "http://creativecommons.org/publicdomain/mark/1.0/",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "license_group",
+        "name": "Lizenzstatus",
+        "value": [
+          {
+            "content": "rights_001",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "digitalisat",
+        "name": "digitalisat",
+        "value": [
+          {
+            "content": "true",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "dataset_id",
+        "name": "dataset_id",
+        "value": [
+          {
+            "content": "34731677903221343sgtX",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "dataset_label",
+        "name": "dataset_label",
+        "value": [
+          {
+            "content": "Gesamtlieferung (Findbuch) - EAD",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "delivery_id",
+        "name": "delivery_id",
+        "value": [
+          {
+            "content": "38098605163763374UvKR",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "supplier_id",
+        "name": "supplier_id",
+        "value": [
+          {
+            "content": "00000713",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "mapping_version",
+        "name": "mapping_version",
+        "value": [
+          {
+            "content": "6.9",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "md_format",
+        "name": "Metadata Format",
+        "value": [
+          {
+            "content": "ead",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "source_format",
+        "name": "source_format",
+        "value": [
+          {
+            "content": "urn:isbn:1-931666-22-9",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "apd_context",
+        "name": "Kontext",
+        "value": [
+          {
+            "content": "Bestand Goethe, Johann Wolfgang / Eingegangene Briefe >> Eingegangene Briefe >> Brief(e) von Rochlitz, Johann Friedrich an Goethe, Johann Wolfgang",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "apd_level_of_description",
+        "name": "Verzeichnungsstufe",
+        "value": [
+          {
+            "content": "htype_035",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "apd_document_type",
+        "name": "Archivalientyp",
+        "value": [
+          {
+            "content": "Dokument",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "apd_xml_sort",
+        "name": "Sortierung nach XML-Position",
+        "value": [
+          {
+            "content": "Klassik Stiftung Weimar: Goethe- und Schiller-Archiv__000000000014848",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "begin_time",
+        "name": "Anfang",
+        "value": [
+          {
+            "content": "6684015183",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "end_time",
+        "name": "Ende",
+        "value": [
+          {
+            "content": "6684015547",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "apd_reference_number",
+        "name": "(Vor-)Signatur",
+        "value": [
+          {
+            "content": "GSA 28/752",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "context",
+        "name": "Parent Hierarchien",
+        "value": [
+          {
+            "content": "5CULOUFCNIN2HN66JQ2DRP42WBEK3S4T",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          },
+          {
+            "content": "WXL4DE63VL7VNFD7P7TRYMYME6G4DFLE",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          },
+          {
+            "content": "QIHT446QP7ESJDLICD7MPUYJ5XEFALMV",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          },
+          {
+            "content": "ZTXIOZXQLY2BRM3NI32B6VYO72CXC223",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          },
+          {
+            "content": "5CULOUFCNIN2HN66JQ2DRP42WBEK3S4T",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          },
+          {
+            "content": "2B3FDUHEGCQDU5XXO2ZXAX4EYMTBYZJS",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          },
+          {
+            "content": "XUTXMVGEYZYUWAWX4SSK3GER24P7OOAG",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      },
+      {
+        "id": "ranking",
+        "name": "Ranking",
+        "value": [
+          {
+            "content": "Rochlitz, Johann Friedrich",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          },
+          {
+            "content": "Goethe, Johann Wolfgang von",
+            "resource": null,
+            "rightsinfo": null,
+            "rightsholder": null,
+            "creditline": null
+          }
+        ],
+        "georeference": null
+      }
+    ]
+  }
+]
