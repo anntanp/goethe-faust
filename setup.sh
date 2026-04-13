@@ -44,6 +44,7 @@ fi
 
 # INDEX_DIR must be absolute for docker compose to treat it as a bind mount
 mkdir -p "$INDEX_DIR"
+chmod a+rwx "$INDEX_DIR"
 INDEX_DIR="$(realpath "$INDEX_DIR")"
 
 # Write all computed vars to a runtime env file for docker compose.
