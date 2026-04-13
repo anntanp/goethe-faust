@@ -5,4 +5,5 @@
 .DS_Store
 
 output/ddbedm-goethe-faust.nt
+config.env
 

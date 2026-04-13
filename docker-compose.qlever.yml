@@ -1,17 +1,14 @@
-# QLever triplestore for goethe-faust DDB EDM data.
+# QLever + SHMARQL for an RDF dataset.
 #
-# First run builds the index from the NT file (a few minutes for 8.6M triples).
-# Subsequent runs start in seconds — index persisted in ./data/qlever-index/.
+# First run builds the QLever index (a few minutes for large files).
+# Subsequent runs start in seconds — index persisted in $INDEX_DIR.
 #
-# To re-run on another server: copy this directory (including output/*.nt),
+# Configuration: copy config.env.example to config.env and edit.
+# To re-run on another server: copy this directory, edit config.env,
 # then: docker compose -f docker-compose.qlever.yml up -d --wait
 #
-# SPARQL UI (YASGUI):     http://localhost:7031
-# SPARQL UI (SHMARQL):   http://localhost:7032
-# QLever SPARQL endpoint: http://localhost:7030
-# MCP server (Claude Code):
-#   claude mcp add goethe-faust -- docker run --rm -i --network=host \
-#     ghcr.io/xorwell/mcp-server-qlever:latest -e http://localhost:7030
+# SHMARQL UI:      http://localhost:${SHMARQL_PORT:-7032}
+# SPARQL endpoint: http://localhost:${QLEVER_PORT:-7030}
 
 services:
   qlever-goethe-faust:
@@ -19,22 +16,29 @@ services:
     ports:
       - "${QLEVER_PORT:-7030}:7019"
     volumes:
-      - ./output:/input:ro
-      - ./data/qlever-index:/data
+      - ${NT_INPUT_DIR}:/input:ro
+      - ${INDEX_DIR:-data/qlever-index}:/data
     working_dir: /data
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
         set -e
+        INDEX_NAME="${INDEX_NAME:-goethe-faust}"
+        NT_INPUT_GLOB="${NT_INPUT_GLOB:-*.nt}"
 
-        if [ -f /data/index.ready ]; then
+        if [ -f /data/$${INDEX_NAME}.ready ]; then
           echo "Index already built, starting server..."
-          exec /qlever/qlever-server -i /data/goethe-faust -p 7019 \
+          exec /qlever/qlever-server -i /data/$${INDEX_NAME} -p 7019 \
             -m $${QLEVER_MEMORY:-4GB} --default-query-timeout 60s
         fi
 
-        echo "=== Goethe-Faust Setup ==="
-        echo "Step 1/2: Building QLever index from NT file (8.6M triples)..."
+        echo "=== Building QLever index ==="
+        FILES=$(ls /input/$${NT_INPUT_GLOB} 2>/dev/null | tr '\n' ' ')
+        if [ -z "$FILES" ]; then
+          echo "ERROR: no files matched /input/$${NT_INPUT_GLOB}" >&2
+          exit 1
+        fi
+        echo "Input files: $FILES"
 
         cat > /data/settings.json << 'SETTINGS'
         {
@@ -55,35 +59,23 @@ services:
         }
         SETTINGS
 
-        /qlever/qlever-index -i /data/goethe-faust \
-          -f /input/ddbedm-goethe-faust.nt \
-          -F nt \
-          -s /data/settings.json 2>&1
+        /qlever/qlever-index -i /data/$${INDEX_NAME} \
+          -f $FILES -F nt -s /data/settings.json 2>&1
 
-        touch /data/index.ready
-        echo "Step 2/2: Index built."
-
-        echo "=== Goethe-Faust QLever ready ==="
-        exec /qlever/qlever-server -i /data/goethe-faust -p 7019 \
+        touch /data/$${INDEX_NAME}.ready
+        echo "=== Index built. Starting server ==="
+        exec /qlever/qlever-server -i /data/$${INDEX_NAME} -p 7019 \
           -m $${QLEVER_MEMORY:-4GB} --default-query-timeout 60s
     environment:
       - QLEVER_MEMORY=${QLEVER_MEMORY:-4GB}
+      - INDEX_NAME=${INDEX_NAME:-goethe-faust}
+      - NT_INPUT_GLOB=${NT_INPUT_GLOB:-*.nt}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:7019/?cmd=stats"]
       interval: 5s
       timeout: 5s
       retries: 120
       start_period: 300s
-
-  yasgui:
-    image: nginx:alpine
-    ports:
-      - "${YASGUI_PORT:-7031}:80"
-    volumes:
-      - ./yasgui:/usr/share/nginx/html:ro
-    depends_on:
-      qlever-goethe-faust:
-        condition: service_healthy
 
   shmarql:
     image: ghcr.io/epoz/shmarql:latest

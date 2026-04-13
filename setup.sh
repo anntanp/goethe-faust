@@ -1,119 +1,154 @@
 #!/usr/bin/env bash
-# Purpose:    Start/stop QLever and SHMARQL for the goethe-faust DDB EDM
-#             dataset.
+# Purpose:    Start/stop QLever + SHMARQL for an RDF dataset.
 # Usage:      ./setup.sh <command>
 #             Commands: up | down | status | logs | mcp-add
-# Inputs:     output/ddbedm-goethe-faust.nt (1.3 GB, 8.6M triples)
-# Outputs:    data/qlever-index/  — QLever binary index (persisted)
-#             data/shmarql-store/ — pyoxigraph store (persisted)
+# Inputs:     config.env (optional, copy from config.env.example)
+#             NT_INPUT: .nt file or directory of .nt files
+# Outputs:    $INDEX_DIR — QLever binary index (persisted)
+#             $LOG_DIR   — log files from docker compose
 # Dependencies: docker, docker compose
 # Assumptions: Run from the goethe-faust/ directory.
-#              On a new server, copy the full directory (including output/*.nt)
-#              then run this script.
+#              On a new server, copy the directory and run ./setup.sh up.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-NT_FILE="output/ddbedm-goethe-faust.nt"
-QLEVER_PORT="${QLEVER_PORT:-7030}"
-YASGUI_PORT="${YASGUI_PORT:-7031}"
-SHMARQL_QLEVER_PORT="${SHMARQL_PORT:-7032}"
-SHMARQL_PORT="${SHMARQL_PORT:-8030}"
+# --- Defaults (overridden by config.env) ---
+QLEVER_PORT=7030
+SHMARQL_PORT=7032
+NT_INPUT=output/ddbedm-goethe-faust.nt
+INDEX_DIR=data/qlever-index
+LOG_DIR=data/logs
+QLEVER_MEMORY=4GB
+INDEX_NAME=goethe-faust
+
+# Load config.env if present
+if [ -f config.env ]; then
+  # shellcheck disable=SC1091
+  set -a; source config.env; set +a
+fi
+
+# Resolve NT_INPUT to absolute path
+NT_INPUT="$(realpath "$NT_INPUT" 2>/dev/null || echo "$NT_INPUT")"
+
+# Derive NT_INPUT_DIR and NT_INPUT_GLOB for docker compose
+if [ -d "$NT_INPUT" ]; then
+  NT_INPUT_DIR="$NT_INPUT"
+  NT_INPUT_GLOB="*.nt"
+else
+  NT_INPUT_DIR="$(dirname "$NT_INPUT")"
+  NT_INPUT_GLOB="$(basename "$NT_INPUT")"
+fi
+
+export NT_INPUT_DIR NT_INPUT_GLOB INDEX_DIR INDEX_NAME \
+  QLEVER_PORT SHMARQL_PORT QLEVER_MEMORY
+
+# Build --env-file flag if config.env exists
+ENV_FILE_FLAG=""
+if [ -f config.env ]; then
+  ENV_FILE_FLAG="--env-file config.env"
+fi
+
+compose() {
+  # shellcheck disable=SC2086
+  docker compose -f docker-compose.qlever.yml $ENV_FILE_FLAG "$@"
+}
 
 check_prereqs() {
   if ! command -v docker &>/dev/null; then
-    echo "ERROR: docker not found. Install Docker Desktop or Docker Engine." >&2
+    echo "ERROR: docker not found." >&2
     exit 1
   fi
   if ! docker compose version &>/dev/null 2>&1; then
     echo "ERROR: 'docker compose' plugin not found." >&2
     exit 1
   fi
-  if [ ! -f "$NT_FILE" ]; then
-    echo "ERROR: $NT_FILE not found." >&2
-    echo "  Copy it from the source server or re-run the pipeline." >&2
+  if [ -d "$NT_INPUT" ]; then
+    if ! ls "$NT_INPUT"/*.nt &>/dev/null; then
+      echo "ERROR: no .nt files found in $NT_INPUT" >&2
+      exit 1
+    fi
+  elif [ ! -f "$NT_INPUT" ]; then
+    echo "ERROR: $NT_INPUT not found." >&2
+    echo "  Set NT_INPUT in config.env or copy the file." >&2
     exit 1
   fi
 }
 
 cmd_up() {
   check_prereqs
-  mkdir -p data/qlever-index data/shmarql-store
+  mkdir -p "$INDEX_DIR" "$LOG_DIR"
 
-  echo "=== Starting QLever + YASGUI + SHMARQL ==="
-  docker compose -f docker-compose.qlever.yml up -d --wait \
-    --wait-timeout 600
-  echo "  SPARQL UI (YASGUI):   http://localhost:$YASGUI_PORT"
-  echo "  SPARQL UI (SHMARQL):  http://localhost:$SHMARQL_QLEVER_PORT"
-  echo "  SPARQL endpoint:      http://localhost:$QLEVER_PORT"
+  echo "=== Starting QLever + SHMARQL ==="
+  echo "  Input:    $NT_INPUT_DIR/$NT_INPUT_GLOB"
+  echo "  Index:    $INDEX_DIR"
+  compose up -d --wait --wait-timeout 600
   echo ""
-
-  echo "=== Starting SHMARQL (port $SHMARQL_PORT) ==="
-  docker compose -f docker-compose.shmarql.yml up -d
-  echo "  SPARQL endpoint: http://localhost:$SHMARQL_PORT/sparql"
-  echo "  UI:              http://localhost:$SHMARQL_PORT/"
+  echo "  SHMARQL UI:      http://localhost:$SHMARQL_PORT"
+  echo "  SPARQL endpoint: http://localhost:$QLEVER_PORT"
   echo ""
-
-  echo "=== MCP server (Claude Code) ==="
-  echo "  Run once to register:"
-  echo "  claude mcp add goethe-faust -- docker run --rm -i --network=host \\"
-  echo "    ghcr.io/xorwell/mcp-server-qlever:latest \\"
-  echo "    -e http://localhost:$QLEVER_PORT"
+  echo "  MCP: run './setup.sh mcp-add' to register with Claude Code"
 }
 
 cmd_down() {
-  echo "Stopping QLever..."
-  docker compose -f docker-compose.qlever.yml down
-  echo "Stopping SHMARQL..."
-  docker compose -f docker-compose.shmarql.yml down
+  compose down
 }
 
 cmd_status() {
-  echo "=== QLever ==="
-  docker compose -f docker-compose.qlever.yml ps
-  echo ""
-  echo "=== SHMARQL ==="
-  docker compose -f docker-compose.shmarql.yml ps
+  compose ps
 }
 
 cmd_logs() {
   local service="${1:-}"
-  if [ "$service" = "qlever" ]; then
-    docker compose -f docker-compose.qlever.yml logs -f
-  elif [ "$service" = "shmarql" ]; then
-    docker compose -f docker-compose.shmarql.yml logs -f
-  else
-    echo "Usage: ./setup.sh logs <qlever|shmarql>"
-    exit 1
-  fi
+  case "$service" in
+    qlever)
+      compose logs -f qlever-goethe-faust \
+        | tee "$LOG_DIR/qlever.log"
+      ;;
+    shmarql)
+      compose logs -f shmarql \
+        | tee "$LOG_DIR/shmarql.log"
+      ;;
+    *)
+      echo "Usage: ./setup.sh logs <qlever|shmarql>"
+      exit 1
+      ;;
+  esac
 }
 
 cmd_mcp_add() {
   echo "Registering MCP server with Claude Code..."
-  claude mcp add goethe-faust -- docker run --rm -i --network=host \
-    ghcr.io/xorwell/mcp-server-qlever:latest -e "http://localhost:$QLEVER_PORT"
+  claude mcp add "$INDEX_NAME" -- \
+    docker run --rm -i --network=host \
+    ghcr.io/xorwell/mcp-server-qlever:latest \
+    -e "http://localhost:$QLEVER_PORT"
   echo "Done. Test with: claude mcp list"
 }
 
 case "${1:-}" in
-  up)       cmd_up ;;
-  down)     cmd_down ;;
-  status)   cmd_status ;;
-  logs)     cmd_logs "${2:-}" ;;
-  mcp-add)  cmd_mcp_add ;;
+  up)      cmd_up ;;
+  down)    cmd_down ;;
+  status)  cmd_status ;;
+  logs)    cmd_logs "${2:-}" ;;
+  mcp-add) cmd_mcp_add ;;
   *)
     echo "Usage: ./setup.sh <command>"
     echo "  up        Start QLever + SHMARQL (builds index on first run)"
-    echo "  down      Stop both services"
+    echo "  down      Stop all services"
     echo "  status    Show container status"
     echo "  logs      ./setup.sh logs <qlever|shmarql>"
     echo "  mcp-add   Register QLever as Claude Code MCP server"
     echo ""
-    echo "Ports (override via env vars):"
-    echo "  QLEVER_PORT=$QLEVER_PORT  (QLever SPARQL)"
-    echo "  SHMARQL_PORT=$SHMARQL_PORT  (SHMARQL UI + SPARQL)"
+    echo "Config: copy config.env.example to config.env and edit."
+    echo "Active settings:"
+    echo "  NT_INPUT=$NT_INPUT"
+    echo "  INDEX_DIR=$INDEX_DIR"
+    echo "  LOG_DIR=$LOG_DIR"
+    echo "  QLEVER_PORT=$QLEVER_PORT"
+    echo "  SHMARQL_PORT=$SHMARQL_PORT"
+    echo "  INDEX_NAME=$INDEX_NAME"
     exit 1
     ;;
 esac
