@@ -15,6 +15,10 @@ Pipeline:
                      imported into mocho (IRIs + English labels + WEMI level)
   5. Align         — for each data field: DC/EDM IRI → RDA candidates →
                      restrict to mocho-known properties
+                     Key explicit dimensions: ProvidedCHO.dcType → rdae:P20001
+  5b. Align vocab  — controlled-vocabulary Concepts:
+                     Concept.about from ddb.vocnet.org/sparte/ → sector
+                     Concept.about from ddb.vocnet.org/medientyp/ → rdae:P20001
   6. Write outputs
 
 Inputs:
@@ -29,7 +33,8 @@ Outputs:
 
 Columns (CSV):
   entity_type, json_key, edm_prefix, edm_iri, record_count, coverage_pct,
-  rda_iri, rda_label, wemi_level, match_method
+  rda_iri, rda_label, wemi_level, match_method, in_mocho, vocab_label
+  (vocab_label is non-empty only for concept_vocab_sector / concept_vocab_mediatype rows)
 
 Usage:
   python3 scripts/profile_edm_fields.py   # run first if profile is stale
@@ -77,6 +82,30 @@ WEMI_LEVELS = {
     f"{RDA_ELEMENTS}c/": "Corporate Body",
     f"{RDA_ELEMENTS}p/": "Person",
 }
+
+# ── controlled vocabulary constants ───────────────────────────────────────────
+# DDB sector (Sparte) vocabulary — carried in edm:Concept.about
+SPARTE_VOCAB = {
+    "http://ddb.vocnet.org/sparte/sparte001": "Archive",
+    "http://ddb.vocnet.org/sparte/sparte002": "Library",
+    "http://ddb.vocnet.org/sparte/sparte003": "Monument Preservation",
+    "http://ddb.vocnet.org/sparte/sparte004": "Research",
+    "http://ddb.vocnet.org/sparte/sparte005": "Media Library",
+    "http://ddb.vocnet.org/sparte/sparte006": "Museum",
+    "http://ddb.vocnet.org/sparte/sparte007": "Others",
+}
+
+# DDB media type (Medientyp) vocabulary — carried in edm:Concept.about
+MEDIENTYP_VOCAB = {
+    "http://ddb.vocnet.org/medientyp/mt001": "Audio",
+    "http://ddb.vocnet.org/medientyp/mt002": "Photo",
+    "http://ddb.vocnet.org/medientyp/mt003": "Text",
+    "http://ddb.vocnet.org/medientyp/mt005": "Video",
+    "http://ddb.vocnet.org/medientyp/mt007": "Not Digitized",
+}
+
+# Media type aligns to rdae:P20001 (has content type) — same target as dc:type
+MEDIENTYP_RDA_IRI = "http://rdaregistry.info/Elements/e/P20001"
 
 # ── step 1: load field profile ─────────────────────────────────────────────────
 
@@ -353,6 +382,62 @@ for (entity_type, json_key), field_row in sorted(data_fields.items()):
         summary_unmatched += 1
         unmatched_keys.append(f"{entity_type}.{json_key} [{edm_iri}]")
 
+# ── step 5b: align controlled vocabulary Concepts ─────────────────────────────
+# Sector and media type are encoded as edm:Concept entities identified by
+# their about IRI.  The main loop skips Concept.about; we handle it here.
+
+print("\nAligning controlled vocabulary Concepts …")
+
+# Resolve media type RDA label from mocho (falls back to hard-coded)
+mt_rda_label = mocho_rda.get(MEDIENTYP_RDA_IRI, "has content type")
+mt_rda_in_mocho = MEDIENTYP_RDA_IRI in mocho_rda
+
+vocab_rows: list[dict] = []
+
+# Sector: DDB institutional sector classification.
+# No direct RDA bibliographic property; recorded as concept_vocab_sector
+# so downstream can use it for faceting / provenance filtering.
+for iri, label in SPARTE_VOCAB.items():
+    vocab_rows.append({
+        "entity_type":  "Concept",
+        "json_key":     "about",
+        "edm_prefix":   "ddb-sparte",
+        "edm_iri":      iri,
+        "record_count": "",
+        "coverage_pct": "",
+        "rda_iri":      "",
+        "rda_label":    "",
+        "wemi_level":   "",
+        "match_method": "concept_vocab_sector",
+        "in_mocho":     False,
+        "vocab_label":  label,
+    })
+
+# Media type: DDB media type classification → rdae:P20001 (has content type)
+# Parallel to ProvidedCHO.dcType — both classify the intellectual content kind.
+for iri, label in MEDIENTYP_VOCAB.items():
+    vocab_rows.append({
+        "entity_type":  "Concept",
+        "json_key":     "about",
+        "edm_prefix":   "ddb-medientyp",
+        "edm_iri":      iri,
+        "record_count": "",
+        "coverage_pct": "",
+        "rda_iri":      MEDIENTYP_RDA_IRI if mt_rda_in_mocho else "",
+        "rda_label":    mt_rda_label if mt_rda_in_mocho else "",
+        "wemi_level":   wemi_level(MEDIENTYP_RDA_IRI),
+        "match_method": "concept_vocab_mediatype",
+        "in_mocho":     mt_rda_in_mocho,
+        "vocab_label":  label,
+    })
+
+rows.extend(vocab_rows)
+print(f"  {len(SPARTE_VOCAB)} sector entries, {len(MEDIENTYP_VOCAB)} media type entries")
+
+# Backfill vocab_label on rows produced by the main alignment loop
+for row in rows:
+    row.setdefault("vocab_label", "")
+
 # ── step 6: write outputs ──────────────────────────────────────────────────────
 
 OUT_CSV.parent.mkdir(exist_ok=True)
@@ -361,6 +446,7 @@ fieldnames = [
     "entity_type", "json_key", "edm_prefix", "edm_iri",
     "record_count", "coverage_pct",
     "rda_iri", "rda_label", "wemi_level", "match_method", "in_mocho",
+    "vocab_label",
 ]
 
 with open(OUT_CSV, "w", newline="", encoding="utf-8") as f:
@@ -368,9 +454,24 @@ with open(OUT_CSV, "w", newline="", encoding="utf-8") as f:
     writer.writeheader()
     writer.writerows(rows)
 
-# Group for JSON: per (entity_type, json_key) → list of RDA mappings
+# Group for JSON: per (entity_type, json_key) → list of RDA mappings.
+# Vocab rows (concept_vocab_*) are routed to vocab_concept_alignments instead.
 groups: dict[str, dict] = {}
+vocab_groups: dict[str, list] = {"sector": [], "media_type": []}
+
 for row in rows:
+    if row["match_method"].startswith("concept_vocab_"):
+        domain = "sector" if row["match_method"] == "concept_vocab_sector" else "media_type"
+        vocab_groups[domain].append({
+            "iri":        row["edm_iri"],
+            "label":      row["vocab_label"],
+            "rda_iri":    row["rda_iri"],
+            "rda_label":  row["rda_label"],
+            "wemi_level": row["wemi_level"],
+            "in_mocho":   row["in_mocho"],
+        })
+        continue
+
     key = f"{row['entity_type']}.{row['json_key']}"
     if key not in groups:
         groups[key] = {
@@ -384,11 +485,11 @@ for row in rows:
         }
     if row["rda_iri"]:
         groups[key]["rda_mappings"].append({
-            "rda_iri":     row["rda_iri"],
-            "rda_label":   row["rda_label"],
-            "wemi_level":  row["wemi_level"],
+            "rda_iri":      row["rda_iri"],
+            "rda_label":    row["rda_label"],
+            "wemi_level":   row["wemi_level"],
             "match_method": row["match_method"],
-            "in_mocho":    row["in_mocho"],
+            "in_mocho":     row["in_mocho"],
         })
 
 output = {
@@ -400,6 +501,7 @@ output = {
         "unmatched_fields":             sorted(unmatched_keys),
     },
     "alignment": list(groups.values()),
+    "vocab_concept_alignments": vocab_groups,
 }
 
 with open(OUT_JSON, "w", encoding="utf-8") as f:
@@ -410,6 +512,8 @@ with open(OUT_JSON, "w", encoding="utf-8") as f:
 print(f"\n{'='*60}")
 print(f"Data fields with RDA mapping : {summary_matched}")
 print(f"Data fields unmatched        : {summary_unmatched}")
+print(f"Sector vocab entries         : {len(vocab_groups['sector'])}")
+print(f"Media type vocab entries     : {len(vocab_groups['media_type'])}")
 print(f"Total alignment rows         : {len(rows)}")
 
 print("\nUnmatched fields:")
