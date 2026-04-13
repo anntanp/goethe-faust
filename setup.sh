@@ -42,6 +42,9 @@ else
   NT_INPUT_GLOB="$(basename "$NT_INPUT")"
 fi
 
+# INDEX_DIR must be absolute for docker compose to treat it as a bind mount
+INDEX_DIR="$(mkdir -p "$INDEX_DIR" && realpath "$INDEX_DIR")"
+
 export NT_INPUT_DIR NT_INPUT_GLOB INDEX_DIR INDEX_NAME \
   QLEVER_PORT SHMARQL_PORT QLEVER_MEMORY
 
@@ -79,7 +82,7 @@ check_prereqs() {
 
 cmd_up() {
   check_prereqs
-  mkdir -p "$INDEX_DIR" "$LOG_DIR"
+  mkdir -p "$LOG_DIR"
 
   echo "=== Starting QLever + SHMARQL ==="
   echo "  Input:    $NT_INPUT_DIR/$NT_INPUT_GLOB"

@@ -60,7 +60,7 @@ services:
         SETTINGS
 
         /qlever/qlever-index -i /data/$${INDEX_NAME} \
-          -f $FILES -F nt -s /data/settings.json 2>&1
+          -f $$FILES -F nt -s /data/settings.json 2>&1
 
         touch /data/$${INDEX_NAME}.ready
         echo "=== Index built. Starting server ==="
