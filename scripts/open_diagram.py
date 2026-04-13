@@ -17,14 +17,8 @@ graph TB
 
     subgraph compose-qlever["docker-compose.qlever.yml"]
         QLever["adfreiburg/qlever:latest\\nSPARQL endpoint\\n:7030"]
-        YASGUI["nginx:alpine\\nYASGUI\\n:7031"]
-        SHMARQLq["ghcr.io/epoz/shmarql:latest\\nUI → QLever proxy\\n:7032"]
+        SHMARQL["ghcr.io/epoz/shmarql:latest\\nUI + SPARQL\\n:7032"]
         QIdx["💾 data/qlever-index/\\nbinary index"]
-    end
-
-    subgraph compose-shmarql["docker-compose.shmarql.yml"]
-        SHMARQL["ghcr.io/epoz/shmarql:latest\\nSPARQL + UI\\n:8030"]
-        SStore["💾 data/shmarql-store/\\npyoxigraph store"]
     end
 
     MCP["mcp-server-qlever\\n(docker run, --network=host)"]
@@ -33,17 +27,10 @@ graph TB
 
     NT -->|"mount :ro /input"| QLever
     QLever <-->|"bind mount"| QIdx
-    NT -->|"mount :ro /data"| SHMARQL
-    SHMARQL <-->|"bind mount"| SStore
+    SHMARQL -->|"ENDPOINT=http://qlever:7019"| QLever
 
-    YASGUI -->|"depends_on healthy"| QLever
-    SHMARQLq -->|"depends_on healthy"| QLever
-    SHMARQLq -->|"ENDPOINT=http://qlever:7019"| QLever
-
-    Browser -->|":7031"| YASGUI
-    Browser -->|":7032"| SHMARQLq
+    Browser -->|":7032"| SHMARQL
     Browser -->|":7030 SPARQL"| QLever
-    Browser -->|":8030"| SHMARQL
 
     Claude -->|"MCP tools"| MCP
     MCP -->|"http://localhost:7030"| QLever\
