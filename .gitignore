@@ -6,4 +6,5 @@
 
 output/ddbedm-goethe-faust.nt
 config.env
+.env.runtime
 

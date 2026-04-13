@@ -33,12 +33,12 @@ services:
         fi
 
         echo "=== Building QLever index ==="
-        FILES=$(ls /input/$${NT_INPUT_GLOB} 2>/dev/null | tr '\n' ' ')
-        if [ -z "$FILES" ]; then
+        FILES=$$(ls /input/$${NT_INPUT_GLOB} 2>/dev/null | tr '\n' ' ')
+        if [ -z "$$FILES" ]; then
           echo "ERROR: no files matched /input/$${NT_INPUT_GLOB}" >&2
           exit 1
         fi
-        echo "Input files: $FILES"
+        echo "Input files: $$FILES"
 
         cat > /data/settings.json << 'SETTINGS'
         {

@@ -43,20 +43,23 @@ else
 fi
 
 # INDEX_DIR must be absolute for docker compose to treat it as a bind mount
-INDEX_DIR="$(mkdir -p "$INDEX_DIR" && realpath "$INDEX_DIR")"
+mkdir -p "$INDEX_DIR"
+INDEX_DIR="$(realpath "$INDEX_DIR")"
 
-export NT_INPUT_DIR NT_INPUT_GLOB INDEX_DIR INDEX_NAME \
-  QLEVER_PORT SHMARQL_PORT QLEVER_MEMORY
-
-# Build --env-file flag if config.env exists
-ENV_FILE_FLAG=""
-if [ -f config.env ]; then
-  ENV_FILE_FLAG="--env-file config.env"
-fi
+# Write all computed vars to a runtime env file for docker compose.
+# This is more reliable than relying on shell export inheritance.
+cat > .env.runtime << EOF
+NT_INPUT_DIR=${NT_INPUT_DIR}
+NT_INPUT_GLOB=${NT_INPUT_GLOB}
+INDEX_DIR=${INDEX_DIR}
+INDEX_NAME=${INDEX_NAME}
+QLEVER_PORT=${QLEVER_PORT}
+SHMARQL_PORT=${SHMARQL_PORT}
+QLEVER_MEMORY=${QLEVER_MEMORY}
+EOF
 
 compose() {
-  # shellcheck disable=SC2086
-  docker compose -f docker-compose.qlever.yml $ENV_FILE_FLAG "$@"
+  docker compose -f docker-compose.qlever.yml --env-file .env.runtime "$@"
 }
 
 check_prereqs() {
