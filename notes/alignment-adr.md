@@ -1,4 +1,4 @@
-# ADR: EDM JSONL → mocho RDF Transform (goethe-faust POC)
+# ADR: EDM JSONL → mocho RDF Transform
 
 **Date**: 2026-04-14
 **Status**: Accepted
@@ -8,15 +8,23 @@
 
 ## Context
 
-`transform_edm_to_mocho.py` converts the goethe-faust DDB-EDM JSONL corpus
-(115,432 records) to mocho-aligned N-Triples. The alignment table
-`alignment_ddbedm_mocho.csv` is an intermediate produced by the mocho pipeline;
-this document records decisions that govern how the transform script uses — and
-in some cases departs from — that table.
+`transform_edm_to_mocho.py` is the reference implementation of the mocho
+ingest transformation. It converts DDB-EDM JSONL corpora to mocho-aligned
+RDF triples, validated against the goethe-faust corpus (115,432 records).
+The decisions here are not corpus-specific: they define the canonical approach
+for the mocho ingest pipeline and will be inherited by any subsequent
+corpus transformation built on this foundation.
 
-Upstream decisions in `mocho/notes/alignment-ddbedm-mocho-adr.md` (D1–D5)
-are inherited without modification. Decisions here either extend them or
-resolve implementation-level issues discovered during corpus inspection.
+The alignment table `alignment_ddbedm_mocho.csv` is produced by the mocho
+pipeline (`align_ddbedm_to_mocho.py`); this document records decisions that
+govern how the transform script consumes — and in some cases corrects — that
+table.
+
+Decisions D1–D5 in `mocho/notes/alignment-ddbedm-mocho-adr.md` cover the
+upstream alignment pipeline (field profiling, DC→RDA routing, IRI resolution).
+Decisions D1–D10 here cover the downstream transform (JSONL → RDF). The two
+ADRs are complementary: neither subsumes the other. This ADR takes precedence
+where the two overlap on transform behaviour.
 
 ---
 

@@ -1,4 +1,4 @@
-# Plan: EDM JSONL → mocho RDF Transformation (POC)
+# Plan: EDM JSONL → mocho RDF Transformation (Reference Implementation)
 
 **Date**: 2026-04-14
 **Status**: Approved
