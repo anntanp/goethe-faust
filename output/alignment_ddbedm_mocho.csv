@@ -804,48 +804,48 @@ ProvidedCHO,dcTermSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,h
 ProvidedCHO,dcTermSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10602,is description of timespan,Work,via_dct_map,True
 ProvidedCHO,dcTermsLanguage,dc,http://purl.org/dc/elements/1.1/language,71681,62.1,http://rdaregistry.info/Elements/e/P20006,has language of expression,Expression,via_dct_map,True
 ProvidedCHO,dcTermsLanguage,dc,http://purl.org/dc/elements/1.1/language,71681,62.1,http://rdaregistry.info/Elements/w/P10353,has language of representative expression,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10100,is description of work,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10153,is evaluation of work,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10178,is review of work,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10182,is critique of work,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10256,has subject,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10257,has subject work,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10258,has subject expression,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10259,has subject manifestation,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10260,has subject item,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10261,has subject person,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10262,has subject family,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10263,has subject corporate body,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10265,is description of item,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10267,is evaluation of item (Deprecated),Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10268,is review of item (Deprecated),Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10269,is critique of item (Deprecated),Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10271,is description of manifestation,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10273,is evaluation of manifestation,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10274,is review of manifestation,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10275,is critique of manifestation,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10277,is description of expression,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10279,is evaluation of expression,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10280,is review of expression,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10281,is critique of expression,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10319,has subject agent,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10320,has subject collective agent,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10321,has subject place,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10322,has subject timespan,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10323,has subject nomen,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10324,has subject RDA entity,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10325,is description of person,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10326,is description of corporate body,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10327,is description of family,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10338,is description of agent,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10339,is description of collective agent,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10359,is critique of RDA entity,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10360,is description of RDA entity,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10361,is evaluation of RDA entity,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10362,is review of RDA entity,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10600,is description of nomen,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10601,is description of place,Work,via_dct_map,True
-ProvidedCHO,dcTermsSubject,dc,http://purl.org/dc/elements/1.1/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10602,is description of timespan,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10100,is description of work,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10153,is evaluation of work,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10178,is review of work,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10182,is critique of work,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10256,has subject,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10257,has subject work,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10258,has subject expression,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10259,has subject manifestation,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10260,has subject item,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10261,has subject person,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10262,has subject family,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10263,has subject corporate body,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10265,is description of item,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10267,is evaluation of item (Deprecated),Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10268,is review of item (Deprecated),Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10269,is critique of item (Deprecated),Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10271,is description of manifestation,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10273,is evaluation of manifestation,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10274,is review of manifestation,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10275,is critique of manifestation,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10277,is description of expression,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10279,is evaluation of expression,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10280,is review of expression,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10281,is critique of expression,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10319,has subject agent,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10320,has subject collective agent,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10321,has subject place,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10322,has subject timespan,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10323,has subject nomen,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10324,has subject RDA entity,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10325,is description of person,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10326,is description of corporate body,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10327,is description of family,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10338,is description of agent,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10339,is description of collective agent,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10359,is critique of RDA entity,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10360,is description of RDA entity,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10361,is evaluation of RDA entity,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10362,is review of RDA entity,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10600,is description of nomen,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10601,is description of place,Work,via_dct_map,True
+ProvidedCHO,dcTermsSubject,dcterms,http://purl.org/dc/terms/subject,69588,60.28,http://rdaregistry.info/Elements/w/P10602,is description of timespan,Work,via_dct_map,True
 ProvidedCHO,dcType,dc,http://purl.org/dc/elements/1.1/type,92853,80.44,http://rdaregistry.info/Elements/e/P20001,has content type,Expression,via_dct_map,True
 ProvidedCHO,dcType,dc,http://purl.org/dc/elements/1.1/type,92853,80.44,http://rdaregistry.info/Elements/e/P20331,has category of expression,Expression,via_dct_map,True
 ProvidedCHO,dcType,dc,http://purl.org/dc/elements/1.1/type,92853,80.44,http://rdaregistry.info/Elements/i/P40096,has category of item,Item,via_dct_map,True
@@ -972,7 +972,6 @@ ProvidedCHO,format,dc,http://purl.org/dc/elements/1.1/format,20496,17.76,http://
 ProvidedCHO,format,dc,http://purl.org/dc/elements/1.1/format,20496,17.76,http://rdaregistry.info/Elements/m/P30250,has details of video characteristic,Manifestation,via_dct_map,True
 ProvidedCHO,format,dc,http://purl.org/dc/elements/1.1/format,20496,17.76,http://rdaregistry.info/Elements/m/P30251,has details of video format,Manifestation,via_dct_map,True
 ProvidedCHO,format,dc,http://purl.org/dc/elements/1.1/format,20496,17.76,http://rdaregistry.info/Elements/m/P30262,has details of cartographic data type,Manifestation,via_dct_map,True
-ProvidedCHO,format,dc,http://purl.org/dc/elements/1.1/format,20496,17.76,http://rdaregistry.info/Elements/m/P30263,has reduction ratio designation,Manifestation,via_dct_map,True
 ProvidedCHO,format,dc,http://purl.org/dc/elements/1.1/format,20496,17.76,http://rdaregistry.info/Elements/m/P30275,has details of regional encoding,Manifestation,via_dct_map,True
 ProvidedCHO,format,dc,http://purl.org/dc/elements/1.1/format,20496,17.76,http://rdaregistry.info/Elements/m/P30307,has groove pitch,Manifestation,via_dct_map,True
 ProvidedCHO,format,dc,http://purl.org/dc/elements/1.1/format,20496,17.76,http://rdaregistry.info/Elements/m/P30308,has groove width,Manifestation,via_dct_map,True

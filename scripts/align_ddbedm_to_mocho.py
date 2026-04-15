@@ -132,9 +132,11 @@ g_edm.parse(DDBEDM_TTL)
 # Hard-coded overrides for known DDB data quirks: json_key → (prefix, iri)
 # dcTermSubject (no 's') is a DDB data variant for dcterms:subject
 # identifier (no prefix) is dc:identifier in ProvidedCHO context
+# occuredAt (one 'r') is a DDB API typo for edm:occurredAt
 OVERRIDES = {
     "dcTermSubject": ("dcterms", str(DCTERMS) + "subject"),
     "identifier":    ("dc",      str(DC) + "identifier"),
+    "occuredAt":     ("edm",     "http://www.europeana.eu/schemas/edm/occurredAt"),
 }
 
 prop_lookup = defaultdict(list)  # normalised_local_name → [(prefix_label, full_iri)]
