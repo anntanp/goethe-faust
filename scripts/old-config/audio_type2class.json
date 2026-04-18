@@ -1,0 +1,398 @@
+{
+    "Muster": {
+        "remarks": "This portion is not read",
+        "topic": "list of topics to differentiate between musical and non-musical content",
+        "sector": "Integer value indicates that this mapping only applies to specific sector with the same object type and topic",
+        "en": "Template",
+        "subj": false,
+        "dnb": "",
+        "class": [
+            "frbr:Work",
+            "frbr:Expression",
+            "frbr:Manifestation",
+            "frbr:Item",
+            "fabio:DigitalItem"
+        ]
+    },
+    "default": {
+        "remarks": "Except when type is Foto, Archivalie",
+        "en": "Default",
+        "subj": false,
+        "dnb": "",
+        "class": [
+            "",
+            "",
+            [
+                "mo:Record",
+                "aco:AudioClip"
+            ],
+            "aco:AudioItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Audiofile": {
+        "remarks": "Often recordings of theater performances.",
+        "en": "Audio File",
+        "subj": false,
+        "dnb": "https://d-nb.info/gnd/7658708-3",
+        "class": [
+            "fabio:Work",
+            "fabio:AudioDocument",
+            [
+                "mo:Record",
+                "aco:AudioClip"
+            ],
+            "aco:AudioItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Band": {
+        "remarks": "Often an audio book. Inhaltsverzeichnis view field is the corresponding gnd:Werk",
+        "en": "Volume",
+        "subj": false,
+        "dnb": "",
+        "class": [
+            "fabio:Work",
+            "fabio:AudioDocument",
+            [
+                "mo:Record",
+                "aco:AudioClip"
+            ],
+            "aco:AudioItem",
+            "aco:AudioFile"
+        ]
+    },
+    "CD": {
+        "remarks": "",
+        "en": "CD",
+        "subj": false,
+        "dnb": "",
+        "class": [
+            "mo:MusicalWork",
+            "mo:MuscialExpression",
+            "mo:MusicalManifestation",
+            "mo:MusicalItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Folie": {
+        "remarks": "Usual topic: Lied or Song",
+        "en": "Phonographic Foil",
+        "subj": false,
+        "dnb": "",
+        "class": [
+            "mo:MusicalWork",
+            "mo:MuscialExpression",
+            "mo:MusicalManifestation",
+            "mo:MusicalItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Hörfunksendung": {
+        "remarks": "",
+        "en": "Radio Ads",
+        "subj": false,
+        "dnb": "https://d-nb.info/gnd/4160384-9",
+        "class": [
+            "fabio:Work",
+            "fabio:AudioDocument",
+            [
+                "mo:Record",
+                "aco:AudioClip"
+            ],
+            "aco:AudioItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Inszenierung": {
+        "remarks": "Often recordings of theater performances.",
+        "en": "Stage Production",
+        "subj": false,
+        "dnb": "https://d-nb.info/gnd/4027223-0",
+        "class": [
+            "fabio:Work",
+            "fabio:AudioDocument",
+            [
+                "mo:Record",
+                "aco:AudioClip"
+            ],
+            "aco:AudioItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Interview": {
+        "en": "Interview",
+        "subj": false,
+        "dnb": "https://d-nb.info/gnd/4027503-6",
+        "class": [
+            "",
+            "",
+            [
+                "mo:Record",
+                "aco:AudioClip"
+            ],
+            "aco:AudioItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Langspielplatte": {
+        "remarks": "Usual topic: Oper or Opera",
+        "en": "Long Play Disc",
+        "subj": false,
+        "dnb": "https://d-nb.info/gnd/4137299-2",
+        "class": [
+            "mo:MusicalWork",
+            "mo:MuscialExpression",
+            "mo:MusicalManifestation",
+            "mo:MusicalItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Magnettonband": {
+        "remarks": "sec_04 (Museum); topic: Mono; Audio books",
+        "topic": [
+            "Mono",
+            "Stereo"
+        ],
+        "sector": 4,
+        "en": "Tape Record",
+        "subj": false,
+        "dnb": "https://d-nb.info/gnd/4036989-4",
+        "class": [
+            "fabio:Work",
+            "fabio:AudioDocument",
+            [
+                "mo:Record",
+                "aco:AudioClip"
+            ],
+            "aco:AudioItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Magnettonband / Vortrag": {
+        "remarks": "May also be written as Vortäge",
+        "sector": 6,
+        "en": "Tape Record",
+        "subj": false,
+        "dnb": "https://d-nb.info/gnd/4036989-4",
+        "class": [
+            "fabio:Work",
+            "fabio:AudioDocument",
+            [
+                "mo:Record",
+                "aco:AudioClip"
+            ],
+            "aco:AudioItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Kardiologie": {
+        "remarks": "this is a topic with objecttype Magnettonband",
+        "sector": 6,
+        "en": "Tape Record",
+        "subj": false,
+        "dnb": "https://d-nb.info/gnd/4114141-6",
+        "class": [
+            "",
+            "",
+            [
+                "mo:Record",
+                "aco:AudioClip"
+            ],
+            "aco:AudioItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Mono": {
+        "remarks": "",
+        "sector": 4,
+        "en": "Mono",
+        "subj": false,
+        "dnb": "",
+        "class": [
+            "fabio:Work",
+            "fabio:AudioDocument",
+            [
+                "mo:Record",
+                "aco:AudioClip"
+            ],
+            "aco:AudioItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Monografie": {
+        "en": "Monography",
+        "subj": false,
+        "dnb": "",
+        "class": [
+            "fabio:Work",
+            "fabio:AudioDocument",
+            [
+                "mo:Record",
+                "aco:AudioClip"
+            ],
+            "aco:AudioItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Platte": {
+        "remarks": "",
+        "sector": 4,
+        "en": "Disc",
+        "subj": false,
+        "dnb": "",
+        "class": [
+            "fabio:Work",
+            "fabio:AudioDocument",
+            [
+                "mo:Record",
+                "aco:AudioClip"
+            ],
+            "aco:AudioItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Schallfolie": {
+        "remarks": "Other topics of Schallfolie, such as Sprechplatte, are defined under the key, Sprechplatte.",
+        "en": "Phonographic Foil",
+        "topic": [
+            "Lied",
+            "Schlager",
+            "Kirchenmusik",
+            "Oper",
+            "Arie",
+            "Tonträger"
+        ],
+        "subj": false,
+        "dnb": "",
+        "class": [
+            "mo:MusicalWork",
+            "mo:MuscialExpression",
+            "mo:MusicalManifestation",
+            "mo:MusicalItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Schallplatte": {
+        "remarks": "https://d-nb.info/gnd/4052032-8",
+        "en": "Phonograph Record",
+        "subj": false,
+        "dnb": "https://d-nb.info/gnd/4052032-8",
+        "class": [
+            "mo:MusicalWork",
+            "mo:MuscialExpression",
+            "mo:MusicalManifestation",
+            "mo:MusicalItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Schellackplatte": {
+        "remarks": "",
+        "en": "Gramophone Record",
+        "subj": false,
+        "dnb": "https://d-nb.info/gnd/4135113-7",
+        "class": [
+            "mo:MusicalWork",
+            "mo:MuscialExpression",
+            "mo:MusicalManifestation",
+            "mo:MusicalItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Sprechplatte": {
+        "remarks": "This is for specific topic to handle other types of Schallfolie",
+        "en": "Speech Record",
+        "subj": false,
+        "dnb": "https://d-nb.info/gnd/4270582-4",
+        "class": [
+            "",
+            "",
+            [
+                "mo:Record",
+                "aco:AudioClip"
+            ],
+            "aco:AudioItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Stereo": {
+        "remarks": "",
+        "sector": 4,
+        "en": "Stereo",
+        "subj": false,
+        "dnb": "",
+        "class": [
+            "fabio:Work",
+            "fabio:AudioDocument",
+            [
+                "mo:Record",
+                "aco:AudioClip"
+            ],
+            "aco:AudioItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Ton": {
+        "remarks": "",
+        "sector": 6,
+        "en": "Record",
+        "subj": false,
+        "dnb": "",
+        "class": [
+            "mo:MusicalWork",
+            "mo:MuscialExpression",
+            "mo:MusicalManifestation",
+            "mo:MusicalItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Tonaufnahme": {
+        "remarks": "Usual Topics: Tierstimme, Industriegeräusche, Lesung, Interview",
+        "sector": 2,
+        "en": "Audio Recording",
+        "subj": false,
+        "dnb": "Schallaufzeichnung",
+        "class": [
+            "",
+            "",
+            [
+                "mo:Record",
+                "aco:AudioClip"
+            ],
+            "aco:AudioItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Tondokument": {
+        "topic": [
+            "Musicethnologie"
+        ],
+        "remarks": "Usual Topic: Feldaufnahme or Field Recording of Musical Ethonology",
+        "en": "Audio Document",
+        "subj": false,
+        "dnb": "Schallaufzeichnung",
+        "class": [
+            "mo:MusicalWork",
+            "mo:MuscialExpression",
+            "mo:MusicalManifestation",
+            "mo:MusicalItem",
+            "aco:AudioFile"
+        ]
+    },
+    "Tondokumente": {
+        "remarks": "3 instances with recordings of a city council meeting proceedings",
+        "en": "Audio Documents",
+        "subj": false,
+        "dnb": "Schallaufzeichnung",
+        "class": [
+            "",
+            "fabio:AudioDocument",
+            [
+                "mo:Record",
+                "aco:AudioClip"
+            ],
+            "aco:AudioItem",
+            "aco:AudioFile"
+        ]
+    }
+}

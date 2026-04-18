@@ -1,0 +1,47 @@
+htype_code,label_de,label_en,domain,rdf_type,has_record_set_type,target_vocab,notes
+htype_001,Abschnitt,Section,library,doco:Section,,doco,
+htype_002,Anhang,Appendix,library,doco:Appendix,,doco,
+htype_003,Beigefügtes oder enthaltenes Werk,Contained Work,library,pending,,pending,No DoCO class for embedded/contained work; map to mocho WEMI containment when available
+htype_004,Annotation,Annotation,library,pending,,pending,No DoCO Annotation class; consider OA:Annotation (Web Annotation Ontology)
+htype_005,Anrede,Address,library,pending,,pending,Dedicatory address or prefatory speech; no DoCO equivalent
+htype_006,Aufsatz,Article,library,pending,,pending,Publication type (journal/serial article); maps to WEMI Work
+htype_007,Band,Volume,library,doco:Part,,doco,Volume as a Part of a multivolume set
+htype_008,Beilage,Additional,library,pending,,pending,Supplementary insert; no direct DoCO class
+htype_009,Einleitung,Introduction,library,doco:Section,,doco,Introduction section; doco:Section preferred over FrontMatter (too broad)
+htype_010,Eintrag,Entry,library,pending,,pending,Dictionary or encyclopaedia entry; no DoCO class
+htype_011,Faszikel,Fascicle,library,doco:Part,,doco,Fascicle = installment / separately published part
+htype_012,Fragment,Fragment,library,doco:TextChunk,,doco,Partial text or manuscript fragment
+htype_013,Handschrift,Manuscript,library,pending,,pending,Publication type (handwritten document); maps to WEMI Manifestation
+htype_014,Heft,Issue,library,pending,,pending,Periodical issue; no DoCO structural class
+htype_015,Illustration,Illustration,library,doco:Figure,,doco,
+htype_016,Index,Index,library,doco:Index,,doco,
+htype_017,Inhaltsverzeichnis,Table of Contents,library,doco:TableOfContents,,doco,
+htype_018,Kapitel,Chapter,library,doco:Chapter,,doco,
+htype_019,Karte,Map,library,doco:Figure,,doco,Map as visual Figure; VRA Core Map type for richer description
+htype_020,Mehrbändiges Werk,Multivolume Work,library,pending,,pending,Publication type (aggregation); maps to WEMI Work/Manifestation
+htype_021,Monografie,Monograph,library,pending,,pending,Publication type; maps to WEMI Work
+htype_022,Musik,Music,library,pending,,pending,Music score or recording; not a document component; route via Music Ontology
+htype_023,Fortlaufendes Sammelwerk,Serial,library,pending,,pending,Publication type (continuing resource); maps to WEMI Manifestation
+htype_024,Privilegie,Charter,library,pending,,pending,Legal document genre; no DoCO equivalent
+htype_025,Rezension,Review,library,pending,,pending,Publication type (critical review); maps to WEMI Work
+htype_026,Text,Text,library,doco:TextChunk,,doco,Generic text block
+htype_027,Vers,Verse,library,doco:Stanza,,doco,Verse unit; use doco:Line if single-line resolution required
+htype_028,Vorwort,Preface,library,doco:Preface,,doco,
+htype_029,Widmung,Dedication,library,pending,,pending,No DoCO Dedication class
+htype_030,Bestand,Holding / Fonds,archival,rico:RecordSet,"mocho:Bestand, ric-rst:Fonds",rico,Findbuch Collection*
+htype_031,Gliederung,Classification,archival,rico:RecordSet,"mocho:Gliederung, ric-rst:Series",rico,Findbuch Classification
+htype_032,Serie,Series,archival,rico:RecordSet,ric-rst:Series,rico,Findbuch Series
+htype_033,Unterserie,Subseries,archival,rico:RecordSet,mocho:Unterserie,rico,
+htype_034,Archivale,File,archival,rico:Record,,rico,Findbuch File; individual archival record
+htype_035,Teil,Part,archival,rico:RecordPart,,rico,Findbuch Item; component part of an archival record
+htype_036,Bestandsserie,Holding Series,archival,rico:RecordSet,"mocho:Bestandsserie, ric-rst:Collection",rico,Tektonik Series
+htype_037,Bestandsklassifikation,Holding Classification,archival,rico:RecordSet,mocho:Bestandsklassifikation,rico,
+htype_038,Brief,Letter,archival,rico:Record,,rico,Archival letter = individual record within a file or bundle
+htype_039,Konvolut,Bundle,archival,rico:RecordSet,,rico,Bundle of related archival items; no standard RiC-O RecordSetType individual
+htype_040,Mappe,Folder,archival,rico:RecordSet,,rico,Archival folder grouping records; no standard RiC-O RecordSetType individual
+htype_041,Archiv,Archive,archival,rico:RecordSet,ric-rst:Collection,rico,Top-level archival institution or repository
+htype_044,Zeitung,Newspaper,library,pending,,pending,Publication type (newspaper); maps to WEMI Manifestation
+htype_045,Jahrgang,Year,library,doco:Part,,doco,Annual volume of a newspaper serial
+htype_046,Monat,Month,library,doco:Part,,doco,Monthly issue of a newspaper serial
+htype_047,Tag,Day,library,doco:Part,,doco,Daily edition of a newspaper
+htype_048,Tektonik,Tektonik,archival,rico:RecordSet,mocho:Tektonik,rico,Top-level DDB archival hierarchy node

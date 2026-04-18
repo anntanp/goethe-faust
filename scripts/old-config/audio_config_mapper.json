@@ -1,0 +1,82 @@
+{
+  "field_handlers": {
+      "edm:ProvidedCHO-edm:currentLocation": "copy_place",
+      "edm:ProvidedCHO-dc:identifier": "copy_literal",
+      "edm:ProvidedCHO-dc:extent": "copy_literal",
+      "edm:ProvidedCHO-dc:format": "copy_literal",
+      "edm:ProvidedCHO-dcterms:extent": "copy_literal",
+      "edm:ProvidedCHO-dcterms:issued": "copy_literal",
+      "edm:ProvidedCHO-dc:contributor": "copy_agent",
+      "edm:ProvidedCHO-ddb:hierarchyPosition": "copy_literal",
+      "edm:ProvidedCHO-edm:type": "copy_literal",
+      "edm:ProvidedCHO-dc:description": "copy_literal",
+      "edm:ProvidedCHO-dcterms:bibliographicCitation": "copy_literal",
+      "edm:ProvidedCHO-dc:tableOfContents": "copy_literal",
+      "edm:ProvidedCHO-dcterms:temporal": "copy_literal",
+      "View:Abstrakt": "copy_view_field",
+      "View:Ausgabe": "copy_view_field",
+      "View:DOI": "copy_view_field",
+      "View:Edition": "copy_view_field",
+      "View:Förderung": "copy_view_field",
+      "View:Inhaltsverzeichnis": "copy_view_field",
+      "View:ISBN": "copy_view_field",
+      "View:Sammlung": "copy_view_field",
+      "View:Standort": "copy_view_field",
+      "View:URN": "copy_view_field",
+      "View:VD 17": "copy_view_field",
+      "View:VD 18": "copy_view_field",
+      "View:Table of contents": "copy_view_field",
+      "default": "default_field_handler"
+  },
+  "__comment__": "URI to Library Of Congress (LOC) languages",
+  "loc_lang": {
+    "ger": "http://id.loc.gov/vocabulary/iso639-2/ger",
+    "zxx": "http://id.loc.gov/vocabulary/iso639-2/ger",
+    "fre": "http://id.loc.gov/vocabulary/iso639-2/fre",
+    "ita": "http://id.loc.gov/vocabulary/iso639-2/ita",
+    "eng": "http://id.loc.gov/vocabulary/iso639-2/eng",
+    "lat": "http://id.loc.gov/vocabulary/iso639-2/lat",
+    "gre": "http://id.loc.gov/vocabulary/iso639-2/gre",
+    "swe": "http://id.loc.gov/vocabulary/iso639-2/swe",
+    "chi": "http://id.loc.gov/vocabulary/iso639-2/chi",
+    "heb": "http://id.loc.gov/vocabulary/iso639-2/heb",
+    "spa": "http://id.loc.gov/vocabulary/iso639-2/spa"
+  },
+  "lang_codes_long": {
+      "ger": "de",
+      "fre": "fr",
+      "ita": "it",
+      "eng": "en",
+      "lat": "la",
+      "gre": "el",
+      "swe": "sv",
+      "chi": "zh",
+      "heb": "he",
+      "spa": "es",
+      "zxx": "de"
+  },
+  "lang_codes_short": {
+      "de": "ger",
+      "fr": "fre",
+      "it": "ita",
+      "en": "eng",
+      "la": "lat",
+      "el": "gre",
+      "sv": "swe",
+      "zh": "chi",
+      "he": "heb",
+      "es": "spa"
+  },
+  "__comment__": "see skip.txt for skipping reasons",
+  "skip": [
+      "NGOOZEZEDQBXVPUAZK4GKLDAEV4U5DOV",
+      "7X5UQJ43D2JG45OL6V4VKWLLRE6OYWR2",
+      "WJS53KF3EWK7TMOGYEB3HR6J6FLXWO3J",
+      "EAEZ56P4H2AIBXD5HY4N4UXYFO5NL27P",
+      "YGUM4SHZJLLBMPQ4UQGN6MRBASX7ZIYJ",
+      "JOVDPJGZ5GB4BJ6NAFHCSPFQTCCZR32F",
+      "NJWKPSJSPQXRWHSNXRJPCYM4SJNAJNKL"
+    ]
+    
+
+}

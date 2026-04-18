@@ -45,7 +45,74 @@ in mocho, via the DC→RDA sub-property mapping from the mocho workflow.
 
 ---
 
+## Transform pipeline (run in order)
+
+### `transform_edm_to_mocho.py`
+Reference transform: DDB-EDM JSONL → mocho-aligned N-Triples + JSON-LD.
+Decisions documented in `notes/transform-adr.md` (D1–D12).
+
+- **Input**: `data/items-all-goethe-faust.json`, `data/ids-all-goethe-faust.txt`,
+  `output/alignment_ddbedm_mocho.csv`, `output/lookup_htype_doco_rico.csv`
+- **Output**: `output/mocho-goethe-faust.nt`, `output/mocho-goethe-faust.jsonld`,
+  `output/transform_stats.json`
+- **Usage**: `python transform_edm_to_mocho.py [--jsonl FILE] [--ids FILE] [--limit N]`
+- **Notes**: Phase D will add dc:type dispatch (lookup_dctype_to_class.csv) and
+  WebResource typing for mt002. See `notes/plan-goethe-faust-transform.md`.
+
+### `count_dctype_by_mediatype.py`
+Frequency count of dc:type × sector across all mediatypes. Prerequisite for
+populating image and video config JSONs before Phase B.
+
+- **Input**: `data/items/*.json`
+- **Output**: `output/dctype_frequency_all.csv` (columns: mediatype, sector, dc_type_de, count)
+- **Usage**: `python count_dctype_by_mediatype.py`
+
+### `gen_image_type2class.py`
+Generates `output/config/image_type2class.json` for mt002 dc:type dispatch.
+Implements group-based model from `notes/image-type-class-mapping.md` (D11–D12):
+Groups A–D (artwork, objects, photo, architecture) → W-slot classes; Group F → M-slot.
+
+- **Input**: `output/dctype_frequency_all.csv`
+- **Output**: `output/config/image_type2class.json`
+- **Usage**: `python gen_image_type2class.py [--summary]`
+
+### `gen_video_type2class.py`
+Generates `output/config/video_type2class.json` for mt005 dc:type dispatch.
+EBUCore Plus split: `EditorialWork` (editorial content) vs `MediaResource` (carrier/fragment).
+Decisions in `notes/video-type-class-mapping.md`.
+
+- **Input**: `output/dctype_frequency_all.csv`
+- **Output**: `output/config/video_type2class.json`
+- **Usage**: `python gen_video_type2class.py`
+
+### `count_dctype_gnd_coverage.py`
+Measures what fraction of dc:type values have a GND URI via `edm.RDF.Concept`
+(prefLabel match → Concept.about). Exports dc_type_de → GND URI mapping for
+use as `dnb_uri` column in `lookup_dctype_to_class.csv`.
+
+- **Input**: `data/items-all-goethe-faust.json`
+- **Output**: `output/dctype_gnd_coverage.csv`, `output/dctype_to_gnd_uri.csv`
+- **Usage**: `python count_dctype_gnd_coverage.py`
+- **Notes**: 98.8% coverage corpus-wide (959/1,033 unique dc:types have GND URI).
+  See `notes/plan-goethe-faust-transform.md` §3.0 for full breakdown.
+
+---
+
 ## Data pipeline (run in order)
+
+### `gen_manifestation_types.py`
+Emits `rdf:type` triples for every DDB object URI in the corpus. Items from
+sector 2 (sparte002, library) or with a manifestation-level htype are typed as
+`rda:Manifestation` (`rdaregistry.info/Elements/c/C10007`); all others as
+`mocho:Manifestation`. Sector-2 check covers both the item's own
+`provider-info.domains` and parent institution domains.
+
+- **Input**: `data/items-all-goethe-faust.json`
+- **Output**: `output/mocho-goethe-faust.nt`
+- **Usage**: `python scripts/gen_manifestation_types.py`
+- **Notes**: Manifestation htypes: htype_007 (Volume), htype_013 (Manuscript),
+  htype_014 (Issue), htype_020 (Multivolume Work), htype_021 (Monograph),
+  htype_025 (Review). Stats printed on completion.
 
 ### `fetch-search-all.py`
 Fetches all DDB search results for the query "goethe" via the DDB Solr API
@@ -150,6 +217,23 @@ Prints a human-readable summary of `ddb-type2fabio.json`.
 - **Input**: `output/ddb-type2fabio.json`
 - **Output**: printed summary (no files written)
 - **Usage**: `python scripts/summarise_results.py`
+
+### `gen_htype_doco_mapping.py`
+Matches htype label_en values against DoCO ontology class labels using four
+strategies (exact, Levenshtein, translated, embedding). Writes mapping table.
+
+- **Input**: `data/htype.csv`, `data/schemas/doco.owl`
+- **Output**: `~/Documents/claude/mocho/output/mapping_htype_doco.csv`,
+  `~/Documents/claude/mocho/output/mapping_htype_doco.json`
+- **Usage**: `python scripts/gen_htype_doco_mapping.py`
+- **Dependencies**: `rdflib`, `rapidfuzz`, `deep-translator`, `sentence-transformers`
+
+### `check_isbd_titles.py`
+Checks how many `ProvidedCHO.title` values contain ISBD punctuation marks.
+
+- **Input**: `data/items-all-goethe-faust.json`
+- **Output**: console summary; optional Markdown report (`--report PATH`)
+- **Usage**: `python check_isbd_titles.py [--report PATH]`
 
 ---
 

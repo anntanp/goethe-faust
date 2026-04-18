@@ -308,7 +308,7 @@
     },
     {
       "entity_type": "Event",
-      "json_key": "occuredAt",
+      "json_key": "occurredAt",
       "record_count": 158407,
       "record_pct": 137.23,
       "entity_pct": 143.93
