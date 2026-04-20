@@ -9,6 +9,7 @@
 #
 # SHMARQL UI:      http://localhost:${SHMARQL_PORT:-7032}
 # SPARQL endpoint: http://localhost:${QLEVER_PORT:-7030}
+# MCPO (MCP→HTTP): http://localhost:${MCPO_PORT:-8001}
 
 services:
   qlever-goethe-faust:
@@ -83,6 +84,20 @@ services:
       - "${SHMARQL_PORT:-7032}:8000"
     environment:
       - ENDPOINT=http://qlever-goethe-faust:7019
+    depends_on:
+      qlever-goethe-faust:
+        condition: service_healthy
+
+  mcpo:
+    image: ghcr.io/open-webui/mcpo:latest
+    ports:
+      - "${MCPO_PORT:-8001}:8001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: >
+      --port 8001 --
+      npx -y mcp-server-qlever
+      -e http://host.docker.internal:${QLEVER_PORT:-7030}
     depends_on:
       qlever-goethe-faust:
         condition: service_healthy

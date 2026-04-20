@@ -11,6 +11,7 @@ Inputs:     data/items-all-goethe-faust.json         JSONL, one record per line
             data/ids-all-goethe-faust.txt             32-char object IDs, one per line
             output/alignment_ddbedm_mocho.csv         (entity_type, json_key) → RDA candidates
             output/lookup_htype_doco_rico.csv         htype_code → DoCO/RiC-O class
+            output/lookup_dctype_to_class.csv         (mediatype, sector, dc_type_de) → class IRIs
 Outputs:    output/mocho-goethe-faust.nt              N-Triples (pipeline intermediate)
             output/mocho-goethe-faust.jsonld          JSON-LD (inspection/tooling)
             output/transform_stats.json               run stats + ignored-properties inventory
@@ -40,6 +41,7 @@ DEFAULT_JSONL      = PROJECT_DIR / "data"   / "items-all-goethe-faust.json"
 DEFAULT_IDS        = PROJECT_DIR / "data"   / "ids-all-goethe-faust.txt"
 DEFAULT_ALIGNMENT  = PROJECT_DIR / "output" / "alignment_ddbedm_mocho.csv"
 DEFAULT_HTYPE      = PROJECT_DIR / "output" / "lookup_htype_doco_rico.csv"
+DEFAULT_DCTYPE     = PROJECT_DIR / "output" / "lookup_dctype_to_class.csv"
 DEFAULT_OUT_NT     = PROJECT_DIR / "output" / "mocho-goethe-faust.nt"
 DEFAULT_OUT_JSONLD = PROJECT_DIR / "output" / "mocho-goethe-faust.jsonld"
 DEFAULT_STATS      = PROJECT_DIR / "output" / "transform_stats.json"
@@ -50,6 +52,18 @@ RDF_TYPE            = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 MOCHO_NS            = "https://ise-fizkarlsruhe.github.io/ddbkg/mocho#"
 MOCHO_MANIFESTATION = MOCHO_NS + "Manifestation"
 RICO_HAS_RST        = "http://www.ica.org/standards/RiC/ontology#hasRecordSetType"
+
+# D.1 — dc:type dispatch: vocnet prefixes for mediatype/sector extraction
+_MEDIATYPE_PREFIX = "http://ddb.vocnet.org/medientyp/"
+_SECTOR_PREFIX    = "http://ddb.vocnet.org/sparte/"
+_MT002_IRI        = "http://ddb.vocnet.org/medientyp/mt002"
+
+# D.2 — WebResource typing for mt002 (mocho:ImageObject layer)
+_MOCHO_IMAGE_OBJECT = MOCHO_NS + "ImageObject"
+_RDAC_C10007        = "http://rdaregistry.info/Elements/c/C10007"          # rdac:Item
+_RDAM_P30001        = "http://rdaregistry.info/Elements/m/P30001"          # has carrier type
+_RDACT_1018         = "http://rdaregistry.info/termList/RDACarrierType/1018"  # still image
+_VRA_IMAGE_OF       = "http://purl.org/vra/imageOf"
 
 # Fan-out whitelist (ADR D7–D8): bypass alignment table for creator/contributor.
 #
@@ -161,6 +175,68 @@ def load_ids(path: Path) -> set:
         return {line.strip() for line in fh if line.strip()}
 
 
+def load_dctype_map(path: Path) -> dict:
+    """Load lookup_dctype_to_class.csv into a three-key dispatch index.
+
+    Returns dict[(mediatype, sector, dc_type_de)] → row dict.
+    Keys: mediatype and sector are vocnet IRIs or 'any'; dc_type_de is the
+    German literal. Three-level fallback is performed at lookup time.
+    """
+    index: dict = {}
+    with open(path, newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            key = (row["mediatype"], row["sector"], row["dc_type_de"])
+            index[key] = row
+    return index
+
+
+# ─── dc:type dispatch helpers ─────────────────────────────────────────────────
+
+def _get_dctype_text(value: object) -> str:
+    """Extract the German dc:type string from a dcType field value."""
+    if isinstance(value, dict):
+        return (value.get("$") or "").strip()
+    if isinstance(value, str):
+        return value.strip()
+    return ""
+
+
+def _extract_mediatype_sector(concepts: object) -> tuple:
+    """Return (mediatype_iri, sector_iri) from the record's Concept list."""
+    mediatype = "any"
+    sector = "any"
+    if not isinstance(concepts, list):
+        concepts = [concepts] if isinstance(concepts, dict) else []
+    for c in concepts:
+        if not isinstance(c, dict):
+            continue
+        about = c.get("about") or ""
+        if about.startswith(_MEDIATYPE_PREFIX):
+            mediatype = about
+        elif about.startswith(_SECTOR_PREFIX):
+            sector = about
+    return mediatype, sector
+
+
+def _dctype_lookup(
+    dctype_index: dict,
+    mediatype: str,
+    sector: str,
+    dc_type_de: str,
+) -> tuple:
+    """Three-level fallback lookup. Returns (row_or_None, match_level)."""
+    row = dctype_index.get((mediatype, sector, dc_type_de))
+    if row:
+        return row, "exact"
+    row = dctype_index.get((mediatype, "any", dc_type_de))
+    if row:
+        return row, "any-sector"
+    row = dctype_index.get(("any", "any", dc_type_de))
+    if row:
+        return row, "any-mediatype"
+    return None, "fallback"
+
+
 # ─── Record helpers ───────────────────────────────────────────────────────────
 
 def get_object_id(record: dict):
@@ -247,34 +323,75 @@ def emit_subject_triples(entity: dict, subject_nt: str, alignment: dict) -> list
     return nt_lines
 
 
-def retype_entities(rdf: dict, htype_map: dict, stats: dict) -> list:
-    """Emit rdf:type triples for ProvidedCHO and PhysicalThing (ADR D9, D10).
+def retype_entities(rdf: dict, htype_map: dict, dctype_index: dict, stats: dict) -> list:
+    """Emit rdf:type triples for ProvidedCHO and PhysicalThing (ADR D9–D12).
 
-    ProvidedCHO (D9):
-      Always emits mocho:Manifestation as base type. edm:ProvidedCHO is an EDM
-      modelling artefact, not an ontological type; it is not emitted.
-      If hierarchyType is present and mapped: also emits the DoCO or RiC-O class
-      as an additional, more specific rdf:type.
-      If has_record_set_type: emits rico:hasRecordSetType triple(s).
-      If hierarchyType is absent or pending: counts in objects_missing_specific_type.
+    ProvidedCHO — two independent dispatch layers (both may fire):
+
+      Layer 1 — htype dispatch (D9/D10):
+        If hierarchyType mapped: emit DoCO/RiC-O class + rico:hasRecordSetType.
+        If absent/pending: count in objects_missing_specific_type.
+
+      Layer 2 — dc:type dispatch (D11/D12):
+        Three-level lookup in lookup_dctype_to_class.csv:
+          exact (mediatype, sector, dc_type_de)
+          → any-sector (mediatype, any, dc_type_de)
+          → any-mediatype (any, any, dc_type_de)
+          → fallback: mocho:Manifestation only (D9)
+
+        W-slot class found → emit W-slot IRI instead of mocho:Manifestation.
+        M-slot class found (not mocho:Manifestation) → emit alongside mocho:Manifestation.
+        No match or empty slots → mocho:Manifestation only.
+
+      D.2 — WebResource typing (mt002 only):
+        For photo records: each WebResource typed as mocho:ImageObject + rdac:C10007,
+        with rdam:P30001 rdact:1018 (still-image carrier) and vra:imageOf <cho-uri>.
 
     PhysicalThing (D10):
-      Archival hierarchy ancestor nodes (Bestand, Gliederung, etc.) stored inline
-      in each record — the finding aid lineage. Not carried objects.
-      Typed via htype lookup to RiC-O class only; no mocho:Manifestation.
-      If hierarchyType is absent or pending: no rdf:type emitted (no fallback).
+      Archival hierarchy ancestors. Typed via htype lookup; no mocho:Manifestation.
     """
     nt_lines: list = []
-    rdf_type_nt = f"<{RDF_TYPE}>"
-    rico_rst_nt = f"<{RICO_HAS_RST}>"
+    rdf_type_nt  = f"<{RDF_TYPE}>"
+    rico_rst_nt  = f"<{RICO_HAS_RST}>"
 
-    # ProvidedCHO
+    # ── Extract mediatype + sector from Concept list (needed for both layers) ──
+    mediatype, sector = _extract_mediatype_sector(rdf.get("Concept"))
+
+    # ── ProvidedCHO ───────────────────────────────────────────────────────────
     cho = rdf.get("ProvidedCHO")
     if isinstance(cho, dict):
         about = cho.get("about")
         if about:
             s = f"<{about}>"
-            nt_lines.append(f"{s} {rdf_type_nt} <{MOCHO_MANIFESTATION}> .")
+
+            # Layer 2: dc:type dispatch — determines ProvidedCHO rdf:type
+            dc_types_raw = cho.get("dcType")
+            if dc_types_raw is None:
+                dc_types_raw = []
+            elif not isinstance(dc_types_raw, list):
+                dc_types_raw = [dc_types_raw]
+
+            dc_type_de = _get_dctype_text(dc_types_raw[0]) if dc_types_raw else ""
+            matched_row, _level = _dctype_lookup(dctype_index, mediatype, sector, dc_type_de)
+
+            rdf_type_w = matched_row["rdf_type_w"] if matched_row else ""
+            rdf_type_m = matched_row["rdf_type_m"] if matched_row else ""
+
+            if rdf_type_w:
+                # W-slot replaces mocho:Manifestation for ProvidedCHO
+                nt_lines.append(f"{s} {rdf_type_nt} <{rdf_type_w}> .")
+                stats["dctype_w_assigned"] += 1
+            elif rdf_type_m and rdf_type_m != MOCHO_MANIFESTATION:
+                # M-slot accumulated alongside mocho:Manifestation
+                nt_lines.append(f"{s} {rdf_type_nt} <{MOCHO_MANIFESTATION}> .")
+                nt_lines.append(f"{s} {rdf_type_nt} <{rdf_type_m}> .")
+                stats["dctype_m_accumulated"] += 1
+            else:
+                # D9 fallback
+                nt_lines.append(f"{s} {rdf_type_nt} <{MOCHO_MANIFESTATION}> .")
+                stats["dctype_fallback"] += 1
+
+            # Layer 1: htype dispatch — independent of dc:type layer
             htype = cho.get("hierarchyType")
             if htype and htype in htype_map:
                 type_iri, rst_iris = htype_map[htype]
@@ -284,7 +401,30 @@ def retype_entities(rdf: dict, htype_map: dict, stats: dict) -> list:
             else:
                 stats["objects_missing_specific_type"] += 1
 
-    # PhysicalThing
+            # D.2: WebResource typing — mt002 (Photo) only
+            if mediatype == _MT002_IRI:
+                web_resources = rdf.get("WebResource")
+                if web_resources is None:
+                    web_resources = []
+                elif isinstance(web_resources, dict):
+                    web_resources = [web_resources]
+                for wr in web_resources:
+                    if not isinstance(wr, dict):
+                        continue
+                    wr_uri = wr.get("about")
+                    if not wr_uri:
+                        continue
+                    wr_s = f"<{wr_uri}>"
+                    cho_s = s
+                    nt_lines.append(f"{wr_s} {rdf_type_nt} <{_MOCHO_IMAGE_OBJECT}> .")
+                    nt_lines.append(f"{wr_s} {rdf_type_nt} <{_RDAC_C10007}> .")
+                    nt_lines.append(
+                        f"{wr_s} <{_RDAM_P30001}> <{_RDACT_1018}> ."
+                    )
+                    nt_lines.append(f"{wr_s} <{_VRA_IMAGE_OF}> {cho_s} .")
+                    stats["webresources_typed"] += 1
+
+    # ── PhysicalThing ─────────────────────────────────────────────────────────
     physical_things = rdf.get("PhysicalThing")
     if isinstance(physical_things, list):
         for entity in physical_things:
@@ -310,6 +450,7 @@ def transform_record(
     record: dict,
     alignment: dict,
     htype_map: dict,
+    dctype_index: dict,
     ids_filter: set,
     stats: dict,
     ignored_keys: Counter,
@@ -384,8 +525,8 @@ def transform_record(
                     for obj_nt in value_to_nt_obj(raw_val):
                         nt_lines.append(f"{subject_nt} {pred_nt} {obj_nt} .")
 
-    # rdf:type for ProvidedCHO (mocho:Manifestation + htype class) and PhysicalThing
-    nt_lines.extend(retype_entities(rdf, htype_map, stats))
+    # rdf:type for ProvidedCHO (dc:type + htype layers) and PhysicalThing + WebResources
+    nt_lines.extend(retype_entities(rdf, htype_map, dctype_index, stats))
 
     stats["records_processed"] += 1
     stats["triples_out"] += len(nt_lines)
@@ -459,6 +600,7 @@ def main() -> None:
     parser.add_argument("--ids",        default=DEFAULT_IDS,        type=Path)
     parser.add_argument("--alignment",  default=DEFAULT_ALIGNMENT,  type=Path)
     parser.add_argument("--htype",      default=DEFAULT_HTYPE,      type=Path)
+    parser.add_argument("--dctype",     default=DEFAULT_DCTYPE,     type=Path)
     parser.add_argument("--out-nt",     default=DEFAULT_OUT_NT,     type=Path, dest="out_nt")
     parser.add_argument("--out-jsonld", default=DEFAULT_OUT_JSONLD, type=Path, dest="out_jsonld")
     parser.add_argument("--stats",      default=DEFAULT_STATS,      type=Path)
@@ -475,6 +617,10 @@ def main() -> None:
     htype_map = load_htype_map(args.htype)
     print(f"  {len(htype_map)} htype codes mapped", file=sys.stderr)
 
+    print("Loading dc:type dispatch table ...", file=sys.stderr)
+    dctype_index = load_dctype_map(args.dctype)
+    print(f"  {len(dctype_index)} dc:type dispatch entries", file=sys.stderr)
+
     print("Loading IDs filter ...", file=sys.stderr)
     ids_filter = load_ids(args.ids)
     print(f"  {len(ids_filter):,} IDs loaded", file=sys.stderr)
@@ -484,6 +630,10 @@ def main() -> None:
         "records_skipped_not_in_ids":    0,
         "triples_out":                   0,
         "objects_missing_specific_type": 0,
+        "dctype_w_assigned":             0,  # W-slot replaced mocho:Manifestation
+        "dctype_m_accumulated":          0,  # M-slot added alongside mocho:Manifestation
+        "dctype_fallback":               0,  # D9 fallback (no dc:type match or empty slots)
+        "webresources_typed":            0,  # mt002 WebResource triples emitted
         "whitelisted_keys": {
             "creator":     "rdam:P30263 has creator agent of manifestation",
             "contributor": "dc:contributor (no generic RDA equivalent in mocho)",
@@ -518,7 +668,7 @@ def main() -> None:
                 continue
 
             nt_lines = transform_record(
-                record, alignment, htype_map, ids_filter, stats, ignored_keys
+                record, alignment, htype_map, dctype_index, ids_filter, stats, ignored_keys
             )
             if not nt_lines:
                 continue
@@ -562,6 +712,13 @@ def main() -> None:
         f"\nDone. {stats['records_processed']:,} records, "
         f"{stats['triples_out']:,} triples written, "
         f"{triples_ignored:,} values ignored.",
+        file=sys.stderr,
+    )
+    print(
+        f"  dc:type dispatch: W-slot={stats['dctype_w_assigned']:,}  "
+        f"M-slot={stats['dctype_m_accumulated']:,}  "
+        f"fallback={stats['dctype_fallback']:,}  "
+        f"WebResources typed={stats['webresources_typed']:,}",
         file=sys.stderr,
     )
     print(f"  NT:     {args.out_nt}", file=sys.stderr)

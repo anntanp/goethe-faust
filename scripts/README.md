@@ -86,15 +86,37 @@ Decisions in `notes/video-type-class-mapping.md`.
 - **Usage**: `python gen_video_type2class.py`
 
 ### `count_dctype_gnd_coverage.py`
-Measures what fraction of dc:type values have a GND URI via `edm.RDF.Concept`
-(prefLabel match → Concept.about). Exports dc_type_de → GND URI mapping for
-use as `dnb_uri` column in `lookup_dctype_to_class.csv`.
+Measures what fraction of dc:type values have a controlled-vocabulary URI
+(GND preferred, Getty AAT accepted) via `edm.RDF.Concept` prefLabel match.
+Exports dc_type_de → vocab URI mapping for use as `dnb_uri` column in
+`lookup_dctype_to_class.csv`.
 
 - **Input**: `data/items-all-goethe-faust.json`
 - **Output**: `output/dctype_gnd_coverage.csv`, `output/dctype_to_gnd_uri.csv`
-- **Usage**: `python count_dctype_gnd_coverage.py`
-- **Notes**: 98.8% coverage corpus-wide (959/1,033 unique dc:types have GND URI).
-  See `notes/plan-goethe-faust-transform.md` §3.0 for full breakdown.
+- **Usage**: `python scripts/count_dctype_gnd_coverage.py`
+- **Notes**: 48.5% coverage corpus-wide; 356/1,033 unique dc:types have a vocab URI
+  (237 GND, 119 Getty AAT). See `notes/plan-goethe-faust-transform.md` §3.0.
+
+### `sample_type_dispatch.py`
+Validates the dc:type dispatch table by sampling records per (mediatype, sector)
+cell, running the three-level lookup (exact → any-sector → any-mediatype → D9
+fallback) against `lookup_dctype_to_class.csv`, and reporting the assigned class.
+
+- **Input**: `data/items-all-goethe-faust.json`, `output/lookup_dctype_to_class.csv`
+- **Output**: `output/dctype_dispatch_sample.csv`, `output/dctype_dispatch_summary.csv`
+- **Usage**: `python scripts/sample_type_dispatch.py [--sample-size N]`
+- **Notes**: 76.0% matched (no fabio classes emitted); Photo 100% exact;
+  Audio/Media Library 100% any-sector. See plan §3.2 for dispatch logic.
+
+### `summarise_vocab_coverage.py`
+Aggregates `output/dctype_gnd_coverage.csv` by (mediatype, sector) and writes
+a human-readable summary of vocab URI coverage per cell.
+
+- **Input**: `output/dctype_gnd_coverage.csv`
+- **Output**: `output/vocab_coverage_summary.csv`
+- **Usage**: `python scripts/summarise_vocab_coverage.py`
+- **Notes**: 29 rows; columns: mediatype, sector, total, vocab_uri, pct.
+  Source for the coverage table in `notes/plan-goethe-faust-transform.md` §3.0.
 
 ---
 

@@ -45,6 +45,14 @@ MEDIATYPE_PREFIX = "http://ddb.vocnet.org/medientyp/"
 SECTOR_PREFIX = "http://ddb.vocnet.org/sparte/"
 GND_PREFIX = "https://d-nb.info/gnd/"
 GND_PREFIX_HTTP = "http://d-nb.info/gnd/"
+GETTY_AAT_PREFIX = "http://vocab.getty.edu/aat/"
+GETTY_AAT_PREFIX_HTTPS = "https://vocab.getty.edu/aat/"
+
+# Other known-vocab prefixes that we skip (internal DDB / Filmportal vocnets)
+SKIP_PREFIXES = (
+    "http://ddb.vocnet.org/hierarchietyp/",
+    "http://filmportal.vocnet.org/",
+)
 
 
 # --- Helpers -----------------------------------------------------------------
@@ -71,6 +79,24 @@ def is_gnd(uri: str) -> bool:
     return uri.startswith(GND_PREFIX) or uri.startswith(GND_PREFIX_HTTP)
 
 
+def is_getty(uri: str) -> bool:
+    return uri.startswith(GETTY_AAT_PREFIX) or uri.startswith(GETTY_AAT_PREFIX_HTTPS)
+
+
+def is_known_vocab(uri: str) -> bool:
+    """True for GND or Getty AAT URIs (both accepted in the mapping output)."""
+    return is_gnd(uri) or is_getty(uri)
+
+
+def vocab_priority(uri: str) -> int:
+    """Higher → preferred. GND=2, Getty=1, other=0."""
+    if is_gnd(uri):
+        return 2
+    if is_getty(uri):
+        return 1
+    return 0
+
+
 def extract_mediatype_sector(concepts: list) -> tuple[str, str]:
     """Return (mediatype_iri, sector_iri) from the Concept list."""
     mediatype = "any"
@@ -86,23 +112,29 @@ def extract_mediatype_sector(concepts: list) -> tuple[str, str]:
 
 def build_preflabel_index(concepts: list) -> dict[str, str]:
     """
-    Build a case-insensitive prefLabel → Concept.about index.
-    Skips vocnet (mediatype/sector) Concepts and Concepts without a prefLabel.
-    Prefers GND URIs when multiple Concepts match the same label.
+    Build a case-insensitive prefLabel → vocab URI index.
+    Accepts GND (preferred) and Getty AAT URIs; skips vocnet and unknown/internal URIs.
+    When multiple Concepts match the same label, the higher-priority vocab wins
+    (GND > Getty AAT).
     """
     index: dict[str, str] = {}
+    index_priority: dict[str, int] = {}
     for c in concepts:
         about = c.get("about") or ""
         if about.startswith(MEDIATYPE_PREFIX) or about.startswith(SECTOR_PREFIX):
+            continue
+        if any(about.startswith(p) for p in SKIP_PREFIXES):
+            continue
+        if not is_known_vocab(about):
             continue
         label = get_text(c.get("prefLabel"))
         if not label:
             continue
         key = label.lower()
-        existing = index.get(key, "")
-        # Prefer GND URI over other URIs
-        if not existing or (is_gnd(about) and not is_gnd(existing)):
+        pri = vocab_priority(about)
+        if pri > index_priority.get(key, -1):
             index[key] = about
+            index_priority[key] = pri
     return index
 
 
@@ -154,16 +186,23 @@ def main() -> None:
                 key = (mediatype, sector, dc_str)
                 coverage[key]["count"] += 1
 
-                # Look up GND URI
-                gnd_uri = preflabel_index.get(dc_str.lower(), "")
-                if gnd_uri and not coverage[key]["gnd_uri"]:
-                    coverage[key]["gnd_uri"] = gnd_uri
+                # Look up vocab URI (GND preferred, Getty AAT accepted)
+                vocab_uri = preflabel_index.get(dc_str.lower(), "")
+                existing_cov_uri = coverage[key]["gnd_uri"]
+                if vocab_uri:
+                    if not existing_cov_uri or (
+                        vocab_priority(vocab_uri) > vocab_priority(existing_cov_uri)
+                    ):
+                        coverage[key]["gnd_uri"] = vocab_uri
 
-                # Update global mapping (prefer GND over non-GND)
+                # Update global mapping (prefer higher-priority vocab URI)
                 dc_lower = dc_str.lower()
                 existing_uri = global_mapping.get(dc_lower, ("", ""))[1]
-                if gnd_uri and (not existing_uri or (is_gnd(gnd_uri) and not is_gnd(existing_uri))):
-                    global_mapping[dc_lower] = (dc_str, gnd_uri)
+                if vocab_uri:
+                    if not existing_uri or (
+                        vocab_priority(vocab_uri) > vocab_priority(existing_uri)
+                    ):
+                        global_mapping[dc_lower] = (dc_str, vocab_uri)
                 elif dc_lower not in global_mapping:
                     global_mapping[dc_lower] = (dc_str, "")
 
@@ -179,7 +218,7 @@ def main() -> None:
                 "dc_type_de": dc,
                 "count": v["count"],
                 "gnd_uri": v["gnd_uri"],
-                "has_gnd": "true" if v["gnd_uri"] else "false",
+                "has_gnd": "true" if is_known_vocab(v["gnd_uri"]) else "false",
             }
             for (mt, sec, dc), v in coverage.items()
         ],
@@ -204,7 +243,7 @@ def main() -> None:
     # --- Print summary -------------------------------------------------------
 
     total_occurrences = sum(v["count"] for v in coverage.values())
-    total_with_gnd = sum(v["count"] for v in coverage.values() if v["gnd_uri"])
+    total_with_gnd = sum(v["count"] for v in coverage.values() if is_known_vocab(v["gnd_uri"]))
     pct_overall = 100 * total_with_gnd / total_occurrences if total_occurrences else 0
 
     print(f"Records processed : {records_processed:,}")
@@ -217,7 +256,7 @@ def main() -> None:
     mt_sec: dict[tuple[str, str], dict] = collections.defaultdict(lambda: {"total": 0, "gnd": 0})
     for (mt, sec, _), v in coverage.items():
         mt_sec[(mt, sec)]["total"] += v["count"]
-        mt_sec[(mt, sec)]["gnd"] += v["count"] if v["gnd_uri"] else 0
+        mt_sec[(mt, sec)]["gnd"] += v["count"] if is_known_vocab(v["gnd_uri"]) else 0
 
     print(f"{'Mediatype':<45} {'Sector':<45} {'Total':>8} {'GND':>8} {'%':>7}")
     print("-" * 115)
@@ -230,8 +269,11 @@ def main() -> None:
     print()
     print(f"Coverage CSV  → {OUT_COVERAGE}")
     print(f"Mapping CSV   → {OUT_MAPPING}")
-    unique_with_gnd = sum(1 for _, uri in global_mapping.values() if uri)
-    print(f"Unique dc:type values: {len(global_mapping):,} total, {unique_with_gnd:,} with GND URI")
+    unique_with_vocab = sum(1 for _, uri in global_mapping.values() if is_known_vocab(uri))
+    unique_gnd = sum(1 for _, uri in global_mapping.values() if is_gnd(uri))
+    unique_getty = sum(1 for _, uri in global_mapping.values() if is_getty(uri))
+    print(f"Unique dc:type values: {len(global_mapping):,} total, {unique_with_vocab:,} with vocab URI "
+          f"({unique_gnd:,} GND, {unique_getty:,} Getty AAT)")
 
 
 if __name__ == "__main__":

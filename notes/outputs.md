@@ -87,18 +87,45 @@ generated, and any downstream consumers.
 
 - **Format**: CSV
 - **Produced by**: `scripts/count_dctype_gnd_coverage.py`
-- **Last generated**: 2026-04-17
+- **Last generated**: 2026-04-18
 - **Columns**: `mediatype`, `sector`, `dc_type_de`, `count`, `gnd_uri`, `has_gnd`
-- **Content**: Per (mediatype, sector, dc:type): occurrence count + GND URI match
-- **Key finding**: 98.8% of dc:type occurrences have a GND URI
+- **Content**: Per (mediatype, sector, dc:type): occurrence count + vocab URI match (GND or Getty AAT)
+- **Key finding**: 48.5% of dc:type occurrences have a GND or Getty AAT URI; 356/1,033 unique dc:types covered
+
+### `output/dctype_dispatch_sample.csv`
+
+- **Format**: CSV
+- **Produced by**: `scripts/sample_type_dispatch.py`
+- **Last generated**: 2026-04-18
+- **Columns**: `mediatype_label`, `sector_label`, `record_id`, `dc_type_de`, `match_level`, `cho_class`, `source_vocab`, `note`, `mediatype`, `sector`
+- **Content**: 142 rows (5 samples × 29 cells); sampled records with dispatch results for validation
+
+### `output/dctype_dispatch_summary.csv`
+
+- **Format**: CSV
+- **Produced by**: `scripts/sample_type_dispatch.py`
+- **Last generated**: 2026-04-18
+- **Columns**: `mediatype_label`, `sector_label`, `total`, `exact`, `any_sector`, `any_mediatype`, `fallback`, `pct_matched`, `mediatype`, `sector`
+- **Content**: 29 rows; per (mediatype, sector) dispatch match/fallback counts
+- **Key finding**: 76.0% matched (70,608/92,853); 22,245 fallback to mocho:Manifestation; no fabio classes emitted
+
+### `output/vocab_coverage_summary.csv`
+
+- **Format**: CSV
+- **Produced by**: `scripts/summarise_vocab_coverage.py`
+- **Last generated**: 2026-04-18
+- **Columns**: `mediatype`, `sector`, `total`, `vocab_uri`, `pct`
+- **Content**: 29 rows; dc:type occurrence counts + vocab URI coverage per (mediatype, sector) cell
+- **Source**: aggregated from `output/dctype_gnd_coverage.csv`
 
 ### `output/dctype_to_gnd_uri.csv`
 
 - **Format**: CSV
 - **Produced by**: `scripts/count_dctype_gnd_coverage.py`
-- **Last generated**: 2026-04-17
+- **Last generated**: 2026-04-18
 - **Columns**: `dc_type_de`, `gnd_uri`
-- **Content**: 1,033 rows; deduplicated dc:type → GND URI mapping
+- **Content**: 356 rows; deduplicated dc:type → vocabulary URI mapping (237 GND, 119 Getty AAT; GND preferred when both present)
+- **Note**: Column name `gnd_uri` is kept for schema stability; values may be Getty AAT URIs (`vocab.getty.edu/aat/`) where no GND URI exists
 - **Consumed by**: `gen_dctype_class_mapping.py` (Phase B) — source for `dnb_uri` column
 
 ---

@@ -32,39 +32,56 @@ The goethe-faust POC transform (`transform_edm_to_mocho.py`) currently:
 - ✅ D1–D10: JSONL streaming, alignment table, htype dispatch, mocho:Manifestation base type
 - ✅ D11–D12 (config): `image_type2class.json` updated with new dispatch groups
 - ✅ Phase B0: `count_dctype_gnd_coverage.py` written and run → see observations below
-- ❌ Phase B: `gen_dctype_class_mapping.py` not written → `lookup_dctype_to_class.csv` does not exist
-- ❌ Phase C: `sample_type_dispatch.py` not written
+- ✅ Phase B: `gen_dctype_class_mapping.py` written → `lookup_dctype_to_class.csv` (1,647 rows; no fabio classes)
+- ✅ Phase C: `sample_type_dispatch.py` written → 76.0% matched; Photo 100% exact; no fabio emitted
 - ❌ Phase D: `transform_edm_to_mocho.py` not updated to use the lookup CSV or type WebResources
 
 ### 3.0 Phase B0 — `count_dctype_gnd_coverage.py` ✅
 
-**Observations (run on 115,432 records, 2026-04-17)**:
+**Observations (run on 115,432 records, 2026-04-18; GND + Getty AAT)**:
 
-92,853 records (80.4%) have a dc:type value. **98.8% of dc:type occurrences have a
-GND URI** via Concept.prefLabel → Concept.about. 1,033 unique dc:type values;
-959 with GND URI, 74 without. Lower coverage is concentrated in archive and library
-sectors, where free-text catalogue entries appear without a corresponding
-controlled-vocabulary Concept node.
+92,853 records (80.4%) have a dc:type value. **48.5% of dc:type occurrences have a
+controlled-vocabulary URI** (GND or Getty AAT) via Concept.prefLabel → Concept.about.
+1,033 unique dc:type values; 356 with vocab URI (237 GND, 119 Getty AAT), 677 without.
 
-| Mediatype | Sector | Total | GND | % |
+The earlier figure of 98.8% was incorrect — it counted non-vocabulary concept URIs
+(internal DDB identifiers such as `AVTKN75244...`) as matches. The script now accepts
+only `d-nb.info/gnd/` (GND) and `vocab.getty.edu/aat/` (Getty AAT) URIs, skipping all
+other concept `about` values.
+
+| Mediatype | Sector | Total | Vocab URI | % |
 |---|---|---|---|---|
-| Audio | all | 476 | 476 | 100% |
-| Photo | Archive | 5,129 | 5,099 | 99.4% |
-| Photo | Library, Monument, Research, Media Library, Museum, Others | 14,867 | 14,867 | 100% |
-| Text | Archive | 23,024 | 23,015 | 100% |
-| Text | Library | 19,996 | 19,550 | 97.8% |
-| Text | Research, Media Library, Museum, Others | 288 | 288 | 100% |
-| Video | all | 96 | 96 | 100% |
-| Not Digitized | Archive | 17,320 | 16,930 | 97.7% |
-| Not Digitized | Library | 11,359 | 11,120 | 97.9% |
-| Not Digitized | Monument, Research, Media Library, Museum | 279 | 279 | 100% |
+| Audio | Archive | 8 | 8 | 100% |
+| Audio | Library | 12 | 12 | 100% |
+| Audio | Research | 22 | 22 | 100% |
+| Audio | Media Library | 424 | 423 | 99.8% |
+| Audio | Museum | 10 | 0 | 0% |
+| Photo | Archive | 5,129 | 4,538 | 88.5% |
+| Photo | Library | 984 | 846 | 86.0% |
+| Photo | Monument | 97 | 0 | 0% |
+| Photo | Research | 948 | 508 | 53.6% |
+| Photo | Media Library | 3,792 | 3,208 | 84.6% |
+| Photo | Museum | 8,972 | 7,598 | 84.7% |
+| Photo | Others | 74 | 39 | 52.7% |
+| Text | Archive | 23,024 | 413 | 1.8% |
+| Text | Library | 19,996 | 13,107 | 65.5% |
+| Text | Research/Media Library/Museum/Others | 288 | 2 | ~1% |
+| Video | Archive | 7 | 7 | 100% |
+| Video | Library/Media Library/Museum | 89 | 0 | 0% |
+| Not Digitized | Archive | 17,320 | 5,551 | 32.0% |
+| Not Digitized | Library | 11,359 | 8,733 | 76.9% |
+| Not Digitized | Monument/Research/Media Library/Museum | 279 | 42 | ~15% |
 
 Outputs: `output/dctype_gnd_coverage.csv` (per mediatype/sector/dc_type_de),
-`output/dctype_to_gnd_uri.csv` (1,033 rows; source for `dnb_uri` column).
+`output/dctype_to_gnd_uri.csv` (356 rows; GND preferred over Getty; source for `dnb_uri` column),
+`output/vocab_coverage_summary.csv` (29 rows; aggregated table above — produced by `summarise_vocab_coverage.py`).
 
-**Conclusion**: GND URI dispatch (Option 1) is viable for 98.8% of dc:type
-occurrences. The `dnb_uri` column in `lookup_dctype_to_class.csv` can be populated
-by joining `dctype_to_gnd_uri.csv` on `dc_type_de`.
+**Conclusion**: Controlled-vocabulary dispatch (Option 1) covers 48.5% of dc:type
+occurrences and 34% of unique dc:type strings. Coverage is strong for Photo/Museum,
+Audio/Media Library, and Text/Library sectors; near-zero for Text/Archive and Video.
+`dc_type_de` string lookup remains the primary dispatch key. The `dnb_uri` column
+preserves the 356 confirmed vocab URIs (GND preferred, Getty AAT as fallback) for
+future use; left empty for the remaining 677 dc:types.
 
 ### 3.1 Phase B — `gen_dctype_class_mapping.py`
 
@@ -77,7 +94,7 @@ Reads all four config JSONs (audio, image, video, general) and writes
 | `sector` | IRI or `any` |
 | `dc_type_de` | German dc:type literal (current lookup key) |
 | `dc_type_en` | English translation |
-| `dnb_uri` | GND concept URI from old-config `dnb` field (future lookup key — Option 1 path) |
+| `dnb_uri` | Controlled-vocabulary URI (GND preferred, Getty AAT fallback) from corpus Concept nodes (future lookup key — Option 1 path) |
 | `rdf_type_w` | Work-level class IRI |
 | `rdf_type_e` | Expression-level class IRI |
 | `rdf_type_m` | Manifestation-level class IRI |
@@ -86,11 +103,13 @@ Reads all four config JSONs (audio, image, video, general) and writes
 | `notes` | from config `notes` field |
 
 **`dnb_uri` rationale**: dc:type is a German free-text literal — fragile as a long-term
-lookup key. The old-config `dnb` field already maps many dc:type strings to GND Sachbegriffe
-URIs (e.g. `Schallplatte` → `https://d-nb.info/gnd/4052032-8`). Carrying this URI into
-the CSV preserves the path to GND-URI-based dispatch (Option 1) without requiring it now.
-Future work: resolve dc:type literals to GND URIs via lobid-gnd lookup; then key dispatch
-on `dnb_uri` rather than `dc_type_de`. Document this path in `audio-type-class-mapping.md` §4.
+lookup key. The corpus Concept nodes already carry controlled-vocabulary URIs via
+`Concept.prefLabel` → `Concept.about`: GND Sachbegriffe (`d-nb.info/gnd/`, 237 dc:types)
+and Getty AAT (`vocab.getty.edu/aat/`, 119 dc:types). These 356 URIs are exported to
+`dctype_to_gnd_uri.csv` (GND preferred when both exist) and carried forward into the
+`dnb_uri` column of `lookup_dctype_to_class.csv`. Coverage: 48.5% of occurrences,
+34% of unique dc:types. Future work: extend coverage by lobid-gnd/Getty lookup for
+the remaining 677 dc:types; then key dispatch on `dnb_uri` rather than `dc_type_de`.
 
 **CLASS_MAP additions** for mt002 new classes (add to `gen_dctype_class_mapping.py`):
 ```python
@@ -175,19 +194,37 @@ Concept list also contains mediatype/sector IRIs (vocnet namespace) — skip tho
 | `goethe-faust/notes/plan-goethe-faust-transform.md` | **New** — copy of this plan file (persistent note in the project) |
 | `goethe-faust/notes/audio-type-class-mapping.md` | ✅ Added GND URI dispatch note to §3 open questions |
 | `goethe-faust/notes/transform-script-plan.md` | Update §2 CSV schema to add `dnb_uri` column; mark phases B–D complete when done |
+| `goethe-faust/notes/providedcho-property-mapping.md` | **New** — human-readable reference: edm:ProvidedCHO property → mocho/RDA predicate (extracted from `alignment_ddbedm_mocho.csv`) |
 
 ### Transform pipeline completion
 
 | File | Action |
 |---|---|
-| `goethe-faust/scripts/count_dctype_gnd_coverage.py` | **New** — Phase B0 (GND URI coverage + mapping export) |
-| `goethe-faust/output/dctype_gnd_coverage.csv` | **New** — generated by Phase B0 |
-| `goethe-faust/output/dctype_to_gnd_uri.csv` | **New** — generated by Phase B0; source for `dnb_uri` column |
+| `goethe-faust/scripts/count_dctype_gnd_coverage.py` | ✅ Phase B0 |
+| `goethe-faust/output/dctype_gnd_coverage.csv` | ✅ Generated by Phase B0 |
+| `goethe-faust/output/dctype_to_gnd_uri.csv` | ✅ Generated by Phase B0 |
 | `goethe-faust/scripts/gen_dctype_class_mapping.py` | **New** — Phase B |
 | `goethe-faust/output/lookup_dctype_to_class.csv` | **New** — generated by Phase B |
 | `goethe-faust/scripts/sample_type_dispatch.py` | **New** — Phase C |
-| `goethe-faust/scripts/transform_edm_to_mocho.py` | **Update** — Phase D (load lookup, dc:type dispatch, WebResource typing) |
-| `goethe-faust/scripts/README.md` | Update with new scripts and renames |
+| `goethe-faust/scripts/transform_edm_to_mocho.py` | **Update** — Phase D.1 (dc:type dispatch + WebResource typing); Phase D.2 (property completeness — see §3.4) |
+| `goethe-faust/scripts/README.md` | ✅ Updated |
+
+### 3.4 Phase D.2 — Property alignment completeness
+
+After dc:type dispatch (D.1), verify that `transform_edm_to_mocho.py` emits all
+`edm:ProvidedCHO` properties that have a mocho/RDA mapping in
+`output/alignment_ddbedm_mocho.csv`. Steps:
+
+1. Extract all ProvidedCHO properties from `alignment_ddbedm_mocho.csv`
+   (filter `entity_type = ProvidedCHO`; keep rows where `in_mocho = True`)
+2. Cross-check against properties currently handled in `transform_edm_to_mocho.py`
+3. For each gap (mapped but not emitted): add emission logic or document as
+   intentional deferral in `transform-adr.md`
+4. Update `providedcho-property-mapping.md` with status column (emitted / deferred / TBD)
+
+**Note**: `providedcho-property-mapping.md` is the human-readable companion to
+`alignment_ddbedm_mocho.csv` — it shows only ProvidedCHO properties, with the
+mocho/RDA predicate, WEMI level, and current emit status in the transform.
 
 ---
 
