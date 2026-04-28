@@ -132,6 +132,38 @@ Two changes to `retype_entities()`:
 
 **D.1 — dc:type dispatch for ProvidedCHO**
 
+**Mediatype and sector paths in the EDM graph** (validated against `data/items-excerpt-1000.json`):
+
+```
+# Mediatype — dc:type is on the WebResource, not the CHO
+<cho>  ←──edm:aggregatedCHO──  <aggregation>
+                                      │
+                               edm:isShownBy
+                                      │
+                                      ▼
+                              <web-resource>  (edm.RDF.WebResource[].type.resource)
+                                      │
+                                  dc:type
+                                      │
+                                      ▼
+                              <vocnet-mt:mt003>  rdf:type  skos:Concept
+
+# Sector — edm:type is on the Agent/Organization, not the CHO
+<cho>  ←──edm:aggregatedCHO──  <aggregation>
+                                      │
+                              edm:dataProvider
+                                      │
+                                      ▼
+                              <organization>  (edm.RDF.Agent[].type.resource)
+                                      │
+                                   edm:type
+                                      │
+                                      ▼
+                              <ddbsparte:sparte002>  rdf:type  skos:Concept
+```
+
+Both vocnet IRIs also appear as flat `Concept` nodes (`edm.RDF.Concept[].about`) — this is the extraction point used by `_extract_mediatype_sector()`. Neither is a direct triple on the ProvidedCHO; the transform bridges the gap by asserting `rdf:type` directly (D9 approach).
+
 Load `lookup_dctype_to_class.csv` at startup (alongside htype CSV).
 In `retype_entities()`, after the htype dispatch:
 1. Extract mediatype + sector from the record's `edm.RDF.Concept` list
@@ -191,7 +223,7 @@ Concept list also contains mediatype/sector IRIs (vocnet namespace) — skip tho
 
 | File | Action |
 |---|---|
-| `goethe-faust/notes/plan-goethe-faust-transform.md` | **New** — copy of this plan file (persistent note in the project) |
+| `goethe-faust/notes/transform-edm2mocho-plan.md` | ✅ This file |
 | `goethe-faust/notes/audio-type-class-mapping.md` | ✅ Added GND URI dispatch note to §3 open questions |
 | `goethe-faust/notes/transform-script-plan.md` | Update §2 CSV schema to add `dnb_uri` column; mark phases B–D complete when done |
 | `goethe-faust/notes/providedcho-property-mapping.md` | **New** — human-readable reference: edm:ProvidedCHO property → mocho/RDA predicate (extracted from `alignment_ddbedm_mocho.csv`) |

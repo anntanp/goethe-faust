@@ -1,0 +1,129 @@
+{
+  "records_processed": 115432,
+  "records_skipped_not_in_ids": 0,
+  "triples_out": 44415392,
+  "objects_missing_specific_type": 52274,
+  "dctype_w_assigned": 13392,
+  "dctype_m_accumulated": 106,
+  "dctype_fallback": 101934,
+  "webresources_typed": 103496,
+  "whitelisted_keys": {
+    "creator": "rdam:P30263 has creator agent of manifestation",
+    "contributor": "dc:contributor (no generic RDA equivalent in mocho)"
+  },
+  "triples_ignored": 3592475,
+  "ignored_properties": {
+    "Concept.notation": {
+      "count": 427909,
+      "edm_iri": "http://www.w3.org/2004/02/skos/core#notation"
+    },
+    "Agent.prefLabel": {
+      "count": 422026,
+      "edm_iri": "http://www.w3.org/2004/02/skos/core#prefLabel"
+    },
+    "Concept.prefLabel": {
+      "count": 289729,
+      "edm_iri": "http://www.w3.org/2004/02/skos/core#prefLabel"
+    },
+    "Aggregation.dataProvider": {
+      "count": 230864,
+      "edm_iri": "http://www.europeana.eu/schemas/edm/dataProvider"
+    },
+    "ProvidedCHO.hasMet": {
+      "count": 158407,
+      "edm_iri": "http://www.europeana.eu/schemas/edm/hasMet"
+    },
+    "Event.hasType": {
+      "count": 158399,
+      "edm_iri": "http://www.europeana.eu/schemas/edm/hasType"
+    },
+    "Agent.wasPresentAt": {
+      "count": 146207,
+      "edm_iri": "http://www.europeana.eu/schemas/edm/wasPresentAt"
+    },
+    "Event.P11_had_participant": {
+      "count": 146207,
+      "edm_iri": "http://www.cidoc-crm.org/rdfs/cidoc-crm#P11_had_participant"
+    },
+    "ProvidedCHO.identifier": {
+      "count": 145126,
+      "edm_iri": "http://purl.org/dc/elements/1.1/identifier"
+    },
+    "Aggregation.hasView": {
+      "count": 136759,
+      "edm_iri": "http://www.europeana.eu/schemas/edm/hasView"
+    },
+    "Place.prefLabel": {
+      "count": 118088,
+      "edm_iri": "http://www.w3.org/2004/02/skos/core#prefLabel"
+    },
+    "Aggregation.aggregatedCHO": {
+      "count": 115432,
+      "edm_iri": "http://www.europeana.eu/schemas/edm/aggregatedCHO"
+    },
+    "Aggregation.isShownAt": {
+      "count": 115432,
+      "edm_iri": "http://www.europeana.eu/schemas/edm/isShownAt"
+    },
+    "Aggregation.provider": {
+      "count": 115432,
+      "edm_iri": "http://www.europeana.eu/schemas/edm/provider"
+    },
+    "ProvidedCHO.hasType": {
+      "count": 106186,
+      "edm_iri": "http://www.europeana.eu/schemas/edm/hasType"
+    },
+    "Event.occuredAt": {
+      "count": 102859,
+      "edm_iri": null
+    },
+    "TimeSpan.begin": {
+      "count": 99928,
+      "edm_iri": "http://www.europeana.eu/schemas/edm/begin"
+    },
+    "TimeSpan.end": {
+      "count": 99928,
+      "edm_iri": "http://www.europeana.eu/schemas/edm/end"
+    },
+    "ProvidedCHO.aggregationEntity": {
+      "count": 76855,
+      "edm_iri": "http://www.deutsche-digitale-bibliothek.de/edm/aggregationEntity"
+    },
+    "Aggregation.isShownBy": {
+      "count": 60336,
+      "edm_iri": "http://www.europeana.eu/schemas/edm/isShownBy"
+    },
+    "PhysicalThing.aggregationEntity": {
+      "count": 55771,
+      "edm_iri": "http://www.deutsche-digitale-bibliothek.de/edm/aggregationEntity"
+    },
+    "PhysicalThing.hierarchyPosition": {
+      "count": 53861,
+      "edm_iri": "http://www.deutsche-digitale-bibliothek.de/edm/hierarchyPosition"
+    },
+    "ProvidedCHO.hierarchyPosition": {
+      "count": 50988,
+      "edm_iri": "http://www.deutsche-digitale-bibliothek.de/edm/hierarchyPosition"
+    },
+    "ProvidedCHO.currentLocation": {
+      "count": 50385,
+      "edm_iri": "http://www.europeana.eu/schemas/edm/currentLocation"
+    },
+    "Event.happenedAt": {
+      "count": 49814,
+      "edm_iri": "http://www.europeana.eu/schemas/edm/happenedAt"
+    },
+    "Aggregation.object": {
+      "count": 39473,
+      "edm_iri": "http://www.europeana.eu/schemas/edm/object"
+    },
+    "ProvidedCHO.spatial": {
+      "count": 12332,
+      "edm_iri": "http://purl.org/dc/terms/spatial"
+    },
+    "Aggregation.aggregator": {
+      "count": 7742,
+      "edm_iri": "http://www.deutsche-digitale-bibliothek.de/edm/aggregator"
+    }
+  }
+}

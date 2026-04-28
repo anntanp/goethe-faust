@@ -206,5 +206,5 @@ as a generic audio carrier at Manifestation level. Sector: sparte006.
 - **GND URI dispatch**: dc:type literal is fragile as a long-term lookup key. The
   corpus already carries GND Sachbegriff URIs via `edm.RDF.Concept.about` — 98.8%
   of dc:type occurrences have a corresponding GND URI (see
-  `notes/plan-goethe-faust-transform.md` §3.0). Future dispatch should key on the
+  `notes/transform-edm2mocho-plan.md` §3.0). Future dispatch should key on the
   GND URI rather than the German string.

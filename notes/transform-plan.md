@@ -287,11 +287,29 @@ cross-reference.
 
 ## 4. Alignment scope (per ADR + spec)
 
-- **Mapped**: rows where `in_mocho=True` and `rda_iri` non-empty
-- **Skipped silently**: `edm:isShownAt`, `edm:aggregatedCHO`, `edm:provider`, etc. — EDM-structural, per ADR Decision 4; appear as `unmatched` in alignment table
-- **Skipped silently**: `skos:prefLabel/altLabel`, geo coordinates, EDM-native agent properties — unmatched, deferred to second pass
-- **Fan-out**: `dc:creator` → `rdam:P30263` only; `dc:contributor` → `dc:contributor` directly (see ADR D7–D8)
-- **rdf:type**: every ProvidedCHO gets `mocho:Manifestation`; where `hierarchyType` is present and mapped, also gets the DoCO or RiC-O class as an additional type; all other entity types get no rdf:type triple in this pass
+### 4.1 Per-entity-type treatment
+
+All nine entity types present in `edm.RDF` are enumerated below. The general transform loop iterates every entity type; an entity's properties are emitted if and only if `alignment[(entity_type, json_key)]` returns at least one `in_mocho=True` row. Entity types with zero such rows produce no property triples.
+
+| Entity type | Records (% of corpus) | in_mocho rows | Property triples | rdf:type | Notes |
+|---|---|---|---|---|---|
+| **ProvidedCHO** | 115,432 (100%) | 894 | ✅ emitted | `mocho:Manifestation` + dc:type dispatch (D11) + optional htype class (D9/D10) | Main cultural object; creator/contributor whitelisted (D7–D8); subject keys deduplicated (D6) |
+| **WebResource** | 312,538 (270%) | 247 | ✅ emitted via general loop | mt002 only: `mocho:ImageObject`, `rdac:C10007`, `rdam:P30001 rdact:1018`, `vra:imageOf` (D12) | 247 mapped rows cover `type`, `edmRights`, `dcTermsRights`, `creator` |
+| **Agent** | 422,026 (365%) | 22 | ✅ emitted via general loop | ❌ none | 22 rows for biographical properties (dates, labels, identifiers); GND sameAs links |
+| **PhysicalThing** | 55,771 (48%) | 31 | ✅ emitted via general loop | htype lookup → DoCO/RiC-O class + optional `rico:hasRecordSetType` | `hierarchyType` key skipped in loop; handled by `retype_entities()` |
+| **Place** | 118,088 (102%) | 17 | ✅ emitted via general loop | ❌ none | 17 rows; geo coords (lat/long), prefLabel, sameAs |
+| **Aggregation** | 115,432 (100%) | 4 | ✅ emitted via general loop | ❌ none | 4 rows mapped; `isShownAt`, `aggregatedCHO`, `provider`, `dataProvider` are EDM-structural (D4) and skipped |
+| **Event** | 158,407 (137%) | 0 | ❌ no triples | ❌ none | `hasType`, `happenedAt`, `occuredAt`, `P11_had_participant` — no mocho mapping; deferred |
+| **Concept** | 717,638 (621%) | 0 | ❌ no triples | ❌ none | Read-only: used to extract mediatype + sector IRI for dc:type dispatch; `prefLabel`/`notation` not emitted |
+| **TimeSpan** | 99,930 (86%) | 0 | ❌ no triples | ❌ none | `begin`/`end` — no mocho mapping yet; deferred |
+
+### 4.2 General rules
+
+- **Mapped**: `alignment[(entity_type, json_key)]` rows where `in_mocho=True` and `rda_iri` non-empty
+- **EDM-structural skipped**: `edm:isShownAt`, `edm:aggregatedCHO`, `edm:provider`, `edm:dataProvider` — per ADR D4
+- **Unmatched keys**: counted in `transform_stats.json → ignored_properties` with EDM IRI for cross-reference
+- **Fan-out**: `dc:creator` → `rdam:P30263`; `dc:contributor` → `dc:contributor` (see ADR D7–D8)
+- **rdf:type**: ProvidedCHO and PhysicalThing only; all other entity types get no `rdf:type` triple
 
 ---
 

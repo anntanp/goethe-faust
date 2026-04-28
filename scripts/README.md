@@ -8,6 +8,19 @@ any working directory.
 
 ## Ontology alignment (run in order)
 
+### `profile_json_keys.py`
+Profiles all non-`edm` JSON key paths across item records. Produces a CSV of
+unique (sector, mediatype, chain, description) rows. Used to identify direct
+JSON paths for `mocho:sector` (`provider-info.domains[0]`) and `mocho:mediatype`
+(`preview.media`) without traversing the EDM RDF graph.
+
+- **Input**: `data/items-excerpt-1000.json` (default; override with `--input`)
+- **Output**: `output/edm_json_key_profile.csv`
+- **Usage**: `python scripts/profile_json_keys.py`
+- **Notes**: 341 unique chains, 2369 rows (sector × mediatype × chain).
+  `preview.media` values: `image`, `audio`, `text`, `unknown` — direct
+  mediatype signal, no RDF traversal needed.
+
 ### `profile_edm_fields.py`
 Profiles all field keys present under `edm.RDF.*` entity types in the JSONL
 data file. Needed as input for `align_ddbedm_to_mocho.py`.
@@ -57,7 +70,7 @@ Decisions documented in `notes/transform-adr.md` (D1–D12).
   `output/transform_stats.json`
 - **Usage**: `python transform_edm_to_mocho.py [--jsonl FILE] [--ids FILE] [--limit N]`
 - **Notes**: Phase D will add dc:type dispatch (lookup_dctype_to_class.csv) and
-  WebResource typing for mt002. See `notes/plan-goethe-faust-transform.md`.
+  WebResource typing for mt002. See `notes/transform-edm2mocho-plan.md`.
 
 ### `count_dctype_by_mediatype.py`
 Frequency count of dc:type × sector across all mediatypes. Prerequisite for
@@ -95,7 +108,7 @@ Exports dc_type_de → vocab URI mapping for use as `dnb_uri` column in
 - **Output**: `output/dctype_gnd_coverage.csv`, `output/dctype_to_gnd_uri.csv`
 - **Usage**: `python scripts/count_dctype_gnd_coverage.py`
 - **Notes**: 48.5% coverage corpus-wide; 356/1,033 unique dc:types have a vocab URI
-  (237 GND, 119 Getty AAT). See `notes/plan-goethe-faust-transform.md` §3.0.
+  (237 GND, 119 Getty AAT). See `notes/transform-edm2mocho-plan.md` §3.0.
 
 ### `sample_type_dispatch.py`
 Validates the dc:type dispatch table by sampling records per (mediatype, sector)
@@ -116,7 +129,7 @@ a human-readable summary of vocab URI coverage per cell.
 - **Output**: `output/vocab_coverage_summary.csv`
 - **Usage**: `python scripts/summarise_vocab_coverage.py`
 - **Notes**: 29 rows; columns: mediatype, sector, total, vocab_uri, pct.
-  Source for the coverage table in `notes/plan-goethe-faust-transform.md` §3.0.
+  Source for the coverage table in `notes/transform-edm2mocho-plan.md` §3.0.
 
 ---
 
