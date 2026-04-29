@@ -86,19 +86,20 @@ Existing alignment has `Place.hasPart`, `Place.isPartOf`, `Place.type` mapped to
 
 ## 4. PhysicalThing
 
-`rico:` = `http://www.ica.org/standards/RiC/ontology#`
+`rico:` = `http://www.ica.org/standards/RiC/ontology#`  
+**Reference**: `mocho/notes/archival-objects.md`
 
-PhysicalThing entities are archival hierarchy containers (Bestand, Gliederung, Akte). Existing alignment maps `title` to 28 WEMI-level candidates and `isPartOf` to 3 WEMI-level candidates — right field, wrong level. Narrow to archival-appropriate predicates.
+PhysicalThing entities are archival hierarchy containers (Bestand, Gliederung, Akte) — the Tektonik and Findbuch ancestors of the described `ProvidedCHO`. See `archival-objects.md` for the full htype→RiC-O mapping table and the Tektonik/Findbuch structural rules. Existing alignment maps `title` to 28 WEMI-level candidates and `isPartOf` to 3 WEMI-level candidates — right field, wrong level. Narrow to archival-appropriate predicates.
 
 | Property | EDM IRI | Target predicate | Notes |
 |---|---|---|---|
-| `title` | `dc:title` | `rdaw:P10088` (whitelist) | Has title of work — single predicate; set all other WEMI candidates in_mocho=False |
-| `isPartOf` | `dc:isPartOf` | `rico:isOrWasPartOf` (whitelist) | Archival hierarchy parent link; set WEMI candidates in_mocho=False |
+| `title` | `dc:title` | `rdaw:P10088` "has title of work" (whitelist) | Single predicate; set all other WEMI candidates in_mocho=False |
+| `isPartOf` | `dc:isPartOf` | `rico:includesOrIncluded` (whitelist) | RecordSet→RecordSet containment per `archival-objects.md` §3; set WEMI candidates in_mocho=False. ⚠️ Earlier drafts used `rico:isOrWasPartOf` (general part-of) — `rico:includesOrIncluded` is the correct RiC-O containment relation for the archival hierarchy. |
 | `aggregationEntity` | DDB-internal | ❌ defer | DDB-internal grouping key |
 | `hierarchyPosition` | DDB-internal | ❌ defer | DDB-internal sort position |
 | `hierarchyType` | DDB-internal | handled by `retype_entities()` | Not in property loop |
 
-**rdf:type**: via `retype_entities()` htype lookup (already implemented).
+**rdf:type**: via `retype_entities()` htype lookup — full mapping in `archival-objects.md` §3. RecordSet nodes also get dual `rico:hasRecordSetType` triples (standard `ric-rst:*` + DDB-specific `vocnet-htype:htXXX`).
 
 ---
 
@@ -155,6 +156,8 @@ All four properties (`hasType`, `happenedAt`, `occuredAt`, `P11_had_participant`
 ## 9. ProvidedCHO
 
 No changes — fully mapped. See `transform-adr.md` D1–D12 and `alignment_ddbedm_mocho.csv`.
+
+**`edmType` note**: `ProvidedCHO.edmType` (JSON key for `edm:type` on the CHO) carries the mediatype vocnet IRI (e.g. `http://ddb.vocnet.org/medientyp/mt002`). It is not mapped to a mocho property — the transform reads mediatype from `Concept[].about` for consistency — but it is an equivalent and more direct source. See `mocho/notes/mocho-gatherer-adr.md` §7.1 for path details.
 
 ---
 

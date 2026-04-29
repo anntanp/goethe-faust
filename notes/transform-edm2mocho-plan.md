@@ -26,6 +26,38 @@ Note reorganisation (§2 of prior plan) is **complete**:
 
 ---
 
+## 1. Transform Pipeline — Overview
+
+```mermaid
+flowchart TD
+    A[JSONL record] --> B[Extract edm:RDF.Concept nodes]
+    B --> C[mediatype IRI\nvocnet/medientyp]
+    B --> D[sector IRI\nvocnet/sparte]
+    B --> E[htype IRI\nvocnet/hierarchietyp]
+    A --> F[Extract ProvidedCHO.dcType\nGerman literal]
+
+    C & D & E --> G[htype dispatch\nalignment_ddbedm_mocho.csv]
+    C & D & F --> H[dc:type dispatch\nlookup_dctype_to_class.csv]
+
+    G --> I[ProvidedCHO rdf:type\nhtype class]
+
+    H --> J{match?}
+    J -->|exact: mediatype+sector+dc_type_de| K[W-slot / M-slot class]
+    J -->|any-sector fallback| K
+    J -->|any-mediatype fallback| K
+    J -->|no match| L[D9 fallback\nmocho:Manifestation]
+
+    K & I --> M[emit ProvidedCHO triples]
+    L --> M
+
+    M --> N{mediatype\n= mt002?}
+    N -->|yes| O[WebResource typing\nmocho:ImageObject\nvra:imageOf CHO]
+    N -->|no| P[N-Triples output]
+    O --> P
+```
+
+---
+
 ## 3. What is unfinished in the goethe-faust transform
 
 The goethe-faust POC transform (`transform_edm_to_mocho.py`) currently:
