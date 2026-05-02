@@ -22,384 +22,436 @@ table.
 
 Decisions D1–D5 in `mocho/notes/alignment-ddbedm-mocho-adr.md` cover the
 upstream alignment pipeline (field profiling, DC→RDA routing, IRI resolution).
-Decisions D1–D10 here cover the downstream transform (JSONL → RDF). The two
-ADRs are complementary: neither subsumes the other. This ADR takes precedence
-where the two overlap on transform behaviour.
+This file records D1 — the design decision governing dispatch architecture.
+Implementation decisions (D1–D14) are in `transform-script-adr.md`. The two
+downstream ADRs are complementary: this file sets the strategy; the script ADR
+records how it is realised in code.
+
+### Methodology: corpus-driven transformation design
+
+Before implementing dispatch logic, corpus statistics are used to determine
+what signals are actually present in each sector × mediatype stratum. This
+evidence-base drives all structural decisions in the transform — dispatch order,
+fallback chains, and which signals to ignore — so that the implementation matches
+the data rather than an assumed schema. The steps are:
+
+1. **Measure signal coverage** (D1, this file) — quantify htype-only / dc:type-only / both / neither per stratum
+2. **Design dispatch table** — set priority order and fallback per stratum from the coverage findings
+3. **Implement** (D1–D14, `transform-script-adr.md`) — encode the table in `transform_edm_to_mocho.py`
+4. **Validate** — spot-check output against corpus counts; update table if coverage assumptions break
 
 ---
 
-## Decision 1: Use JSONL as input, not the NT file
+## Decision 1: Signal coverage measurement — step 1 of corpus-driven transformation design
 
-**Decision**: Stream `items-all-goethe-faust.json` (JSONL, one JSON object per
-line). The NT file `ddbedm-goethe-faust.nt` is not used.
+**Decision**: The choice of which classification signal (htype, dc:type, or both) takes
+priority in ProvidedCHO class dispatch is determined empirically from the corpus, not
+assumed uniform across all sectors. Two complementary measures are computed per stratum:
 
-**Alternatives considered**:
-- *NT file*: Load triples from the pre-generated NT and align by predicate IRI.
-  Rejected because: (a) the NT was generated from the same JSONL and carries no
-  additional information; (b) the alignment table is keyed by `(entity_type,
-  json_key)` matching the JSON structure, not by IRI, so NT input would require
-  a reverse IRI→json_key lookup that is neither defined nor stable.
+1. **Coverage** — share of records carrying htype only / dc:type only / both / neither.
+   Determines which signal is present and thus executable as a dispatch rule.
+2. **Discriminating power** — unique value count per signal divided by total records
+   in the stratum (density). The signal with higher density carries finer semantic
+   granularity and warrants more detailed mapping work. The signal with the higher
+   ratio is recorded as the `semantic_leader` in `dispatch_signal_ratio.csv`.
 
-**Rationale**: JSONL streams with constant memory, preserves the `(entity_type,
-json_key)` lookup key structure, and requires only stdlib `json`. No NT indexing
-phase needed.
+Per-sector, per-mediatype signal coverage was computed from
+`output/dispatch_signal_ratio.csv` (script: `scripts/dispatch_signal_ratio.py`).
+The resulting priority order — documented in `transform-revised-plan.md` §1.1 — is
+the normative reference for all dispatch logic in `transform_edm_to_mocho.py`.
 
----
+mt007 (NOT DIGITIZED) records are **skipped** — no mocho triples are emitted.
+These records carry no `binaries.binary.@href` and were incorrectly included by
+the SOLR query (the digitalisat=TRUE flag does not exclude mt007). They are
+excluded from the signal analysis for the same reason.
 
-## Decision 2: stdlib only — no rdflib in the transform script
+### 1.1 **Signal coverage table** (goethe-faust corpus, 115,432 records; mt007 rows omitted):
 
-**Decision**: The transform script uses only Python stdlib (`json`, `csv`, `re`,
-`collections`, `argparse`, `pathlib`). rdflib is not imported.
+| Sector | Mediatype | n | unique htype | unique dctype | both % | htype density % | dctype density % | Semantic leader |
+|---|---|---|---|---|---|---|---|---|
+| sparte001 Archive | AUDIO | 8 | 0 | 1 | 0.0 | 0.0 | 12.5 | dc:type |
+| sparte001 Archive | PHOTO | 5,361 | 2 | 151 | 27.2 | 0.0 | 2.8 | dc:type |
+| sparte001 Archive | TEXT | 23,109 | 4 | 16 | 99.6 | 0.0 | 0.1 | dc:type |
+| sparte001 Archive | VIDEO | 7 | 0 | 1 | 0.0 | 0.0 | 14.3 | dc:type |
+| sparte002 Library | AUDIO | 12 | 0 | 1 | 0.0 | 0.0 | 8.3 | dc:type |
+| sparte002 Library | PHOTO | 984 | 3 | 22 | 58.7 | 0.3 | 2.2 | dc:type |
+| sparte002 Library | TEXT | 28,850 | 20 | 152 | 62.7 | 0.1 | 0.5 | dc:type |
+| sparte002 Library | VIDEO | 8 | 1 | 1 | 100.0 | 12.5 | 12.5 | tied |
+| sparte003 Monument | PHOTO | 97 | 0 | 32 | 0.0 | 0.0 | 33.0 | dc:type |
+| sparte004 Research | AUDIO | 22 | 0 | 2 | 0.0 | 0.0 | 9.1 | dc:type |
+| sparte004 Research | PHOTO | 948 | 2 | 117 | 1.1 | 0.2 | 12.3 | dc:type |
+| sparte004 Research | TEXT | 260 | 4 | 4 | 100.0 | 1.5 | 1.5 | tied |
+| sparte005 Media Library | AUDIO | 424 | 0 | 3 | 0.0 | 0.0 | 0.7 | dc:type |
+| sparte005 Media Library | PHOTO | 3,792 | 0 | 101 | 0.0 | 0.0 | 2.7 | dc:type |
+| sparte005 Media Library | VIDEO | 63 | 0 | 6 | 0.0 | 0.0 | 9.5 | dc:type |
+| sparte006 Museum | AUDIO | 10 | 0 | 2 | 0.0 | 0.0 | 20.0 | dc:type |
+| sparte006 Museum | PHOTO | 8,972 | 0 | 406 | 0.0 | 0.0 | 4.5 | dc:type |
+| sparte006 Museum | VIDEO | 18 | 0 | 2 | 0.0 | 0.0 | 11.1 | dc:type |
+| sparte007 Others | PHOTO | 74 | 0 | 21 | 0.0 | 0.0 | 28.4 | dc:type |
+| sparte007 Others | TEXT | 11 | 3 | 3 | 100.0 | 27.3 | 27.3 | tied |
 
-**Rationale**: The transform is a data pipeline step, not an ontology processing
-step. N-Triples output can be constructed by string formatting. rdflib adds a
-non-stdlib dependency and significant startup overhead for a script that runs
-over 115k records.
+dc:type is the semantic leader in all strata where htype is absent; where both signals are
+present, dc:type still carries more unique values in every stratum except three small tied
+cases. This confirms that dc:type has finer semantic granularity, but its open vocabulary
+across 27M DDB objects means fixed class defaults are used in place of per-stratum dc:type
+annotation for most strata (§1.2).
 
-**Scope**: This applies only to `transform_edm_to_mocho.py`. Upstream scripts
-that parse OWL or Turtle (`align_ddbedm_to_mocho.py`, `gen_htype_doco_mapping.py`)
-continue to use rdflib.
+**Caveat — semantic drift across sectors**: dc:type density is measured *within* each
+sector stratum, not globally. High density does not mean dc:type is semantically stable
+across sectors: the same string can denote different WEMI levels depending on provenance
+(e.g. `Druck` → `vra:Work` in sparte006 Museum, `mocho:ImageWork` in sparte005 Media
+Library; `Fotografie` in sparte001 Archive suppresses the image WEMI class entirely).
+A flat dc:type-only lookup would therefore be wrong even where dc:type coverage is high.
+The sector dimension must be preserved in all dispatch tables derived from this analysis.
+This constraint is realised in `output/config/image_type2class.json` (D11,
+`transform-script-adr.md`) and in the sector-keyed rows of `lookup_dctype_to_class.csv`.
 
----
+### 1.2 **Dispatch order derived from coverage**:
 
-## Decision 3: htype lookup keyed by `htype_code`, pending rows skipped
-
-**Decision**: `load_htype_map()` uses the `htype_code` column (e.g. `"htype_030"`)
-as the lookup key. Rows where `rdf_type == "pending"` are excluded.
-
-**Rationale**: Corpus inspection confirmed that `ddb:hierarchyType` is an
-`owl:DatatypeProperty` whose literal values are `htype_code` strings. Grepping
-`items-all-goethe-faust.json` for `"htype_0"` yields exactly 92,957 matches —
-equal to the `record_count` for `ProvidedCHO,hierarchyType` in the field
-profile.
-
-The original draft keyed by `label_en (lowercased)`; this was corrected when
-the literal format was confirmed.
-
-**Pending rows** (16 codes — Monograph, Serial, Article, Annotation, Charter,
-Dedication, etc.) have no DoCO or RiC-O class assigned. They fall through the
-htype lookup without emitting an additional rdf:type. All ProvidedCHOs still
-receive `mocho:Manifestation` as their base type regardless (see D9); pending
-htype codes are counted in `objects_missing_specific_type` in stats output.
-
----
-
-## Decision 4: PhysicalThing.hierarchyType skipped this pass
-
-**Decision**: `retype_cho()` handles `ProvidedCHO` only. `PhysicalThing`
-entities (55,771 records, 48.3% coverage) also carry `hierarchyType` but are
-not retyped in this pass.
-
-**Rationale**: The scope of this POC is the CHO graph. PhysicalThing is an
-EDM modelling artefact for physical carrier description; its rdf:type mapping
-requires a separate alignment decision (likely CIDOC-CRM or LRMoo). Skipping
-it does not affect the correctness of the ProvidedCHO output.
-
-**Consequence**: `PhysicalThing.hierarchyType` will appear in the unmatched
-keys stats. This is expected and documented.
-
----
-
-## Decision 5: RDF output format — N-Triples for pipeline, Turtle for hand-authored
-
-**Decision**: Transform output (`mocho-goethe-faust.nt`) and all pipeline
-intermediate files use N-Triples (`.nt`). Hand-authored files (ontology,
-SPARQL update templates) use Turtle (`.ttl`). N-Quads (`.nq`) if named graph
-identity is required.
-
-**Rationale**: N-Triples are one triple per line — grep/awk/stream-friendly,
-no parser context, trivial to sort and dedup with Unix tools. The verbosity
-(full URIs repeated) is acceptable for machine-processed intermediates.
-Turtle prefix compression is valuable for human-readable hand-authored files.
-
----
-
-## Decision 6: Triple subject keys — IRI correction + value-type dispatch
-
-**Decision**: Three JSON keys carry subject data: `dcSubject`, `dcTermsSubject`,
-`dcTermSubject`. These are handled by a dedicated `emit_subject_triples()`
-function, not the generic alignment loop.
-
-**Background**: Corpus inspection revealed that `dcTermsSubject` was
-incorrectly mapped to `dc:subject` (`http://purl.org/dc/elements/1.1/subject`)
-in `alignment_ddbedm_mocho.csv`. The correct IRI is `dcterms:subject`
-(`http://purl.org/dc/terms/subject`). This was a derivation error in the
-alignment script's IRI resolution step; `dcTermSubject` (note: missing `s`) was
-the one correctly resolved to `dcterms:subject` via an explicit `OVERRIDES` entry
-in `align_ddbedm_to_mocho.py`. The fix was applied directly to the CSV (42 rows:
-`edm_prefix` `dc→dcterms`, `edm_iri` corrected).
-
-**Dispatch logic**:
-- Literal value (string or lang-tagged text) → RDA candidates for
-  `("ProvidedCHO", "dcSubject")` — i.e. the dc:subject path.
-- IRI value (`{"resource": ...}`) → RDA candidates for
-  `("ProvidedCHO", "dcTermSubject")` — i.e. the dcterms:subject path.
-
-**Deduplication**: `emit_subject_triples()` collects values from all three keys
-and deduplicates `(pred_nt, obj_nt)` pairs in a per-record set before writing.
-This prevents duplicate triples when the same value appears under multiple keys
-(occurs in ~60% of records).
-
-**Rationale**: `dc:subject` is conventionally used for uncontrolled literals;
-`dcterms:subject` for IRI references to controlled vocabulary terms (GND, LCSH,
-etc.). Value-type dispatch applies this convention without requiring agent-type
-knowledge. The per-record set dedup is cheap (reset each record) and removes
-the problem at the source.
-
----
-
-## Decision 7: Creator fan-out — whitelist to Manifestation-level creator property
-
-**Decision**: `dc:creator` (json_key: `creator`) is mapped to a single RDA
-property: `rdam:P30263 has creator agent of manifestation`
-(`http://rdaregistry.info/Elements/m/P30263`). The alignment table's 464
-Work-level candidates are bypassed.
-
-**Background**: The alignment table produces 464 candidates for `creator`,
-all at the Work WEMI level — including highly specific properties such as
-"has production company", "has plaintiff corporate body", "has appellee
-corporate body". These are correct sub-properties of Work-level creator
-properties in the RDA hierarchy but are wrong for a generic `dc:creator` value
-where the creator role is unknown.
-
-The choice of WEMI level is determined by D9: since all ProvidedCHOs are typed
-as `mocho:Manifestation`, the creator property should be at the Manifestation
-level. `rdam:P30263` is present in mocho (confirmed in `mocho-full.owl`).
-
-**Note on alignment CSV**: `rdam:P30263` was found in `alignment_ddbedm_mocho.csv`
-under `dc:format` with the wrong label "has reduction ratio designation" — a
-DC→RDA map derivation error (P30263 has no semantic relation to dc:format).
-The erroneous row was removed from both `alignment_ddbedm_mocho.csv` and the
-upstream `mocho/output/mapping_dct_to_rda.csv`.
-
-**Alternatives considered**:
-- *Emit all 464*: Semantically very noisy; a Goethe letter would assert
-  "has plaintiff corporate body" for the author. Rejected.
-- *Use rdaw:P10065 has creator agent of work*: Work-level; inconsistent with
-  the Manifestation typing of ProvidedCHO (D9). Rejected.
-- *Use mediatype dispatch*: Route to specific properties based on the record's
-  mediatype Concept IRI. Adds complexity; correct role remains unknown even
-  with mediatype. Rejected for POC.
-
-**Rationale**: `rdam:P30263` is the generic Manifestation-level creator property,
-consistent with the `mocho:Manifestation` base type assigned to all ProvidedCHOs
-(D9). Specific role properties should be emitted only after GND agent enrichment
-(Phase 1b) resolves the creator's function.
-
----
-
-## Decision 8: Contributor fan-out — keep dc:contributor as-is
-
-**Decision**: `dc:contributor` (json_key: `contributor`) is emitted using the
-original `dc:contributor` predicate
-(`http://purl.org/dc/elements/1.1/contributor`). No RDA property is used.
-
-**Background**: The alignment table produces 360 candidates for `contributor`,
-spread across Expression (293), Manifestation (50), Item (16), and Work (1)
-WEMI levels. The single Work-level candidate is "has academic supervisor" —
-semantically wrong as a default. The Expression-level candidates are all specific
-performer roles (conductor, actor, dancer, etc.). No generic "has contributor
-agent" superclass exists in mocho's current import.
-
-**Alternatives considered**:
-- *Whitelist generic RDA property*: No suitable candidate found. `P20052` in
-  the alignment table is incorrectly mapped as "has recordist agent" (a
-  derivation error in the DC→RDA map). Rejected.
-- *Emit all 360*: Semantically noisy; a 19th-century correspondence bundle
-  would assert "has dancer agent" for each addressee. Rejected.
-- *Skip contributor entirely*: Loses the contributor link for 26.2% of records
-  until Phase 1b. Rejected in favour of keeping the DC predicate.
-- *Mediatype dispatch*: Route to Manifestation-level properties by mediatype
-  (e.g. `mt003 Text → rdam:P30328 has contributor agent of text`). Adds
-  complexity and is still wrong for mixed-media records. Rejected for POC.
-
-**Rationale**: `dc:contributor` is a valid, well-understood predicate. Keeping
-it preserves the contributor link in the output graph without asserting a
-specific role that cannot be determined from the DC value alone. The output is
-not mocho-RDA aligned for this field, but it is correct and queryable. Phase 1b
-GND agent enrichment will replace this with typed RDA role triples.
-
----
-
-## Consequences
-
-- `alignment_ddbedm_mocho.csv` was patched: `dcTermsSubject` `edm_iri` corrected
-  from `dc:subject` to `dcterms:subject` (42 rows). If the alignment script is
-  re-run, this correction must be reapplied or the `OVERRIDES` dict in
-  `align_ddbedm_to_mocho.py` must be extended to handle `dcTermsSubject`
-  explicitly.
-- Two fields (`creator`, `contributor`) bypass the alignment table entirely.
-  Their alignment table rows remain but are unused by the transform script; they
-  are still valid for downstream consumers (ISWC paper appendix, second-pass
-  scripts).
-- `dc:contributor` in the output is not mocho-RDA aligned. A Phase 1b script
-  (`link_gnd_agents.py`) will emit typed contributor triples via GND role lookup.
-- The transform stats (`transform_stats.json`) will show `contributor` and
-  `creator` with zero unmatched-key entries since they are handled before the
-  alignment lookup. Stats should record them under a separate `whitelisted_keys`
-  counter.
-- Every ProvidedCHO gets at least one rdf:type triple (`mocho:Manifestation`).
-  Objects with a mapped htype get two rdf:type triples. Objects with a pending
-  or absent htype get one. No `edm:ProvidedCHO` rdf:type triples appear in the
-  output; verification step 2 should grep for its absence.
-
----
-
-## Decision 9: Every ProvidedCHO is typed as mocho:Manifestation
-
-**Decision**: `retype_cho()` unconditionally emits
-`<cho_uri> rdf:type mocho:Manifestation` for every ProvidedCHO. Where a
-`hierarchyType` code is present and maps to a DoCO or RiC-O class, that class
-is emitted as an additional, more specific rdf:type. The `edm:ProvidedCHO`
-fallback type is not emitted.
-
-**Rationale**: `edm:ProvidedCHO` is an EDM modelling artefact describing the
-role of the entity within an EDM Aggregation, not an ontological type for the
-object itself. In the mocho/WEMI model, DDB items — regardless of media type,
-institutional sector, or structural position — represent cultural heritage
-objects as provided by an institution, which maps to the Manifestation level of
-the WEMI hierarchy. `mocho:Manifestation` is therefore the correct base type
-for all ProvidedCHOs.
-
-The DoCO or RiC-O class (where present) is a specialisation of this base type,
-describing the structural or archival nature of the object within its
-Manifestation. Emitting both types allows SPARQL queries to match either the
-general Manifestation class or the specific structural class.
-
-**Alternatives considered**:
-- *Keep `edm:ProvidedCHO` as fallback*: Preserves EDM provenance but asserts
-  an EDM structural class in the mocho graph. Rejected: mixes EDM and mocho
-  semantics in a way that misleads downstream consumers.
-- *Omit rdf:type for pending/missing htype*: Leaves ~22,475 records (19.5%)
-  with no class. Rejected: untyped nodes are harder to query and do not reflect
-  the known WEMI alignment.
-- *Type as mocho:Work instead*: A DDB item could be argued to be a Work. Rejected:
-  the ProvidedCHO represents the object as held and provided — the carrier level
-  — which is Manifestation, not the abstract Work.
-
----
-
-## Decision 10: PhysicalThing entities typed via htype lookup, no mocho:Manifestation
-
-**Decision**: `PhysicalThing` entities in the JSONL are archival hierarchy
-ancestors of the ProvidedCHO — the finding aid lineage (Tektonik, Bestand,
-Gliederung, etc.) stored inline in each record. Each has its own `about` URI
-and `hierarchyType`. They are typed via the same htype lookup as ProvidedCHO
-but receive **no** `mocho:Manifestation` base type. If `hierarchyType` is
-absent or pending, no rdf:type triple is emitted for that entity.
-
-**Background**: Corpus inspection of record `224BB273RJDT6WN7GAIRV4AJ5ES5YPC5`
-confirmed the structure. The PhysicalThing array carries the object's ancestor
-nodes (e.g. two `htype_031 Gliederung` nodes). These are archival aggregation
-containers — `rico:RecordSet` with named individuals — not carried objects.
-The DDB UI renders them as the "Verbundene Objekte" hierarchy tree.
-
-**Rationale**: `mocho:Manifestation` is the base type for carried objects
-(ProvidedCHO, D9). Archival hierarchy nodes are `rico:RecordSet` / `rico:Record`
-/ `rico:RecordPart` depending on htype — a different branch of the mocho type
-system. Applying `mocho:Manifestation` to them would conflate the carried object
-with its archival containers and produce incorrect SPARQL results.
-
-**Implementation**: `retype_cho()` is renamed to `retype_entities()` and
-extended to iterate over both `ProvidedCHO` (single dict) and `PhysicalThing`
-(array). ProvidedCHO logic unchanged (D9). PhysicalThing loop: htype lookup →
-emit RiC-O class and `rico:hasRecordSetType` where applicable; no Manifestation
-assertion; no fallback.
-
----
-
-## Decision 11: mt002 ProvidedCHO typing — domain-specific dispatch replaces mocho:Manifestation
-
-**Decision**: For mt002 (Photo/Image) records, `retype_entities()` applies a
-dc:type × sector dispatch table (`lookup_dctype_to_class.csv`) that assigns
-domain-specific classes **instead of** (not in addition to) `mocho:Manifestation`.
-The dispatch groups and their target classes are:
-
-| Group | dc:types | Sector | ProvidedCHO rdf:type |
+| Sector | Dispatch order | dc:type scope | Notes |
 |---|---|---|---|
-| A — 2D Artworks | ARTWORK_2D (Zeichnung, Gemälde, Druckgraphik, …) | sparte005, sparte006 | `vra:Work` |
-| B — 3D Objects | OBJECTS_3D (Skulptur, Büste, Medaille, …) | any | `vra:Work` |
-| C — Photo Works | PHOTO_TYPES (Fotografie, Standfoto, Postkarte, …) | sparte005, sparte006 | `mocho:ImageWork` |
-| D — Architecture | ARCHITECTURE (Baudenkmal, Denkmal, Wohnhaus, …) | any | `mocho:ImmovableWork` |
-| E — Archive photo | PHOTO_TYPES in sparte001 | sparte001 | *(skip — rico:Record via htype)* |
-| Defaults | unmatched | sparte006, sparte003 | `vra:Work` |
-| Defaults | unmatched | sparte005 | `mocho:ImageWork` |
-| F — Default | all remaining | any | `mocho:Manifestation` (D9) |
+| sparte001 Archive × AUDIO | htype first | `output/config/lookup_htype_doco_rico.csv` → `aco:AudioManifestation` (M) | htype vocabulary is bounded; dc:type open and only partially observed in 115k-record snapshot of 27M DDB objects |
+| sparte001 Archive × IMAGE | htype first | `output/config/lookup_htype_doco_rico.csv` → `mocho:ImageManifestation` (M) | htype vocabulary is bounded; dc:type open and only partially observed in 115k-record snapshot of 27M DDB objects; too many unique dc:types — default to `mocho:ImageManifestation` |
+| sparte001 Archive × TEXT | htype first | `output/config/lookup_htype_doco_rico.csv` → `mocho:Manifestation` (M) | htype vocabulary is bounded; dc:type open and only partially observed in 115k-record snapshot of 27M DDB objects |
+| sparte001 Archive × VIDEO | htype first | `output/config/lookup_htype_doco_rico.csv` → `ec:EditorialWork` (W) + `ec:MediaResource` (M) | htype vocabulary is bounded; dc:type open and only partially observed in 115k-record snapshot of 27M DDB objects |
+| sparte002 Library × AUDIO | htype first | `output/config/lookup_htype_doco_rico.csv` → `aco:AudioManifestation` (M) | htype vocabulary is bounded; dc:type open and only partially observed in 115k-record snapshot of 27M DDB objects |
+| sparte002 Library × IMAGE | htype first | `output/config/lookup_htype_doco_rico.csv` → `mocho:ImageManifestation` (M) | htype vocabulary is bounded; dc:type open and only partially observed in 115k-record snapshot of 27M DDB objects; too many unique dc:types — default to `mocho:ImageManifestation` |
+| sparte002 Library × TEXT | htype first | `output/config/lookup_htype_doco_rico.csv` → `mocho:Manifestation` (M) | htype vocabulary is bounded; dc:type open and only partially observed in 115k-record snapshot of 27M DDB objects |
+| sparte002 Library × VIDEO | htype first | `output/config/lookup_htype_doco_rico.csv` → `ec:EditorialWork` (W) + `ec:MediaResource` (M) | htype vocabulary is bounded; dc:type open and only partially observed in 115k-record snapshot of 27M DDB objects |
+| sparte003 Monument × IMAGE | dc:type only | fixed: `mocho:ImmovableWork` (W) + `mocho:ImageManifestation` (M) | htype absent; too many unique dc:types — default to `mocho:ImageManifestation` |
+| sparte004 Research × AUDIO | dc:type only | `output/config/audio_type2class.json` | htype absent; dispatch based on audio config |
+| sparte004 Research × IMAGE | dc:type only | fixed: `mocho:ImageManifestation` (M) | htype absent or trace (<2%); too many unique dc:types — default to `mocho:ImageManifestation` |
+| sparte004 Research × TEXT | htype first | `output/config/lookup_htype_doco_rico.csv` → `mocho:Manifestation` (M) | htype vocabulary is bounded; dc:type open and only partially observed in 115k-record snapshot of 27M DDB objects |
+| sparte005 Media Library × AUDIO | dc:type only | `output/config/audio_type2class.json` → `aco:AudioManifestation` (M) | htype absent in all records |
+| sparte005 Media Library × IMAGE | dc:type only | fixed: `mocho:ImageWork` (W) + `mocho:ImageManifestation` (M) | htype absent in all records; too many unique dc:types — default to `mocho:ImageManifestation` |
+| sparte005 Media Library × TEXT | htype first | `output/config/lookup_htype_doco_rico.csv` → `mocho:Manifestation` (M) | htype vocabulary is bounded; dc:type open and only partially observed in 115k-record snapshot of 27M DDB objects |
+| sparte005 Media Library × VIDEO | dc:type only | fixed: `ec:EditorialWork` (W) + `ec:MediaResource` (M) | htype absent in all records |
+| sparte006 Museum × AUDIO | dc:type only | fixed: `aco:AudioManifestation` (M) | htype absent in all records |
+| sparte006 Museum × IMAGE | dc:type only | fixed: `vra:Work` (W) + `vra:Image` (M) | htype absent in all records; too many unique dc:types — default to `mocho:ImageManifestation` |
+| sparte006 Museum × VIDEO | dc:type only | fixed: `ec:EditorialWork` (W) + `ec:MediaResource` (M) | htype absent in all records |
+| sparte007 Others × IMAGE | dc:type only | fixed: `mocho:ImageManifestation` (M) | htype absent in all records; too many unique dc:types — default to `mocho:ImageManifestation` |
+| sparte007 Others × TEXT | htype first | `output/config/lookup_htype_doco_rico.csv` → `mocho:Manifestation` (M) | htype vocabulary is bounded; dc:type open and only partially observed in 115k-record snapshot of 27M DDB objects |
 
-**WEMI semantics**: Groups A–D assign Work-level classes (`vra:Work`,
-`mocho:ImageWork`, `mocho:ImmovableWork`), all encoded in the W slot of
-`image_type2class.json`. When a W-slot class is present, `mocho:Manifestation`
-is **not** emitted for that ProvidedCHO. The ProvidedCHO is a Work, not a
-Manifestation; the Manifestation role is fulfilled by the WebResource
-(`mocho:ImageObject`, see D12). Group F retains `mocho:Manifestation` (D9).
+**Alternatives considered**:
+- *Uniform htype-first*: Apply htype before dc:type for all sectors. Rejected because
+  htype is absent in IMAGE and AUDIO strata across sparte003–007; htype-first would
+  silently fall through for the majority of records without adding coverage.
+- *Uniform dc:type-first*: Apply dc:type before htype for all sectors. Rejected because
+  sparte002 TEXT has 31% htype-only records; dc:type-first leaves these unclassified.
+  dc:type vocabulary across the full 27M DDB corpus is also open and only partially
+  observed in this snapshot — a comprehensive dc:type dispatch table cannot be built
+  from the goethe-faust corpus alone.
 
-**New mocho classes** (manual edit required in `mocho-edit.owl`):
-- `mocho:ImageWork rdfs:subClassOf mocho:Work` — photographic artifact as Work
-- `mocho:ImmovableWork rdfs:subClassOf mocho:Work` — built heritage fixed in environment
-- `mocho:ImageObject rdfs:subClassOf mocho:Manifestation` — digital image carrier (see D12)
+**Rationale**: Coverage data shows signal priority is not uniform. htype-first is applied
+where htype is present and its vocabulary is bounded (sparte001, sparte002 all mediatypes;
+sparte004, sparte005, sparte007 TEXT). For strata where htype is absent, dc:type mapping
+is unreliable — its vocabulary is open, corpus-specific, and inconsistent across sectors.
+The exception is AUDIO, where prior curation work produced a stable dc:type → class mapping
+(`audio_type2class.json`). All other mediatypes (IMAGE, VIDEO, TEXT fallback) receive fixed
+WEMI class defaults rather than per-value dc:type dispatch.
 
-**Rationale**: D9 applied `mocho:Manifestation` uniformly to all ProvidedCHOs,
-treating them as carriers. This is correct for library/archival records (text,
-audio, video) where the ProvidedCHO is the collected copy. It is incorrect for
-museum visual objects: a `Zeichnung` (drawing), `Gemälde` (painting), or
-`Fotografie` (photograph) in sparte006 (Museum) or sparte005 (Media Library) is
-the creative/physical artifact itself — a Work-level entity in WEMI. The D9
-rationale ("the ProvidedCHO represents the object as held and provided — the
-carrier level") does not apply when the object held and provided is the original
-Work. Dispatch was derived from `output/config/image_type2class.json` (851
-entries, 696 unique dc:types × sector), generated by `gen_image_type2class.py`.
+Generalizing dc:type dispatch beyond this corpus is not feasible without ingesting a
+representative sample of the full 27M DDB objects. The goethe-faust corpus is a biased
+snapshot: sector and provider distribution may not reflect the full collection, so any
+dc:type mapping built here would underfit the full vocabulary and overfit to this corpus's
+dominant providers. Safe generalization is only possible where the vocabulary is closed by
+design — htype (expert-curated, finite) and audio dc:types (prior curation). All other
+strata default to fixed structural classes until a larger, representative ingest is available.
 
-**Implementation**: `retype_entities()` in `transform_edm_to_mocho.py` is
-extended with a second dispatch step after htype lookup, gated on `mediatype =
-mt002`. Reads `output/lookup_dctype_to_class.csv` (generated by
-`gen_dctype_class_mapping.py`). W-slot class present → emit W-slot class, skip
-`mocho:Manifestation`. M-slot class present → emit M-slot class alongside
-`mocho:Manifestation` (accumulation rule, same as D9+D10). No match → D9 fallback.
+**Source**: `output/dispatch_signal_ratio.csv`, generated by `scripts/dispatch_signal_ratio.py`.
 
-**Reference**: `notes/image-type-class-mapping.md` §3.1, §3.4.
+### 1.3 **Dispatch coverage validation** (goethe-faust corpus, 115,432 records):
+
+Run: `scripts/validate_dispatch.py` → `output/dispatch_validation.csv` (2026-05-02)
+
+| Dispatch rule | Records |
+|---|---|
+| sparte002×mt003 htype-first | 28,850 |
+| sparte001×mt003 htype-first | 23,109 |
+| sparte006×mt002 fixed | 8,970 |
+| sparte001×mt002 htype-first | 5,361 |
+| sparte005×mt002 fixed | 3,792 |
+| sparte002×mt002 htype-first | 984 |
+| sparte004×mt002 fixed | 948 |
+| sparte005×mt001 audio_type2class | 424 |
+| sparte004×mt003 htype-first | 260 |
+| sparte003×mt002 fixed | 97 |
+| sparte007×mt002 fixed | 74 |
+| sparte005×mt005 fixed | 63 |
+| sparte004×mt001 audio_type2class | 22 |
+| sparte006×mt005 fixed | 18 |
+| sparte002×mt001 htype-first | 12 |
+| sparte007×mt003 htype-first | 11 |
+| sparte006×mt001 fixed | 10 |
+| sparte001×mt001 htype-first | 8 |
+| sparte002×mt005 htype-first | 8 |
+| sparte001×mt005 htype-first | 7 |
+| sparte005×mt003 htype-first | 2 |
+| **fallback D9** | **42** |
+| mt007 skipped | 42,360 |
+
+**Total dispatched**: 73,030 records (63.3% of corpus). **Fallback D9**: 42 records — likely sparte006 Museum TEXT and other small unaccounted strata not yet in §1.2. To investigate: run `grep dispatch_rule=fallback output/dispatch_validation.csv` to identify the sector × mediatype combinations.
 
 ---
 
-## Decision 12: mt002 WebResources typed as mocho:ImageObject
 
-**Decision**: For mt002 (Photo/Image) records, the target URIs of
-`edm:isShownBy` and `edm:hasView` (WebResources) are typed as:
+## Decision 11: PROV-O provenance triples — provenance chain for DDB items
+
+**Decision**: The transform emits PROV-O triples to record the provenance chain
+from source dataset record to published DDB item. The pattern is drawn directly
+from the `friedrich-schiller-test-primary.nt` reference file (lines cited below).
+
+**Turtle pattern** (prefixes: `prov:` = `http://www.w3.org/ns/prov#`):
 
 ```turtle
-<webresource-uri>
-    a mocho:ImageObject ;    # digital image carrier (subClassOf mocho:Manifestation)
-    a rdac:C10007 ;          # RDA Manifestation class
-    rdam:P30001 rdact:1018 ; # has carrier type: online resource
-    vra:imageOf <cho-uri> .  # interim link; Phase B: replace with mocho:facsimile
+@prefix prov:    <http://www.w3.org/ns/prov#> .
+@prefix ddb:     <http://www.deutsche-digitale-bibliothek.de/> .
+@prefix ddbkg:   <http://ddbkg.fiz-karlsruhe.de/> .
+@prefix ddb-api: <https://api.deutsche-digitale-bibliothek.de/2/> .
+
+# ── Agents ───────────────────────────────────────────────────────────────────
+
+ddb:organization/2Q37XY5KXJNJE5MV6SWP3UKKZ6RSBLK5   # line 43
+    a prov:Agent .                                    # (Deutsche Nationalbibliothek)
+
+ddb:                                                  # line 98
+    a prov:Agent .                                    # (Deutsche Digitale Bibliothek)
+
+ddbkg:AACZRV7UQ859A7M7DD033EYKACNF380D               # line 87
+    a prov:SoftwareAgent ;                            # (XSLT pipeline)
+    prov:actedOnBehalfOf ddb: .                       # line 95
+
+# ── Source entity (raw dataset record) ───────────────────────────────────────
+
+ddbkg:DDKEKROKIWI1KBAOG0CN258P8AXKXCC7               # line 61
+    a prov:Entity ;
+    prov:wasAttributedTo                              # line 37
+        ddb:organization/2Q37XY5KXJNJE5MV6SWP3UKKZ6RSBLK5 .
+
+# ── Derived entity (DDB item) ─────────────────────────────────────────────────
+
+ddb:item/IBDPENVFMNA4TNCNMJ772MB72RITSYMK            # line 76
+    a prov:Entity ;
+    prov:wasDerivedFrom                               # JSON: source.description.href
+        ddb-api:items/222NZKK63TNRLC2VETRV722VKBDSUVGL/source/record ;
+    prov:wasAttributedTo                              # line 55
+        ddbkg:AACZRV7UQ859A7M7DD033EYKACNF380D ;
+    prov:generatedAtTime                              # line 35
+        "2021-08-04T12:05:02+0200" .
+
+# ── Source record description (binaries.binary[i], one block per entry) ──────
+
+ddb-api:items/222NZKK63TNRLC2VETRV722VKBDSUVGL/source/record
+    a prov:Entity ;
+    dc:identifier "0ac6ad6e-a985-4251-91ca-f4b918326ead" ;  # binaries.binary[i].ref
+    dc:title      "Abb. Vorsatz. Titelblatt auf fliegendem Blatt..."@de ;  # binaries.binary[i].name
+    dc:description "Urheber*in: DDZ (Fotografische Aufnahme) | Abb. Vorsatz. Titelblatt..."@de ;
+        # concat(ifnull(binaries.binary[i].name2, ""), " | ", ifnull(binaries.binary[i].name, ""))
+    dcterms:rights <http://rightsstatements.org/vocab/InC/1.0/> ;  # binaries.binary[i].kind (URI)
+    dcterms:source <http://fotothek.slub-dresden.de/fotos/df_pos-2018-a_0000067_000_f.jpg> .
+        # binaries.binary[i].local_pathname (URI)
 ```
 
-- `mocho:ImageObject rdfs:subClassOf mocho:Manifestation` — the digital image file
-  is the Manifestation-level carrier of the Work-level ProvidedCHO.
-- `rdac:C10007` = `http://rdaregistry.info/Elements/c/C10007` — RDA Manifestation.
-- `rdam:P30001 rdact:1018` — has carrier type: online resource
-  (`http://rdaregistry.info/termList/RDAct/1018`).
-- `vra:imageOf` (`owl:inverseOf vra:hasImage`) — interim WebResource → CHO link.
-  Replaced by `mocho:facsimile` in Phase B (follow-up ADR). `mocho:facsimile`
-  is defined after Hayes & Warren 2010 `mw:facsimileOf` (p. 74): "The subject is
-  a more or less precise re-rendering, reproduction or visual representation of
-  the object"; domain `mocho:ImageObject`, range `mocho:ImageWork` / `vra:Work`.
+**`prov:wasDerivedFrom` mapping**: the object is constructed from
+`source.description.href` (e.g. `/items/222NZKK…/source/record`) by stripping
+the leading `/` and prepending `ddb-api:`.
 
-**Rationale**: D11 moves ProvidedCHOs to Work level for mt002. The Manifestation
-level must then be represented by the digital carrier. `mocho:ImageObject` fills
-this role explicitly, making the WEMI chain complete: `vra:Work` /
-`mocho:ImageWork` (Work) ← `vra:imageOf` ← `mocho:ImageObject` (Manifestation).
-`vra:Image` was considered but is unreliable for explicit Manifestation dispatch
-because its OWL superclass is `schema:CreativeWork` — WEMI-neutral by design but
-Work-level by naming convention. A reasoner mapping `schema:CreativeWork →
-mocho:Work` would pull `vra:Image` to Work, contradicting the Manifestation
-intent. `mocho:ImageObject` has a clean `rdfs:subClassOf mocho:Manifestation`
-chain with no ambiguity.
+**Source record description mapping** (`binaries.binary[i]`, one set of triples per binary entry):
 
-**Property rejected**: `rdam:P30139` ("has expression manifested") was considered
-as a Manifestation → Work link. Confirmed wrong: it is Manifestation → Expression.
-DDB does not model Expression-level entities. Dropped.
+| Triple predicate | JSON path | Value type | Notes |
+|---|---|---|---|
+| `dc:identifier` | `binaries.binary[i].ref` | string literal | UUID of the binary |
+| `dc:title` | `binaries.binary[i].name` | `@de` literal | human-readable label |
+| `dc:description` | concat(`name2`, `" \| "`, `name`) | `@de` literal | nulls replaced with `""` |
+| `dcterms:rights` | `binaries.binary[i].kind` | URI | rights statement URI |
+| `dcterms:source` | `binaries.binary[i].local_pathname` | URI | file or IIIF URL |
 
-**Scope**: WebResource typing applies to mt002 records only in this phase. Audio,
-video, and text WebResources are handled separately (Phase B).
+**Provenance chain**: the DDB item (`prov:Entity`) is derived from its upstream
+source record via the DDB API (`prov:wasDerivedFrom`); attributed to the XSLT
+pipeline (`prov:SoftwareAgent`) acting on behalf of DDB (`prov:actedOnBehalfOf`);
+timestamped at ingest (`prov:generatedAtTime`). The source record itself is
+described with DC/DCTerms properties drawn from `binaries.binary[]`.
 
-**Reference**: `notes/image-type-class-mapping.md` §3.3.
+**PROV-O terms used**:
+
+| Term | Type | Role |
+|---|---|---|
+| `prov:Agent` | class | institution (DNB, DDB) |
+| `prov:SoftwareAgent` | class | XSLT transform pipeline |
+| `prov:Entity` | class | source record and derived DDB item |
+| `prov:wasAttributedTo` | property | links entity to responsible agent |
+| `prov:wasDerivedFrom` | property | links DDB item to source record |
+| `prov:actedOnBehalfOf` | property | links SoftwareAgent to owning institution |
+| `prov:generatedAtTime` | property | ingest timestamp on DDB item |
+
+**Source**: `data/friedrich-schiller-test-primary.nt`, lines 35, 37, 43, 49, 55, 61, 76, 87, 95, 98.
+
+---
+
+## Decision 12: PROV-O full JSON field mapping — nodes, URIs, and triples
+
+**Decision**: The transform emits a complete PROV-O graph for each item using the
+Without-Activity pattern (slide 13 of `references/rm-018-prov-o.pdf`). Node URIs
+follow a `urn:ddbedm:` convention that traces each identifier back to its JSON key
+chain, making the source unambiguous without requiring a dereferenceable endpoint.
+
+### URI scheme
+
+| Node | URI pattern | JSON source |
+|---|---|---|
+| CHO | `ddb:item/<id>` | `properties.item-id` |
+| Dataset | `urn:ddbedm:properties:dataset-id:<id>` | `properties.dataset-id` |
+| XSLT | `urn:ddbedm:properties:mapping-version:<ver>` | `properties.mapping-version` |
+| Provider | `urn:ddbedm:provider-info:provider-ddb-id:<id>` | `provider-info.provider-ddb-id` |
+| DDB | `<http://www.deutsche-digitale-bibliothek.de>` | fixed |
+
+### Turtle pattern
+
+```turtle
+@prefix prov:     <http://www.w3.org/ns/prov#> .
+@prefix ddb:      <http://www.deutsche-digitale-bibliothek.de/> .
+@prefix dcat:     <http://www.w3.org/ns/dcat#> .
+@prefix dcterms:  <http://purl.org/dc/terms/> .
+@prefix foaf:     <http://xmlns.com/foaf/0.1/> .
+@prefix rdfs:     <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix schema:   <https://schema.org/> .
+@prefix lov:      <http://www.w3.org/ns/iana/media-types/> .
+
+# ── CHO ──────────────────────────────────────────────────────────────────────
+
+ddb:item/222NZKK63TNRLC2VETRV722VKBDSUVGL          # properties.item-id
+    a prov:Entity ;
+    prov:wasDerivedFrom
+        <urn:ddbedm:properties:dataset-id:76409877634279609sQOu> ;  # properties.dataset-id
+    prov:wasAttributedTo
+        <urn:ddbedm:properties:mapping-version:6.18> ;              # properties.mapping-version
+    prov:generatedAtTime "2026-01-07T15:40:43+0100" ;               # properties.ingest-date
+    dcterms:hasVersion   "43" ;                                      # properties.revision-id
+    dcterms:references   "ddb:222NZKK63TNRLC2VETRV722VKBDSUVGL" .  # source.description.record.ref
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+
+<urn:ddbedm:properties:dataset-id:76409877634279609sQOu>
+    a dcat:Dataset, prov:Entity ;
+    dcterms:identifier "76409877634279609sQOu" ;                     # properties.dataset-id
+    rdfs:label         "Gesamtlieferung: Deutsche Fotothek - LIDO"@de ;  # properties.dataset-label
+    dcterms:type       <http://www.lido-schema.org/> ;               # source.description.record.type
+    prov:wasAttributedTo
+        <urn:ddbedm:provider-info:provider-ddb-id:CJY7MSLPOPB7FTPC7JM5K2GGM5PBGLYI> .
+
+# ── XSLT SoftwareAgent ────────────────────────────────────────────────────────
+
+<urn:ddbedm:properties:mapping-version:6.18>
+    a prov:SoftwareAgent ;
+    dcterms:hasVersion "6.18" ;                                      # properties.mapping-version
+    prov:actedOnBehalfOf <http://www.deutsche-digitale-bibliothek.de> .
+
+# ── DDB Agent ─────────────────────────────────────────────────────────────────
+
+<http://www.deutsche-digitale-bibliothek.de>
+    a prov:Agent, foaf:Organization ;
+    foaf:name "Deutsche Digitale Bibliothek" .
+
+# ── Provider Agent ────────────────────────────────────────────────────────────
+
+<urn:ddbedm:provider-info:provider-ddb-id:CJY7MSLPOPB7FTPC7JM5K2GGM5PBGLYI>
+    a prov:Agent, foaf:Organization ;
+    foaf:name        "Deutsche Fotothek" ;                           # provider-info.provider-name
+    schema:url       <http://www.deutschefotothek.de> ;              # provider-info.provider-uri
+    dcterms:identifier "99900890" ;                                  # provider-info.provider-id
+    lov:isil         <http://ld.zdb-services.de/resource/organisations/DE-2396> .  # provider-info.provider-isil
+```
+
+### Field mapping table
+
+**CHO** (`ddb:item/<properties.item-id>`):
+
+| Triple | JSON path | Value type |
+|---|---|---|
+| `prov:wasDerivedFrom` | `properties.dataset-id` → Dataset URN | URN |
+| `prov:wasAttributedTo` | `properties.mapping-version` → XSLT URN | URN |
+| `prov:generatedAtTime` | `properties.ingest-date` | xsd:dateTime literal |
+| `dcterms:hasVersion` | `properties.revision-id` | string literal |
+| `dcterms:references` | `source.description.record.ref` | `"ddb:<ref>"` literal |
+
+**Dataset** (`urn:ddbedm:properties:dataset-id:<value>`):
+
+| Triple | JSON path | Value type |
+|---|---|---|
+| `dcterms:identifier` | `properties.dataset-id` | string literal |
+| `rdfs:label` | `properties.dataset-label` | `@de` literal |
+| `dcterms:type` | `source.description.record.type` | URI |
+| `prov:wasAttributedTo` | `provider-info.provider-ddb-id` → Provider URN | URN |
+
+**XSLT** (`urn:ddbedm:properties:mapping-version:<value>`):
+
+| Triple | JSON path | Value type |
+|---|---|---|
+| `dcterms:hasVersion` | `properties.mapping-version` | string literal |
+| `prov:actedOnBehalfOf` | fixed: `<http://www.deutsche-digitale-bibliothek.de>` | URI |
+
+**Provider** (`urn:ddbedm:provider-info:provider-ddb-id:<value>`):
+
+| Triple | JSON path | Value type |
+|---|---|---|
+| `foaf:name` | `provider-info.provider-name` | string literal |
+| `schema:url` | `provider-info.provider-uri` | URI |
+| `dcterms:identifier` | `provider-info.provider-id` | string literal |
+| `lov:isil` | `provider-info.provider-isil` | URI |
+
+**Skipped**: `properties.cortex-type`, `properties.automatically-translated`, `provider-info.provider-parent-id` — not modelled in the PROV-O graph.
+
+**Pattern choice**: Without-Activity pattern (slide 13) selected over the full Activity pattern (slide 12). The Activity node adds `prov:wasGeneratedBy` + `prov:used` but requires a blank node or per-item IRI for the Ingest activity; the added expressivity is not needed for the current use case.
+
+---
+
+## D13 — Non-EDM fields: mocho:mimeType from binaries.binary[].mimetype
+
+### Field location
+
+`binaries.binary[].mimetype` is a DDB JSON API field, **not** present in the EDM RDF
+graph. It appears on binary/digital-file entries attached to each item record:
+
+```json
+"binaries": {
+  "binary": [
+    {
+      "ref": "0ac6ad6e-...",
+      "mimetype": "image/jpeg",
+      "primary": true,
+      "local_pathname": "http://fotothek.slub-dresden.de/fotos/...",
+      ...
+    }
+  ]
+}
+```
+
+`binaries.binary` may be `null` for items with no digital files.
+
+### Decision
+
+Emit `mocho:mimeType` as a DataProperty triple on the WebResource subject:
+
+```turtle
+<webresource-uri>  mocho:mimeType  "image/jpeg" .
+```
+
+The WebResource URI is derived from `binaries.binary[].local_pathname` (or
+`binaries.binary[].ref` if pathname is absent). Only the primary binary
+(`primary: true`) is emitted per record. If `binaries.binary` is null or empty,
+no triple is emitted.
+
+`mocho:mimeType` is distinct from `mocho:mediatype`:
+- `mocho:mediatype` → vocnet-mtype concept IRI (`vocnet-mtype:mt002`) — semantic category
+- `mocho:mimeType` → string literal (`"image/jpeg"`) — technical format identifier
+
+### Non-EDM fields reference table
+
+Fields in the DDB JSON API that are **not** present in the EDM RDF graph and require
+transform-side bridging:
+
+| JSON path | mocho property | Type | Notes |
+|---|---|---|---|
+| `binaries.binary[].mimetype` | `mocho:mimeType` | DataProperty / xsd:string | On WebResource; primary binary only; null if no digital file |
+| `edm.RDF.Agent[].type.resource` (sector) | `mocho:sector` | ObjectProperty / skos:Concept | Resolved via `provider-info.domains` lookup; see D9 |
+| `edm.RDF.Concept[].about` (mediatype) | `mocho:mediatype` | ObjectProperty / skos:Concept | From flat Concept list in `edm.RDF.Concept[]`; see D9 |

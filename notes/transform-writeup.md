@@ -57,7 +57,7 @@ Three keys get special treatment (bypass the table):
 
 ### 2.2 `rdf:type` via hierarchyType (htype)
 
-**File**: `output/lookup_htype_doco_rico.csv`  
+**File**: `output/config/lookup_htype_doco_rico.csv`  
 **Reference**: `mocho/notes/archival-objects.md`
 
 DDB archival records divide into two structural zones:
@@ -89,7 +89,7 @@ Containment between RecordSets uses `rico:includesOrIncluded`; a `rico:Record` (
 
 ### 2.3 `rdf:type` via dc:type (domain-specific classes)
 
-**File**: `output/lookup_dctype_to_class.csv`
+**File**: `output/config/lookup_dctype_to_class.csv`
 
 The German free-text dc:type value (`"Fotografie"`, `"Zeichnung"` …) is looked up with three-level fallback:
 
@@ -130,7 +130,7 @@ For photo records, each WebResource URI also gets:
 
 These two values key into the dc:type dispatch table (§2.3).
 
-**Alternative mediatype source**: the mediatype IRI is also present directly on the `ProvidedCHO` as `edm:type` (JSON key: `edmType`). The transform reads from `Concept[]` for both signals for consistency, but `ProvidedCHO.edmType` is an equivalent and more direct source for mediatype (sector has no equivalent direct path — it remains on the Organization).
+**Simpler mediatype source**: `ProvidedCHO.edmType` (JSON key for `edm:type` on the CHO) carries one of five uppercase EDM type literals — `IMAGE`, `SOUND`, `TEXT`, `VIDEO`, `3D` — which map directly to the mediatype labels (IMAGE≡mt002, SOUND≡mt001, TEXT≡mt003, VIDEO≡mt005). A five-entry hardcoded lookup is all that is needed, making this simpler than scanning `Concept[].about`. The current transform uses `Concept[].about` for both signals. Sector has no equivalent direct path — it remains on the Organization.
 
 ---
 

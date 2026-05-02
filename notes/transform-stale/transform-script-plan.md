@@ -2,8 +2,13 @@
 
 ## Context
 
+**mt007 (NOT DIGITIZED) records are skipped — no mocho triples emitted.** These
+records carry no `binaries.binary.@href` and are SOLR false-positives. The transform
+script detects mt007 at ingestion time and skips the record entirely (see
+`transform-script-adr.md` D15, `transform-adr.md` D1).
+
 `transform_edm_to_mocho.py` needs to assign domain-specific rdf:type subclasses to
-ProvidedCHO entities based on three dimensions: mediatype (mt001–mt007), sector
+ProvidedCHO entities based on three dimensions: mediatype (mt001–mt006), sector
 (sparte001–007), and the dc:type string value. This dispatch logic existed in
 `old-config/type2class.json` and `old-config/audio_type2class.json` (FRBR/FaBiO
 classes, 4 WEMI levels), but was never ported to the mocho-aligned pipeline.
@@ -48,7 +53,7 @@ One-sentence framing of each section, task list, and open questions that must be
 
 **Phase B — Generate lookup**
 - [ ] B1. Write `gen_dctype_class_mapping.py`
-- [ ] B2. Run script → `output/lookup_dctype_to_class.csv`
+- [ ] B2. Run script → `output/config/lookup_dctype_to_class.csv`
 - [ ] B3. Check summary: row count, TBD count = 0
 
 **Phase C — Validate**
@@ -72,7 +77,7 @@ One-sentence framing of each section, task list, and open questions that must be
 | ✅ | Q5 | ACO IRIs confirmed in `mocho-full.owl`: `aco:AudioClip` = `https://w3id.org/ac-ontology/aco#AudioClip` (subclass of `aco:AudioManifestation`); `aco:AudioFile` = `https://w3id.org/ac-ontology/aco#AudioFile` (subclass of `aco:AudioItem`). Also present: `aco:AudioManifestation`, `aco:AudioExpression`, `aco:AudioItem`. Note: `aco:AudioClip` denotes a clip/excerpt — use `aco:AudioManifestation` for general non-musical audio unless dc:type specifically denotes a clip. | §3.1, §7 |
 | ✅ | Q6 | FaBiO has been deprecated by RDA — do not use FaBiO classes as targets. The old-config files are example/reference only; all class mappings must use RDA (or MO/ACO/VRA/EBUCore/RiC-O) in the new lookup. | §3.2, §7 |
 | ✅ | Q7 | `mo:MuscialExpression` (typo in old-config) → corrected to `mo:MusicalExpression` in CLASS_MAP. | §3.1, §5.2 |
-| ✅ | Q8 | mt007 (Not Digitized) — follows the same htype + sector + dc:type dispatch route as other mediatypes. No special exemption. | §3.5, §8 |
+| ✅ | Q8 | mt007 (Not Digitized) — records are **skipped**; no mocho triples emitted. No binary href present; SOLR false-positive inclusion. | §3.5, §8 |
 
 ---
 
@@ -83,12 +88,12 @@ One-sentence framing of each section, task list, and open questions that must be
 | `goethe-faust/scripts/count_dctype_by_mediatype.py` | **New script** — frequency count of dc:type × sector for mt002/mt005; prerequisite for image/video config files |
 | `goethe-faust/output/dctype_frequency_all.csv` | **New output** — dc:type frequency table by (mediatype, sector), all mediatypes |
 | `goethe-faust/scripts/gen_dctype_class_mapping.py` | **New script** — generates the lookup |
-| `goethe-faust/output/lookup_dctype_to_class.csv` | **New output** — type dispatch table |
+| `goethe-faust/output/config/lookup_dctype_to_class.csv` | **New output** — type dispatch table |
 | `goethe-faust/scripts/old-config/type2class.json` | Source: general dc:type → RDA classes |
 | `goethe-faust/scripts/old-config/audio_type2class.json` | Source: audio dc:type → MO/ACO classes |
 | `goethe-faust/output/config/video_type2class.json` | New config: video dc:type → EBUCore Plus classes |
 | `goethe-faust/output/config/image_type2class.json` | New config: image dc:type → VRA Core + LIO classes |
-| `goethe-faust/output/lookup_htype_doco_rico.csv` | Reference pattern for lookup CSV schema |
+| `goethe-faust/output/config/lookup_htype_doco_rico.csv` | Reference pattern for lookup CSV schema |
 | `goethe-faust/notes/alignment-adr.md` | Will need a new decision (D11) for this dispatch |
 | `goethe-faust/scripts/README.md` | Must be updated |
 
@@ -221,10 +226,10 @@ IRI base `http://www.ebu.ch/metadata/ontologies/ebucoreplus#`).
 
 ### 3.5 Not Digitized (mt007)
 
-Follows the standard dispatch route: htype → sector → dc:type. The absence of
-a digital surrogate does not exempt an object from type classification.
-`mocho:Manifestation` is always emitted as the base type; additional classes
-follow from htype, sector, and dc:type values as for all other mediatypes.
+**mt007 records are skipped — no mocho triples are emitted.**
+These records carry no `binaries.binary.@href` and were incorrectly included
+by the SOLR query (digitalisat=TRUE does not exclude mt007). The transform
+script must detect mt007 at record ingestion time and skip the record entirely.
 
 ---
 
@@ -264,7 +269,7 @@ Inputs:     scripts/old-config/type2class.json
             scripts/old-config/audio_type2class.json
             output/config/image_type2class.json
             output/config/video_type2class.json
-Outputs:    output/lookup_dctype_to_class.csv
+Outputs:    output/config/lookup_dctype_to_class.csv
 Deps:       stdlib only (json, csv, pathlib)
 Assumes:    old-config files are read-only reference; class mapping to mocho-aligned
             equivalents is encoded in CLASS_MAP dict in this script.
@@ -361,7 +366,7 @@ a more specific genre class (from dc:type `Brief`). Neither blocks the other.
 - `mt002` (Photo): rows from `image_type2class.json` → VRA/LIO/RiC-O classes
 - `mt003` (Text): rows from `type2class.json` → RDA/RiC-O classes
 - `mt005` (Video): rows from `video_type2class.json` → EBUCore Plus classes
-- `mt007` (Not Digitized): follows standard dispatch — htype + sector + dc:type
+- `mt007` (Not Digitized): **skip record** — no mocho triples emitted (see §3.5)
 
 ### 6.3 Priority order for the transform loop (implemented in `retype_entities()`)
 
@@ -404,7 +409,7 @@ This is a prerequisite for finalising `retype_entities()` in the transform scrip
 - **`mo:MuscialExpression` typo**: ✅ corrected to `mo:MusicalExpression` in CLASS_MAP.
 - **FaBiO**: ✅ deprecated by RDA — do not emit as rdf:type targets. Old-config entries are reference only. Exception: `fabio:AudioDocument` retained as a valid LOD IRI for expression-level audio.
 - **dc:type frequency count (Q4)**: run `count_dctype_by_mediatype.py` on full corpus (all mediatypes) before creating `image_type2class.json` and `video_type2class.json` (task A1).
-- **Not Digitized (mt007)**: ✅ follows standard htype + sector + dc:type dispatch.
+- **Not Digitized (mt007)**: ✅ **skip record** — no mocho triples emitted. SOLR false-positive; no binary href present (see §3.5, `transform-adr.md` D1).
 
 ---
 

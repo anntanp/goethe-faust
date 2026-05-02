@@ -157,7 +157,7 @@ All four properties (`hasType`, `happenedAt`, `occuredAt`, `P11_had_participant`
 
 No changes — fully mapped. See `transform-adr.md` D1–D12 and `alignment_ddbedm_mocho.csv`.
 
-**`edmType` note**: `ProvidedCHO.edmType` (JSON key for `edm:type` on the CHO) carries the mediatype vocnet IRI (e.g. `http://ddb.vocnet.org/medientyp/mt002`). It is not mapped to a mocho property — the transform reads mediatype from `Concept[].about` for consistency — but it is an equivalent and more direct source. See `mocho/notes/mocho-gatherer-adr.md` §7.1 for path details.
+**`edmType` note**: `ProvidedCHO.edmType` (JSON key for `edm:type` on the CHO) carries one of five uppercase EDM type literals (`IMAGE`, `SOUND`, `TEXT`, `VIDEO`, `3D`), mapping directly to the mediatype labels. A five-entry hardcoded lookup resolves these to vocnet IRIs — simpler than scanning `Concept[].about`. The current transform uses the Concept list instead. Not mapped to a mocho output property. See `mocho/notes/mocho-gatherer-adr.md` §7.1 for path details.
 
 ---
 

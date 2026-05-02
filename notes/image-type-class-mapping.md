@@ -485,7 +485,7 @@ WebResources for all IMAGE/mt002 records → `mocho:ImageObject` + `rdac:C10007`
 1. Run `gen_image_type2class.py` → inspect `output/config/image_type2class.json`
 2. Spot-check: `Zeichnung__sparte006` → `vra:Work`; `Fotografie__sparte005` → `mocho:ImageWork`
 3. Spot-check: `Fotografie__sparte001` → `rico:Record` only (no image WEMI class)
-4. Run `gen_dctype_class_mapping.py` → inspect `output/lookup_dctype_to_class.csv`
+4. Run `gen_dctype_class_mapping.py` → inspect `output/config/lookup_dctype_to_class.csv`
 5. Grep: no Zeichnung/Druckgraphik/Gemälde row has `rdf_type = mocho:ImageWork`
 6. Check: WebResource triples → `mocho:ImageObject` + `rdac:C10007` + `rdam:P30001 rdact:1018` + `vra:imageOf <cho-uri>` on all mt002 WebResources
 7. Spot-check: every `vra:imageOf` subject is a WebResource URI; object is the corresponding ProvidedCHO URI

@@ -32,7 +32,7 @@ generated, and any downstream consumers.
 
 ## Dispatch table outputs
 
-### `output/lookup_htype_doco_rico.csv`
+### `output/config/lookup_htype_doco_rico.csv`
 
 - **Format**: CSV
 - **Produced by**: `scripts/gen_htype_doco_mapping.py`
@@ -40,7 +40,7 @@ generated, and any downstream consumers.
 - **Content**: htype_001–048 → DoCO (library) or RiC-O (archival) class
 - **Consumed by**: `transform_edm_to_mocho.py` (htype dispatch layer)
 
-### `output/lookup_dctype_to_class.csv`
+### `output/config/lookup_dctype_to_class.csv`
 
 - **Format**: CSV
 - **Produced by**: `scripts/gen_dctype_class_mapping.py` (Phase B — not yet written)

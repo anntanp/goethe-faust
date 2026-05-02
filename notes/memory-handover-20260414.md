@@ -13,8 +13,8 @@ Two projects active: `mocho/` (middle ontology) and `goethe-faust/` (data pipeli
 
 | File | Description |
 |---|---|
-| `goethe-faust/output/lookup_htype_doco_rico.csv` | 44 htype codes → DoCO or RiC-O class; columns: `htype_code, label_de, label_en, domain, rdf_type, has_record_set_type, target_vocab, notes` |
-| `goethe-faust/output/lookup_htype_doco_rico.json` | Same content as JSON array |
+| `goethe-faust/output/config/lookup_htype_doco_rico.csv` | 44 htype codes → DoCO or RiC-O class; columns: `htype_code, label_de, label_en, domain, rdf_type, has_record_set_type, target_vocab, notes` |
+| `goethe-faust/output/config/lookup_htype_doco_rico.json` | Same content as JSON array |
 | `goethe-faust/notes/alignment-plan.md` | Approved plan for `transform_edm_to_mocho.py`; see §3–§8 |
 
 ---

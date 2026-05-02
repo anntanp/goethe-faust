@@ -23,7 +23,7 @@ The NT file is not used — it was generated from this same JSONL and carries no
 | `goethe-faust/data/items-all-goethe-faust.json` | Source JSONL (115,432 records, one per line) |
 | `goethe-faust/data/ids-all-goethe-faust.txt` | 115,437 object IDs (32-char each); filter set |
 | `goethe-faust/output/alignment_ddbedm_mocho.csv` | Alignment table — keyed by `(entity_type, json_key)`; columns: `entity_type, json_key, edm_prefix, edm_iri, record_count, coverage_pct, rda_iri, rda_label, wemi_level, match_method, in_mocho` |
-| `goethe-faust/output/lookup_htype_doco_rico.csv` | htype code → DoCO/RiC-O class lookup |
+| `goethe-faust/output/config/lookup_htype_doco_rico.csv` | htype code → DoCO/RiC-O class lookup |
 | `goethe-faust/scripts/README.md` | Must be updated after script is added |
 
 **Reference notes:**
