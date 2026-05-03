@@ -10,8 +10,8 @@ Usage:      python transform_edm_to_mocho.py [--jsonl FILE] [--ids FILE]
 Inputs:     data/items-all-goethe-faust.json         JSONL, one record per line
             data/ids-all-goethe-faust.txt             32-char object IDs, one per line
             output/alignment_ddbedm_mocho.csv         (entity_type, json_key) → RDA candidates
-            output/lookup_htype_doco_rico.csv         htype_code → DoCO/RiC-O class
-            output/lookup_dctype_to_class.csv         (mediatype, sector, dc_type_de) → class IRIs
+            output/config/lookup_htype_doco_rico.csv         htype_code → DoCO/RiC-O class
+            output/config/lookup_dctype_to_class.csv         (mediatype, sector, dc_type_de) → class IRIs
 Outputs:    output/mocho-goethe-faust.nt              N-Triples (pipeline intermediate)
             output/mocho-goethe-faust.jsonld          JSON-LD (inspection/tooling)
             output/transform_stats.json               run stats + ignored-properties inventory

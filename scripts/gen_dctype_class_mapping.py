@@ -4,7 +4,7 @@ gen_dctype_class_mapping.py
 
 Purpose:
     Read the four dc:type config JSONs (audio, image, video, general) and the
-    GND URI mapping CSV (Phase B0), and write output/lookup_dctype_to_class.csv —
+    GND URI mapping CSV (Phase B0), and write output/config/lookup_dctype_to_class.csv —
     the dispatch table that maps (mediatype, sector, dc_type_de) to mocho/RDA
     rdf:type class IRIs.
 
@@ -19,7 +19,7 @@ Inputs:
     output/dctype_to_gnd_uri.csv              — dc_type_de → GND URI (Phase B0)
 
 Outputs:
-    output/lookup_dctype_to_class.csv         — dispatch table
+    output/config/lookup_dctype_to_class.csv         — dispatch table
 
 Schema (lookup_dctype_to_class.csv):
     mediatype    — vocnet mediatype IRI or 'any'

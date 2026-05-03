@@ -16,7 +16,7 @@ Usage:
 
 Inputs:
     data/items-all-goethe-faust.json        JSONL corpus
-    output/lookup_dctype_to_class.csv       dispatch table (Phase B)
+    output/config/lookup_dctype_to_class.csv       dispatch table (Phase B)
 
 Outputs:
     output/dctype_dispatch_sample.csv       sampled records with dispatch results

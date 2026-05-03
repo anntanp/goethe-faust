@@ -11,7 +11,7 @@ any working directory.
 ### `profile_json_keys.py`
 Profiles all non-`edm` JSON key paths across item records. Produces a CSV of
 unique (sector, mediatype, chain, description) rows. Used to identify direct
-JSON paths for `mocho:sector` (`provider-info.domains[0]`) and `mocho:mediatype`
+JSON paths for `mocho:sector` (`provider-info.domains[0]`) and `mocho:mediaType`
 (`preview.media`) without traversing the EDM RDF graph.
 
 - **Input**: `data/items-excerpt-1000.json` (default; override with `--input`)
@@ -58,14 +58,66 @@ in mocho, via the DC→RDA sub-property mapping from the mocho workflow.
 
 ---
 
+## Corpus-driven transformation design
+
+Scripts that measure signal coverage in the corpus to inform dispatch design
+before implementing the transform. Run once per corpus; outputs feed
+`notes/transform-adr.md` D0 and `notes/transform-revised-plan.md` §1.1.
+
+### `count_dctype_sparte004.py`
+Frequency table of (mediatype, htype, dc:type) combinations for a given sector,
+cross-referenced against `output/config/lookup_dctype_to_class.csv` to show current
+dispatch class. Accepts `--sector` to target any sparte.
+
+- **Input**: `data/items-all-goethe-faust.json`, `output/config/lookup_dctype_to_class.csv`
+- **Output**: `output/dctype_<sector>.csv` (e.g. `dctype_sparte001.csv`)
+- **Usage**: `python scripts/count_dctype_sparte004.py [--sector sparteNNN]`
+- **Notes**: Default sector is sparte004. Run for all sectors before
+  `top10_dctype_by_sector.py` or `dispatch_signal_ratio.py`.
+
+### `count_htype_by_sector.py`
+Aggregates htype counts per sector × mediatype across all `dctype_sparte*.csv`
+files. Adds human-readable labels from `data/ddbedm/ddbedm-htype.csv`.
+
+- **Input**: `output/dctype_sparte*.csv`, `data/ddbedm/ddbedm-htype.csv`
+- **Output**: `output/htype_by_sector.csv`
+  (columns: sector, sector_label, mediatype, htype, htype_label, count)
+- **Usage**: `python scripts/count_htype_by_sector.py`
+
+### `dispatch_signal_ratio.py`
+**Step 1 of corpus-driven transformation design** (ADR D0). For each sector ×
+mediatype stratum, computes the share of records carrying htype only / dc:type
+only / both / neither. The dominant signal per stratum determines dispatch
+priority in the transform.
+
+- **Input**: `output/dctype_sparte*.csv`
+- **Output**: `output/dispatch_signal_ratio.csv`
+  (columns: sector, sector_label, mediatype, total, htype_only, htype_only_pct,
+  dctype_only, dctype_only_pct, both, both_pct, neither, neither_pct)
+- **Usage**: `python scripts/dispatch_signal_ratio.py`
+- **Notes**: mt007 (NOT DIGITIZED) is included in counts but excluded from
+  dispatch priority decisions — it always maps to `mocho:Manifestation`.
+
+### `top10_dctype_by_sector.py`
+For each sector × mediatype, aggregates dc:type rows across htypes and emits
+the top-10 dc:types by summed count.
+
+- **Input**: `output/dctype_sparte*.csv`
+- **Output**: `output/top10_dctype_by_sector.csv`
+  (columns: sector, mediatype, htypes, dc_types, count, rdf_type_w, rdf_type_m,
+  notes, mapped)
+- **Usage**: `python scripts/top10_dctype_by_sector.py`
+
+---
+
 ## Transform pipeline (run in order)
 
 ### `transform_edm_to_mocho.py`
 Reference transform: DDB-EDM JSONL → mocho-aligned N-Triples + JSON-LD.
-Decisions documented in `notes/transform-adr.md` (D1–D12).
+Decisions documented in `notes/transform-adr.md` (D0) and `notes/transform-script-adr.md` (D1–D14).
 
 - **Input**: `data/items-all-goethe-faust.json`, `data/ids-all-goethe-faust.txt`,
-  `output/alignment_ddbedm_mocho.csv`, `output/lookup_htype_doco_rico.csv`
+  `output/alignment_ddbedm_mocho.csv`, `output/config/lookup_htype_doco_rico.csv`
 - **Output**: `output/mocho-goethe-faust.nt`, `output/mocho-goethe-faust.jsonld`,
   `output/transform_stats.json`
 - **Usage**: `python transform_edm_to_mocho.py [--jsonl FILE] [--ids FILE] [--limit N]`
@@ -115,7 +167,7 @@ Validates the dc:type dispatch table by sampling records per (mediatype, sector)
 cell, running the three-level lookup (exact → any-sector → any-mediatype → D9
 fallback) against `lookup_dctype_to_class.csv`, and reporting the assigned class.
 
-- **Input**: `data/items-all-goethe-faust.json`, `output/lookup_dctype_to_class.csv`
+- **Input**: `data/items-all-goethe-faust.json`, `output/config/lookup_dctype_to_class.csv`
 - **Output**: `output/dctype_dispatch_sample.csv`, `output/dctype_dispatch_summary.csv`
 - **Usage**: `python scripts/sample_type_dispatch.py [--sample-size N]`
 - **Notes**: 76.0% matched (no fabio classes emitted); Photo 100% exact;

@@ -1,6 +1,6 @@
 # Purpose: Profile all non-edm JSON key paths across DDB item records.
 #          Produces a CSV of unique (sector, mediatype, chain, description) rows
-#          to identify direct paths for mocho:sector and mocho:mediatype extraction.
+#          to identify direct paths for mocho:sector and mocho:mediaType extraction.
 # Usage:   python scripts/profile_json_keys.py [--input FILE] [--output FILE]
 # Inputs:  data/items-excerpt-1000.json (default) or any DDB items JSON array
 # Outputs: output/edm_json_key_profile.csv

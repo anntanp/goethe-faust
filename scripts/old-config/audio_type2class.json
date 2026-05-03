@@ -348,7 +348,7 @@
     },
     "Tonaufnahme": {
         "remarks": "Usual Topics: Tierstimme, Industriegeräusche, Lesung, Interview",
-        "sector": 2,
+        "sector": null,
         "en": "Audio Recording",
         "subj": false,
         "dnb": "Schallaufzeichnung",
