@@ -2,16 +2,82 @@
 
 **Date**: 2026-04-29  
 **Status**: In progress  
-**Supersedes**: `transform-plan.md`, `transform-script-plan.md`, `transform-edm2mocho-plan.md`, `entity-property-mapping-plan.md`  
+**Supersedes**: `transform-plan.md`, `transform-edm2mocho-plan.md`, `entity-property-mapping-plan.md`  
+**Co-maintained with**: `transform-script-plan.md` (implementation detail) — `transform-script-plan.md §0` is authoritative for pipeline architecture; this document's §0–§1 must stay in sync.  
 **Related**: `transform-adr.md` (D0), `transform-script-adr.md` (D1–D14), `entity-property-mapping.md`, `transform-writeup.md`
+
+---
+
+## 0. Architecture
+
+The transformation has two orthogonal problems that should stay separated:
+
+1. **Class dispatch** — what `rdf:type`(s) to assign, driven by sector × mediatype × htype × dc:type
+2. **Property mapping** — which predicate to emit per source key, driven by assigned class
+
+Both are already solved in data (lookup CSVs). The goal is a thin engine that reads them rather than re-encoding dispatch logic in code. Mapping corrections then require only a CSV edit.
+
+**At reference-corpus scale (115K records)**: `transform_edm_to_mocho.py` — stdlib Python, record-by-record streaming, special-case handlers called explicitly. See D1–D17 in `transform-script-adr.md`.
+
+**At full-corpus scale (27M records)**: The transform is fundamentally a series of joins — dispatch = join against class tables; property mapping = join against alignment table. Python record-by-record is too slow; SPARQL CONSTRUCT requires a triplestore and performs poorly at this scale. Use a two-stage pipeline instead (see ADR D18):
+
+```
+Stage 1 — Flatten (Python streaming, stdlib):
+  s2.sqlite (bufgz column) → cho.jsonl, agent.jsonl, webresource.jsonl,
+                                  place.jsonl, physicalthing.jsonl,
+                                  concept.jsonl, timespan.jsonl
+  ⚠ Input is sqlite/bufgz, not JSONL (D19). Sector is known from the DB.
+
+Stage 2 — Dispatch + map (DuckDB, vectorized joins):
+  cho.jsonl  + lookup_htype_doco_rico.csv
+             + lookup_dctype_to_class.csv     →  class triples (graph/mocho)
+             + alignment_ddbedm_mocho.csv     →  property triples (graph/mocho)
+  (repeat per entity type)
+  edm.RDF fields → raw EDM triples             →  graph/ddb-edm  (priority #1)
+  W-level ProvidedCHOs → GND Werk links        →  graph/work
+  PROV-O triples                               →  graph/prov
+
+Special-case handlers (Python UDFs or post-processing pass):
+  handle_subject_iri_or_literal()
+  handle_creator_uri_resolution()
+  handle_mt001_audio_group()
+  handle_mt002_webresource_typing()
+```
+
+Stage 1 is fast (no logic, just fan-out). Stage 2 runs in minutes on a single machine; DuckDB reads JSONL and CSVs natively. The `emit_mode` column in the alignment CSV (`iri`, `literal`, `dual`, `skip`) covers most property-level variants without custom code. The four output named graphs (`ddb-edm`, `mocho`, `work`, `prov`) match the reference-corpus streams in `transform-script-plan.md` §0.
 
 ---
 
 ## 1. Pipeline overview
 
-Input: `data/items-all-goethe-faust.json` (115,432 records, JSONL).  
-Output: `goethe-faust-mocho.nt` (N-Triples).  
-Script: `scripts/transform_edm_to_mocho.py`.
+**POC**: input `data/items-all-goethe-faust.json` (115,432 records, JSONL); script `scripts/transform_edm_to_mocho.py`.  
+**Full corpus**: input `s2.sqlite` (sqlite, `bufgz` column); sector known from DB at query time (D19).  
+**Outputs** — four named-graph streams (see `transform-script-plan.md` §0):
+
+| Stream | Named graph | Output file |
+|---|---|---|
+| Raw EDM | `…/graph/ddb-edm` | `<sector>-ddb-edm.nt` |
+| mocho-aligned | `…/graph/mocho` | `<sector>-mocho.nt` |
+| GND Work links | `…/graph/work` | `<sector>-work.nt` |
+| Provenance | `…/graph/prov` | `<sector>-prov.nt` |
+
+⚠ **Stale**: the earlier single-file output `goethe-faust-mocho.nt` is superseded by the four-stream model above.
+
+Reference Schema: `output/edm_field_profile.csv`
+
+| Entity type | Instances | Mapping status | Details |
+|---|---|---|---|
+| ProvidedCHO | 115,432 | ✅ done | class dispatch: §1.1; property mapping: `transform-props-mapping-plan.md`; ADR D1–D12 |
+| Agent | 115,432 | ✅ done | `transform-props-mapping-adr.md` D13; `lookup_class_prop_alignment.csv` rows 549–572 |
+| Event | 110,059 | ❌ not emitted | no standalone triples; traversed as dispatch intermediary — see §3 |
+| Place | 59,249 | ✅ label stub only | object of `dc:spatial` and `edm:currentLocation`; `prefLabel` label triple — see §4 |
+| TimeSpan | 99,930 | ✅ via dc:date / dc:issued | not emitted; date literals on CHO; class-specific predicate dispatch — see §5 |
+| WebResource | 115,432 | ✅ URI passthrough | linked via Aggregation `edm:isShownAt`; URI → `dcterms:source` on CHO — see §6 |
+| Concept | 115,432 | ☐ pending | — |
+| Aggregation | 115,432 | ✅ URI extraction | bridges CHO ↔ WebResource; emits `<cho> dcterms:source <wr-uri>` — see §7 |
+| PhysicalThing | 22,265 | ❌ deferred | htype retyping deferred; transform-adr.md D14 |
+
+
 
 ### 1.1 ProvidedCHO class assignment
 
@@ -50,10 +116,10 @@ Prefixes: `vocnet-htype: <http://ddb.vocnet.org/hierarchietyp/>`, `ric-rst: <htt
 | sparte001 Archive | * | ht033 Unterserie | — | `rico:RecordSet` + `ric-rst:Series` + `vocnet-htype:ht033` | — | — | `output/config/lookup_htype_doco_rico.csv`, `mocho/notes/archival-objects.md` |
 | sparte001 Archive | * | ht034 Archivale | — | `rico:Record` | — | — | `output/config/lookup_htype_doco_rico.csv`, `mocho/notes/archival-objects.md` |
 | sparte001 Archive | * | ht035 Teil | — | `rico:RecordPart` | — | — | `output/config/lookup_htype_doco_rico.csv`, `mocho/notes/archival-objects.md` |
-| sparte001 Archive | mt001 Audio | — | dc:type | dc:type determines class: Group A musical → `mo:MusicalManifestation`; Groups B/C non-musical → `aco:AudioManifestation`. Both added alongside htype-derived `rico:*`. | M | — | `notes/audio-type-class-mapping.md` |
+| sparte001 Archive | mt001 Audio | — | — | `aco:AudioManifestation` (also added alongside htype-derived `rico:*`) | M | — | `mocho/notes/mocho-gatherer-adr.md` §8 |
 | sparte001 Archive | mt002 Photo | — | — | `mocho:ImageManifestation` (also added alongside htype-derived `rico:*`) | M | — | — |
 | sparte001 Archive | mt003 Text | — | — | `mocho:Manifestation` (also added alongside htype-derived `rico:*`; not `rdac:C10007` — archival text is not necessarily literary) | M | — | `notes/transform-script-adr.md` D9 |
-| sparte001 Archive | mt005 Video | — | — | `ec:MediaResource` (also added alongside htype-derived `rico:*`) | M | — | `mocho/notes/mocho-gatherer-adr.md` §8 |
+| sparte001 Archive | mt005 Video | — | — | `ec:EditorialWork` (W) + `ec:MediaResource` (M) (also added alongside htype-derived `rico:*`) | W+M | — | `mocho/notes/mocho-gatherer-adr.md` §8 |
 | sparte001 Archive | mt007 Not Digitized | — | — | htype dispatch only; no media-specific class (no digital carrier) | — | — | `output/config/lookup_htype_doco_rico.csv` |
 | sparte002 Library | mt003 Text | ht001 Abschnitt | — | `doco:Section` + `rdac:C10007` "Manifestation" | M | — | `output/config/lookup_htype_doco_rico.csv` |
 | sparte002 Library | mt003 Text | ht002 Anhang | — | `doco:Appendix` + `rdac:C10007` "Manifestation" | M | — | `output/config/lookup_htype_doco_rico.csv` |
@@ -90,31 +156,24 @@ Prefixes: `vocnet-htype: <http://ddb.vocnet.org/hierarchietyp/>`, `ric-rst: <htt
 | sparte002 Library | mt003 Text | ht047 Tag | — | `doco:Part` + `rdac:C10007` "Manifestation" | M | — | `output/config/lookup_htype_doco_rico.csv` |
 | sparte002 Library | mt001 Audio | — | — | `aco:AudioManifestation` (also added alongside htype-derived class; use `mo:MusicalManifestation` instead if htype = ht022 → `mo:MusicalWork`) | M | — | `mocho/notes/mocho-gatherer-adr.md` §8 |
 | sparte002 Library | mt002 Photo | — | — | `mocho:ImageManifestation` (also added alongside htype-derived class) | M | — | `notes/image-type-class-mapping.md` §3.1 |
-| sparte002 Library | mt005 Video | — | — | `ec:MediaResource` (also added alongside htype-derived class) | M | — | `mocho/notes/mocho-gatherer-adr.md` §8 |
+| sparte002 Library | mt005 Video | — | — | `ec:EditorialWork` (W) + `ec:MediaResource` (M) (also added alongside htype-derived class) | W+M | — | `mocho/notes/mocho-gatherer-adr.md` §8 |
 | sparte002 Library | mt007 Not Digitized | — | — | htype-derived class; `rdac:C10007` "Manifestation" if no htype | M | — | `output/config/lookup_htype_doco_rico.csv` |
-| sparte003 Monument | mt002 Photo | — | — | `mocho:ImmovableWork` | W | — | — |
+| sparte003 Monument | mt002 Photo | — | — | `mocho:ImmovableWork` (W) + `mocho:ImageManifestation` (M) | W+M | — | — |
 | sparte003 Monument | mt003 Text | — | — | `mocho:ImmovableWork` + `rdac:C10007` "Manifestation" | W+M | — | — |
 | sparte003 Monument | mt001 Audio | — | — | `mocho:ImmovableWork` + `aco:AudioManifestation` | W+M | — | — |
 | sparte003 Monument | mt005 Video | — | — | `mocho:ImmovableWork` + `ec:MediaResource` | W+M | — | — |
 | sparte003 Monument | mt007 Not Digitized | — | — | `mocho:ImmovableWork` | W | — | — |
 | sparte004 Research | mt001 Audio | — | — | `aco:AudioManifestation` | M | — | ⚠ check dc:type values |
-| sparte004 Research | mt002 Photo | — | dc:type match | dc:type dispatch via `image_type2class.json` (same as sparte005/006 — `vra:Work`, `mocho:ImmovableWork`, etc.) | W or M | — | `output/config/image_type2class.json` |
-| sparte004 Research | mt002 Photo | — | unmatched | `mocho:ImageManifestation` | M | — | — |
+| sparte004 Research | mt002 Photo | — | — | `mocho:ImageManifestation` | M | — | — |
 | sparte004 Research | mt003 Text | — | — | htype-derived class (same dispatch as sparte002); `rdac:C10007` "Manifestation" if no htype | M | — | ⚠ check dc:type values |
 | sparte004 Research | mt005 Video | — | — | `ec:MediaResource` | M | — | ⚠ check dc:type values |
 | sparte004 Research | mt007 Not Digitized | — | — | `mocho:Manifestation` | M | — | ⚠ check dc:type values |
 | sparte005 Media | mt001 Audio | — | — | `aco:AudioManifestation` | M | — | `mocho/notes/mocho-gatherer-adr.md` §8 |
-| sparte005 Media | mt005 Video | — | — | `ec:MediaResource` | M | — | `mocho/notes/mocho-gatherer-adr.md` §8 |
-| sparte005 Media | mt002 Photo | — | 2D Artworks (Zeichnung, Gemälde …) | `vra:Work` | W | — | `notes/image-type-class-mapping.md` §3.1.1, `output/config/lookup_dctype_to_class.csv` |
-| sparte005 Media | mt002 Photo | — | Photo Works (Fotografie, Standfoto …) | `mocho:ImageWork` | W | — | `notes/image-type-class-mapping.md` §3.1.3, `output/config/lookup_dctype_to_class.csv` |
-| sparte005 Media | mt002 Photo | — | Architecture (Baudenkmal …) | `mocho:ImmovableWork` | W | — | `notes/image-type-class-mapping.md` §3.1.5, `output/config/lookup_dctype_to_class.csv` |
-| sparte005 Media | mt002 Photo | — | unmatched | `mocho:ImageWork` | W | — | `notes/image-type-class-mapping.md` §3.1 |
-| sparte006 Museum | mt002 Photo | — | 2D Artworks (Zeichnung, Gemälde …) | `vra:Work` | W | — | `notes/image-type-class-mapping.md` §3.1.1, `output/config/lookup_dctype_to_class.csv` |
-| sparte006 Museum | mt002 Photo | — | 3D Objects (Skulptur, Büste …) | `vra:Work` | W | — | `notes/image-type-class-mapping.md` §3.1.2, `output/config/lookup_dctype_to_class.csv` |
-| sparte006 Museum | mt002 Photo | — | Photo Works (Fotografie, Standfoto …) | `mocho:ImageWork` | W | — | `notes/image-type-class-mapping.md` §3.1.3, `output/config/lookup_dctype_to_class.csv` |
-| sparte006 Museum | mt002 Photo | — | Architecture (Baudenkmal …) | `mocho:ImmovableWork` | W | — | `notes/image-type-class-mapping.md` §3.1.5, `output/config/lookup_dctype_to_class.csv` |
-| sparte006 Museum | mt002 Photo | — | unmatched | `vra:Work` | W | — | `notes/image-type-class-mapping.md` §3.1 |
-| sparte006 Museum | * | — | — | `frbr:Manifestation` | M | — | `mocho/notes/mocho-gatherer-adr.md` §8 |
+| sparte005 Media | mt005 Video | — | — | `ec:EditorialWork` (W) + `ec:MediaResource` (M) | W+M | — | `mocho/notes/mocho-gatherer-adr.md` §8 |
+| sparte005 Media | mt002 Photo | — | — | `mocho:ImageWork` (W) + `mocho:ImageManifestation` (M) | W+M | — | `notes/transform-adr.md` §1.2 |
+| sparte006 Museum | mt002 Photo | — | — | `vra:Work` (W) + `vra:Image` (M) | W+M | — | `notes/transform-adr.md` §1.2 |
+| sparte006 Museum | mt005 Video | — | — | `ec:EditorialWork` (W) + `ec:MediaResource` (M) | W+M | — | `mocho/notes/mocho-gatherer-adr.md` §8 |
+| sparte007 Others | mt002 Photo | — | — | `mocho:ImageManifestation` | M | — | `notes/transform-adr.md` §1.2 |
 | sparte004/007 | * | — | — | `mocho:Manifestation` | M | — | `notes/transform-script-adr.md` D9 |
 | * | * | — | — | `mocho:Manifestation` (D9 fallback) | M | — | `notes/transform-script-adr.md` D9 |
 
@@ -122,190 +181,199 @@ For `rico:RecordSet` rows, `rico:hasRecordSetType` is asserted twice: `ric-rst:*
 
 dc:type dispatch uses `output/config/lookup_dctype_to_class.csv` (1,647 rows) with three-level fallback: `(mediatype, sector, dc_type_de)` → `(*, sector, dc_type_de)` → `(*, *, dc_type_de)`. When a W-slot class is assigned, `mocho:Manifestation` is **not** emitted — the Manifestation role is fulfilled by the WebResource (`mocho:ImageObject`, D12).
 
-### 1.2 Property mapping (all entity types)
+### 1.2 Work-level GND Werk lookup table
 
-For all 9 `edm.RDF` entity types: `output/alignment_ddbedm_mocho.csv` keyed by `(entity_type, json_key)` → predicate IRI; only `in_mocho=True` rows emitted. Per-type whitelists bypass the table for fan-out or wrong-level properties — see §5.4.
+When §1.1 class dispatch assigns a Work-level class (`rdac:C10001` or `mo:MusicalWork`), an additional row is written to a DuckDB lookup table for GND Werk authority file linking. This is separate from the mocho N-Triples output — it is a staging table consumed by the GND Werk linker (`link_gnd_works.py`, Phase 0).
 
----
-
-## 2. Completed work
-
-- ADR D0 accepted (`transform-adr.md`); D1–D12 accepted (`transform-script-adr.md`)
-- All lookup tables generated and verified:
-  - `output/alignment_ddbedm_mocho.csv` — complete
-  - `output/config/lookup_htype_doco_rico.csv` — complete
-  - `output/config/lookup_dctype_to_class.csv` — complete, 1,647 rows, 0 TBDs
-- Script infrastructure in place: `_extract_mediatype_sector()`, `_dctype_lookup()`, `load_dctype_map()`, `load_htype_map()`, `load_alignment()` — all written
-- ProvidedCHO and Aggregation fully mapped
-- Baseline run (2026-04-20): 44.4M triples, 115,432 records
-
----
-
-## 3. Entity type status
-
-| Entity type | Instances | Property mapping | rdf:type | Impl status |
-|---|---|---|---|---|
-| ProvidedCHO | 115,432 | alignment CSV + creator/contributor whitelists | `mocho:Manifestation` + dc:type dispatch + htype | ✅ done |
-| Aggregation | 115,432 | alignment CSV (EDM-structural `in_mocho=False` per D4) | — | ✅ done |
-| WebResource | 312,538 | creator→`rdam:P30263`; type→`rdam:P30002` (whitelists); dcTermsRights/edmRights from CSV | mt002: `mocho:ImageObject` + `rdac:C10007` | ☐ pending |
-| Agent | 422,026 | rdaa: whitelists + skos: labels + `owl:sameAs`; wrong-WEMI rows corrected | — (defer) | ☐ pending |
-| Place | 118,088 | `geo:lat/long/alt` + skos: labels + `owl:sameAs` | — (defer) | ☐ pending |
-| PhysicalThing | 55,771 | `title`→`rdaw:P10088`; `isPartOf`→`rico:includesOrIncluded` | htype dispatch only (no `mocho:Manifestation`) | ☐ pending |
-| TimeSpan | 99,930 | `begin`→`schema:startDate`; `end`→`schema:endDate` | — (defer) | ☐ pending |
-| Concept | 717,638 | `prefLabel`→`skos:prefLabel`; `notation`→`skos:notation` | `skos:Concept` + IRI-prefix dispatch | ☐ pending |
-| Event | 158,407 | all deferred (CRM not in mocho) | — | ❌ deferred |
-
----
-
-## 4. Concept entities
-
-Concept nodes in `edm.RDF.Concept[]` serve multiple roles. The `about` IRI prefix determines the role:
-
-| IRI prefix | Role | Action |
+| Field | Source path | Notes |
 |---|---|---|
-| `ddb.vocnet.org/medientyp/` | Mediatype vocab term | emit `skos:Concept` + `skos:prefLabel` + `skos:notation` |
-| `ddb.vocnet.org/sparte/` | Sector vocab term | emit `skos:Concept` + `skos:prefLabel` + `skos:notation` |
-| `ddb.vocnet.org/hierarchietyp/` | htype vocab term | skip (already declared as named individuals in mocho) |
-| GND / VIAF / other authority | Subject / agent / place ref | emit `skos:Concept` + `skos:prefLabel` if present |
-| Unknown / other | Generic controlled term | emit `skos:Concept` + available properties |
+| `dc:title` | `ProvidedCHO.title[].@value` | primary lookup key |
+| `dc:alternative` | `ProvidedCHO.alternative[].$` | multiple values; alternate lookup keys |
+| `dc:created` | `ProvidedCHO.created` | creation date |
+| `dc:creator` (URIs) | `ProvidedCHO.creator[].resource` | GND URIs only (`http://d-nb.info/gnd/…`); null or list |
+| `dc:creator` (literals) | `ProvidedCHO.creator[].$` | stored as `last, first` — GND normalized form (see §4 of `transform-props-mapping-plan.md`) |
 
-All Concept nodes: emit `rdf:type skos:Concept`. Properties `prefLabel` → `skos:prefLabel` (lang-tagged), `notation` → `skos:notation`.
+Name literal format is `last, first` — consistent with GND "Familienname, Vorname" ordering and the existing agent stub label convention.
+
+### 1.3 Property mapping (all entity types)
+
+See `notes/transform-props-mapping.plan` for per-entity-type property decisions.
 
 ---
 
-## 5. Implementation steps
+## 2. edm:Agent
 
-### 5.1 Patch alignment CSV
+### 2.1 Class dispatch
 
-**Script**: `scripts/patch_alignment_inmocho.py` (new)  
-Set `in_mocho=False` for wrong-WEMI-level rows:
-- `Agent`: `date` (keep only `rdaa:P50039`), `hasPart`, `isPartOf`, `type` — all WEMI candidates
-- `Place`: `hasPart`, `isPartOf`, `type` — all WEMI candidates
-- `PhysicalThing`: `title` candidates except `rdaw:P10088`
+Driven by `edm:Agent.type.resource` — the gndo subtype is already present in the source record:
 
-Run against `output/alignment_ddbedm_mocho.csv`; verify row counts before/after.
+| `edm:Agent.type.resource` | mocho class |
+|---|---|
+| `gndo:DifferentiatedPerson` | `mocho:Agent` |
+| `gndo:CorporateBody` | `mocho:CorporateBody` |
+| `gndo:ConferenceOrEvent` | `gndo:ConferenceOrEvent` (as-is) |
+| `gndo:Family` | `mocho:Family` |
 
-### 5.2 Wire dc:type dispatch in retype_entities()
+Current Phase 0 stub: all → `mocho:Agent`. Type-based dispatch is ready to implement without waiting for Phase 1b.
 
-Call `_dctype_lookup(mediatype, sector, dc_type_de)` inside `retype_entities()` for ProvidedCHO. Emit W-slot class instead of `mocho:Manifestation` (or M-slot class alongside it). Functions already exist — just needs to be called.
+### 2.2 Property dispatch
 
-### 5.3 mt002 WebResource typing
+Done. 24 properties mapped per `output/config/lookup_class_prop_alignment.csv` (rows 549–572). Decision: `transform-props-mapping-adr.md` D13. Script: `scripts/gen_agent_alignment_rows.py`.
 
-Inside `retype_entities()`, when `mediatype == mt002`, for each WebResource URI emit:
+Agent nodes are minted when `creator` (§4, `transform-props-mapping-plan.md`) or `contributor` (§5) values resolve to a DDB org or GND URI:
+
+```turtle
+<agent.about> a mocho:Agent ;
+              rdfs:label "..."@lang .
 ```
-<wr-uri>  rdf:type  mocho:ImageObject
-<wr-uri>  rdf:type  rdac:C10007          # RDA Manifestation
-<wr-uri>  rdam:P30001  rdact:1018        # has carrier type
-<wr-uri>  vra:imageOf  <cho-uri>
+
+Non-trivial remappings:
+
+| edm_prop | target_prop |
+|---|---|
+| `dc:identifier` | `gndo:gndIdentifier` |
+| `edm:altLabel` | `skos:altLabel` |
+| `edm:sameAs` | `owl:sameAs` |
+
+All `gndo:` demographic properties and EDM relational properties (`edm:begin`, `edm:end`, `edm:hasMet`, `edm:isRelatedTo`, `edm:wasPresentAt`) are passthrough. Domain-restricted property dispatch follows from class dispatch above — see `transform-future-plan.md §10`.
+
+---
+
+## 3. edm:Event
+
+### 3.1 Class dispatch
+
+`edm:Event` nodes are **not typed or emitted** as standalone RDF entities — CIDOC-CRM is not imported into mocho. Event nodes serve as dispatch intermediaries only.
+
+### 3.2 Role in property dispatch
+
+Event data is traversed in two contexts during ProvidedCHO transformation:
+
+**1. Contributor predicate dispatch (D3, `transform-props-mapping-adr.md`)**: The LIDO event type (`edm:Event.hasType.resource`) resolves the predicate for each `dc:contributor` value:
+
+```
+ProvidedCHO.hasMet[].resource  →  edm:Event.about
+edm:Event.hasType.resource     →  LIDO event type URI
+edm:Event.P11_had_participant[].resource  ==  contributor[].resource
+→  emit <cho> <target_prop> <contributor.resource>
 ```
 
-### 5.4 Entity-type whitelists
+Dispatch table: `output/config/lido_event_types.csv`. Key types:
 
-Add per-type whitelist dicts in `transform_edm_to_mocho.py`. Whitelisted keys bypass the alignment CSV loop entirely.
-
-**WebResource**
-
-| Key | Target predicate |
+| LIDO event type | Role |
 |---|---|
-| `creator` | `rdam:P30263` "has creator agent of manifestation" |
-| `type` | `rdam:P30002` "has media type of manifestation" |
+| lido00012 creation | creator / `rdam:P30329` |
+| lido00228 publication | publisher / `rdam:P30083` |
+| lido00007 production | producer / `rdam:P30081` |
+| lido01127 photography | photographer / `rdam:P30329` |
+| lido00224 designing | designer / `rdaw:P10051` |
+| lido00226 commissioning | commissioner / `rdaw:P10287` |
 
-**Agent**
+**2. Spatial data (`edm:Event.happenedAt`)**: 99.5% of `happenedAt` URIs duplicate `dc:spatial` on the CHO directly — no event traversal needed for place. See `data/analysis/spatial_event_overlap.csv`.
 
-| Key | Target predicate |
-|---|---|
-| `prefLabel` | `skos:prefLabel` |
-| `altLabel` | `skos:altLabel` |
-| `name` | `rdaa:P50102` |
-| `identifier` | `owl:sameAs` (if IRI) / `rdaa:P50094` (if literal) |
-| `begin` | `rdaa:P50067` |
-| `end` | `rdaa:P50068` |
-| `dateOfBirth` | `rdaa:P50067` |
-| `dateOfDeath` | `rdaa:P50068` |
-| `dateOfEstablishment` | `rdaa:P50067` |
-| `dateOfTermination` | `rdaa:P50068` |
-| `gender` | `rdaa:P50116` |
-| `biographicalInformation` | `rdaa:P50113` |
-| `professionOrOccupation` | `rdaa:P50100` |
-| `placeOfBirth` | `rdaa:P50069` |
-| `placeOfDeath` | `rdaa:P50070` |
-| `note` | `skos:note` |
-| `sameAs` | `owl:sameAs` |
-
-**Place**
-
-| Key | Target predicate |
-|---|---|
-| `prefLabel` | `skos:prefLabel` |
-| `altLabel` | `skos:altLabel` |
-| `note` | `skos:note` |
-| `sameAs` | `owl:sameAs` |
-| `lat` | `geo:lat` |
-| `long` | `geo:long` |
-| `alt` | `geo:alt` |
-
-**PhysicalThing**
-
-| Key | Target predicate |
-|---|---|
-| `title` | `rdaw:P10088` |
-| `isPartOf` | `rico:includesOrIncluded` |
-
-**TimeSpan**
-
-| Key | Target predicate |
-|---|---|
-| `begin` | `schema:startDate` |
-| `end` | `schema:endDate` |
-
-### 5.5 Concept emission
-
-Add Concept to the entity emit loop in `transform_record()`. For each Concept node:
-1. Emit `rdf:type skos:Concept`
-2. Emit `skos:prefLabel` from `prefLabel` key (lang-tagged `@de` if present)
-3. Emit `skos:notation` from `notation` key
-4. IRI-prefix check: skip htype individuals (`ddb.vocnet.org/hierarchietyp/`)
-
-### 5.6 ADR update
-
-Add D15–D1N to `notes/transform-script-adr.md` covering:
-- D13: Agent property whitelist (rdaa: namespace)
-- D14: Place property whitelist (geo: + skos: + owl:sameAs)
-- D15: WebResource.type → rdam:P30002
-- D16: PhysicalThing.isPartOf → rico:includesOrIncluded (correction from rico:isOrWasPartOf)
-- D17: TimeSpan → schema:startDate/endDate
-- D18: Concept emission (skos:Concept + IRI-prefix dispatch)
-
-### 5.7 Housekeeping
-
-- `scripts/README.md` — add `patch_alignment_inmocho.py`
-- `notes/transform-writeup.md §3` — update stale "Concepts are never emitted" statement
+**3. Temporal data (`edm:Event.occurredAt`)**: Event-specific dates (creation date, publication date) are currently not extracted separately — `dc:date` on the CHO is used instead. Typed date dispatch by LIDO event type is deferred.
 
 ---
 
-## 6. Files to modify
+## 4. edm:Place
 
-| File | Action |
-|---|---|
-| `scripts/patch_alignment_inmocho.py` | Create |
-| `scripts/transform_edm_to_mocho.py` | Modify — §5.2–5.5 |
-| `notes/transform-script-adr.md` | Modify — add D15–D18 |
-| `scripts/README.md` | Modify |
-| `notes/transform-writeup.md` | Modify — §3 |
-| `output/alignment_ddbedm_mocho.csv` | Modified by patch script |
+### 4.1 Class dispatch
+
+`edm:Place` nodes are **not typed** in Phase 0 — neither `geo:SpatialThing` nor `schema:Place` is imported into mocho. Only a label stub is emitted (see §4.2). Class typing is deferred.
+
+### 4.2 Role in property dispatch
+
+Place nodes appear as the range of two ProvidedCHO properties:
+
+- **`dc:spatial`** (§16, `transform-props-mapping-plan.md`): passthrough; no RDA/vocab equivalent for a place-as-URI; object URI used directly. 99.5% of `dc:spatial` URIs duplicate `edm:Event.happenedAt` — no event traversal is needed (see `data/analysis/spatial_event_overlap.csv`).
+- **`edm:currentLocation`** (§17, `transform-props-mapping-plan.md`): passthrough for all classes; emitted as-is.
+
+For each Place URI referenced by either property, a label stub is emitted:
+
+```
+<place-uri>  rdfs:label  "..."@lang
+```
+
+Source: `edm.RDF.Place[].prefLabel[].@value` + `.@language` (§0.2, `transform-props-mapping-plan.md`).
+
+No additional Place-level triples are emitted in Phase 0.
 
 ---
 
-## 7. Verification
+## 5. edm:TimeSpan
 
-After all steps:
+### 5.1 Class dispatch
 
-| Check | Method |
-|---|---|
-| Triple count vs 44.4M baseline | Compare `transform_stats.json` |
-| Agent: `rdaa:P50067` present | `grep rdaa/P50067 goethe-faust-mocho.nt \| head` |
-| Place: `geo:lat` present | `grep geo/wgs84.*lat goethe-faust-mocho.nt \| head` |
-| WebResource mt002: `mocho:ImageObject` + `vra:imageOf` | Sample one mt002 record |
-| Concept medientyp: `skos:Concept` + `skos:prefLabel` | `grep medientyp goethe-faust-mocho.nt \| head` |
-| PhysicalThing: `rico:includesOrIncluded` used (not `isOrWasPartOf`) | `grep includesOrIncluded goethe-faust-mocho.nt \| wc -l` |
-| Concept htype: NOT emitted (skipped) | `grep hierarchietyp goethe-faust-mocho.nt \| wc -l` → 0 |
+`edm:TimeSpan` nodes are **not typed or emitted** as standalone RDF entities — no TimeSpan class (e.g. `time:Interval`) is imported into mocho. Date values reach the output exclusively as literals on the ProvidedCHO via `dc:date` and `dc:issued`.
+
+### 5.2 Role in property dispatch
+
+TimeSpan data enters the pipeline through two CHO-level source properties:
+
+- **`dc:date`** (§6, `transform-props-mapping-plan.md`): general date literal; format varies (`"2018 (role)"`, `"18300213"`).
+- **`dc:issued`** (§7, `transform-props-mapping-plan.md`): publication year; non-standard DC term; treated as a publication date.
+
+Both are mapped **per target class** (D9, `transform-props-mapping-adr.md`):
+
+| target_class | `dc:date` → | `dc:issued` → |
+|---|---|---|
+| `rdac:C10007`, `mocho:Manifestation` | `rdam:P30278` "has date of manifestation" | `rdam:P30011` "has date of publication" |
+| `rdac:C10001` | `rdaw:P10219` "has date of work" | N/A |
+| `vra:Image` | `vra:dateCreated` | `dc:issued` |
+| `vra:Work` | `vra:dateCreated` | N/A |
+| `rico:RecordSet`, `rico:Record`, `rico:RecordPart` | `rico:creationDate` | `rico:publicationDate` |
+| `aco:*`, `mo:*`, `doco:*`, `ec:*`, `mocho:Image*`, `mocho:Immovable*` | `dc:date` | `dc:issued` |
+
+N/A rows are not emitted.
+
+The indirect path `CHO → edm:hasMet → Event → edm:occurredAt → TimeSpan` is not traversed — event-scoped date extraction (creation date vs. publication date by LIDO type) is deferred (§3.2 item 3).
+
+Source: `output/config/lookup_class_prop_alignment.csv` (dc:date and dc:issued rows).
+
+---
+
+## 6. edm:WebResource
+
+### 6.1 Class dispatch
+
+`edm:WebResource` nodes are not typed or emitted as standalone RDF entities. The WebResource URI is extracted from the Aggregation and attached to the ProvidedCHO as a `dcterms:source` object (see §7).
+
+### 6.2 Role in property dispatch
+
+The WebResource URI (`edm:WebResource.about`) is the URL of the digitised object as hosted by the providing institution. It is the target of `edm:isShownAt` on the Aggregation. No WebResource-level properties (e.g. `edm:rights`, `dc:format`) are mapped in Phase 0.
+
+---
+
+## 7. edm:Aggregation
+
+### 7.1 Class dispatch
+
+`edm:Aggregation` nodes are not typed or emitted. The Aggregation is traversed solely to extract the WebResource URI.
+
+### 7.2 Properties mapping
+
+All Aggregation properties are present on 100% of records (115,432). The Aggregation is traversed to resolve `<cho-uri>` via `aggregatedCHO`; no Aggregation-level triples are emitted.
+
+| EDM field | EDM predicate | Triple emitted on CHO | Comment |
+|---|---|---|---|
+| `about` | — (Aggregation node IRI) |  | Aggregation URI | |
+| `aggregatedCHO` | `edm:aggregatedCHO` | — (navigation to `<cho-uri>`) | |
+| `isShownAt` | `edm:isShownAt` | `<cho> dcterms:source <wr-uri>` | |
+| `isShownBy` | `edm:isShownBy` | — | |
+| `edmRights` | `edm:rights` | ❌ | "EDM Rights Statements see: http://pro.europeana.eu/web/guest/available-rights-statements"|
+| `dcTermsRights` | `dcterms:rights` | <cho> dcterms:rights <dcTermsRights.resource> > |
+| `provider` | `edm:provider` | ❌ | DDB, as the provider to Europeana |
+| `dataProvider` | `edm:dataProvider` | `<cho> edm:dataProvider <uri>` where `uri` starts with `http://www.deutsche-digitale-bibliothek.de/organization/` | |
+| `object` | `edm:object` | `<cho> foaf:thumbnail <uri>` where `uri` = `object[].resource` | |
+| `aggregator` | `edm:aggregator` | — | |
+| `hasView` | `edm:hasView` | — | |
+
+`dcterms:source` is the appropriate predicate for `isShownAt`: the WebResource is the digital surrogate at which the CHO is shown by the providing institution.
+
+Quoted comments source: https://docs.google.com/spreadsheets/d/1hpEthDrlpjVoB9RjABUS18WsQEZJ-iP6/edit?gid=497286012#gid=497286012
+
+---
+
+## 8. Completed work
+
+See `transform-props-mapping-adr.md` for all decisions (D1–D13) and `transform-script-adr.md` for implementation decisions.

@@ -1,0 +1,313 @@
+# ADR: EDM → mocho Property Mapping Decisions
+
+**Date**: 2026-05-02
+**Status**: In progress
+**Related**: `transform-adr.md` (class dispatch), `transform-script-adr.md` (implementation), `transform-props-mapping-plan.md` (full property mapping catalogue)
+
+---
+
+## Context
+
+This document records decisions about **which predicate to emit** for each EDM/DC property in `transform_edm_to_mocho.py`. Class-assignment decisions (rdf:type dispatch, htype lookup, mediatype dispatch) are in `transform-adr.md` and `transform-script-adr.md`. The decisions here govern property-level choices: which RDA/RiC-O/VRA/vocab predicate replaces or accompanies the source DC/EDM predicate, and when the source predicate is kept or skipped.
+
+All ProvidedCHOs are typed as `mocho:Manifestation` (D9, `transform-script-adr.md`). Target predicates for Manifestation-level properties use `rdam:` where a Manifestation-specific RDA property exists. For Work-level nodes produced by W+M dispatch, `rdaw:` properties are used.
+
+---
+
+## Decision 1: Subject keys — IRI correction and value-type dispatch
+
+*(Moved from `transform-script-adr.md` D6)*
+
+**Decision**: Three JSON keys carry subject data: `dcSubject`, `dcTermsSubject`, `dcTermSubject`. These are handled by a dedicated `emit_subject_triples()` function, not the generic alignment loop.
+
+**Background**: Corpus inspection revealed that `dcTermsSubject` was incorrectly mapped to `dc:subject` (`http://purl.org/dc/elements/1.1/subject`) in `alignment_ddbedm_mocho.csv`. The correct IRI is `dcterms:subject` (`http://purl.org/dc/terms/subject`). This was a derivation error in the alignment script's IRI resolution step; `dcTermSubject` (note: missing `s`) was correctly resolved to `dcterms:subject` via an explicit `OVERRIDES` entry in `align_ddbedm_to_mocho.py`. The fix was applied directly to the CSV (42 rows: `edm_prefix` `dc→dcterms`, `edm_iri` corrected).
+
+**Dispatch logic**:
+- Literal value (string or lang-tagged text) → RDA candidates for `("ProvidedCHO", "dcSubject")` — i.e. the dc:subject path.
+- IRI value (`{"resource": ...}`) → RDA candidates for `("ProvidedCHO", "dcTermSubject")` — i.e. the dcterms:subject path.
+
+**Deduplication**: `emit_subject_triples()` collects values from all three keys and deduplicates `(pred_nt, obj_nt)` pairs in a per-record set before writing. This prevents duplicate triples when the same value appears under multiple keys (occurs in ~60% of records).
+
+**Rationale**: `dc:subject` is conventionally used for uncontrolled literals; `dcterms:subject` for IRI references to controlled vocabulary terms (GND, LCSH, etc.). Value-type dispatch applies this convention without requiring agent-type knowledge.
+
+---
+
+## Decision 2: Creator → rdam:P30329 "has creator agent of manifestation"
+
+*(Moved from `transform-script-adr.md` D7; IRI corrected from P30263 → P30329)*
+
+**Decision**: `dc:creator` (json_key: `creator`) is mapped to `rdam:P30329` "has creator agent of manifestation" (`http://rdaregistry.info/Elements/m/P30329`). The alignment table's 464 Work-level candidates are bypassed.
+
+**IRI correction**: The earlier decision (D7 in `transform-script-adr.md`) incorrectly cited `rdam:P30263`. The RDA properties CSV (`mocho/output/rda_properties_rda-5.4.9.csv`) confirms `P30263` is "has reduction ratio designation" — unrelated to creator. The correct Manifestation-level generic creator property is `rdam:P30329` "has creator agent of manifestation". This correction must also be applied in `transform_edm_to_mocho.py`.
+
+**Background**: The alignment table produces 464 candidates for `creator`, all at the Work WEMI level — including highly specific properties such as "has production company", "has plaintiff corporate body". These are correct sub-properties of Work-level creator properties but wrong for a generic `dc:creator` value where the role is unknown. The WEMI level is determined by D9 (`transform-script-adr.md`): all ProvidedCHOs are `mocho:Manifestation` → creator property must be Manifestation-level.
+
+**Typed subproperties** (Phase 1b): `rdam:P30363` (person), `rdam:P30392` (collective agent), `rdam:P30421` (corporate body), `rdam:P30450` (family) are the typed subproperties of `rdam:P30329`. These are the Phase 1b resolution path once GND agent type is resolved by `link_gnd_agents.py`.
+
+**Alternatives considered**:
+- *Emit all 464*: Semantically noisy; a Goethe letter would assert "has plaintiff corporate body" for the author. Rejected.
+- *Use rdaw:P10065 has creator agent of work*: Work-level; inconsistent with D9. Rejected.
+- *Mediatype dispatch*: Correct role remains unknown even with mediatype. Rejected for POC.
+
+**Open**: D7 does not specify whether a GND URI in `resource` should cause an `edm:Agent` node to be minted and linked, or whether a plain literal is emitted. Phase 1b GND enrichment is the intended resolution path.
+
+---
+
+## Decision 3: Contributor — LIDO event type dispatch
+
+*(Supersedes earlier draft: "keep dc:contributor". Prior rationale: no generic RDA contributor property exists; alignment table candidates were all role-specific or wrong WEMI level.)*
+
+**Decision**: The specific predicate emitted for a `dc:contributor` value is determined by the LIDO event type of the `edm:Event` in which the contributor's Agent URI participates. Resolution chain:
+
+```
+ProvidedCHO.hasMet[].resource  →  edm:Event.about
+edm:Event.hasType.resource     →  LIDO event type URI
+edm:Event.P11_had_participant[].resource  ==  contributor[].resource
+→  emit <cho> <target_prop> <contributor.resource>
+```
+
+If no matching Event is found (contributor URI absent from any Event.P11_had_participant, or contributor is label-only), fall back to `dc:contributor`.
+
+**Corpus evidence** (`data/items-excerpt-1000.json`, 519 contributor values):
+- URI match → DDB org / GND: 325 (62.6%) — reliable join key
+- Label match → DDB org / GND: 174 (33.5%) — lower than creator; label is not a reliable fallback
+
+See `notes/corpus-analysis.md §1b` and `data/analysis/contributor_agent_coverage.csv`.
+
+**LIDO event type → target predicate dispatch** (`output/config/lido_event_types.csv`):
+
+| LIDO event type | label | rdam_prop (M) | rdaw_prop (W) | vra_image | vra_work | rico_prop |
+|---|---|---|---|---|---|---|
+| lido00012, eventType/creation | creation | `rdam:P30329` | `rdaw:P10065` | `vra:creator` | `vra:creator` | `rico:hasCreator` |
+| lido00228, eventType/publication | publication | `rdam:P30083` | `dc:contributor` | `dc:contributor` | `dc:contributor` | `rico:hasPublisher` |
+| lido00007 | production | `rdam:P30081` | `dc:contributor` | `vra:producer` | `vra:producer` | `dc:contributor` |
+| lido01127 | photography | `rdam:P30329` | `rdaw:P10056` | `vra:photographer` | `vra:photographer` | `dc:contributor` |
+| lido00224 | designing | `dc:contributor` | `rdaw:P10051` | `vra:designer` | `vra:designer` | `dc:contributor` |
+| lido00226 | commissioning | `dc:contributor` | `rdaw:P10287` | `dc:contributor` | `dc:contributor` | `dc:contributor` |
+| lido00003 | unknown_event | `dc:contributor` | `dc:contributor` | `dc:contributor` | `dc:contributor` | `dc:contributor` |
+| all others | — | `dc:contributor` | `dc:contributor` | `dc:contributor` | `dc:contributor` | `dc:contributor` |
+
+For aco, mo, doco, ec, and mocho subclasses: `dc:contributor` in all rows (no role-specific property in those vocabularies).
+
+**RDA property notes**:
+- `rdam:P30329` "has creator agent of manifestation" — used for photography as well as creation: no Manifestation-level photographer property exists in RDA; the photographer is the creator agent of the photographic manifestation.
+- `rdam:P30081` "has producer agent of unpublished manifestation" — covers fabricated/inscribed artifacts (manuscripts, prints, artworks); no W-level RDA production-agent property exists, hence `dc:contributor` fallback for `rdaw_prop`.
+- `rdam:P30083` "has publisher agent" — publication is inherently Manifestation-level in RDA; no W-level equivalent, hence `dc:contributor` fallback.
+- `rdaw:P10051` "has designer agent", `rdaw:P10287` "has commissioning agent" — W-level only; no M-level equivalents, hence `dc:contributor` for `rdam_prop`.
+- `rdaw:P10056` "has photographer agent of work" — W-level specific property for photography.
+
+**Source**: `output/config/lido_event_types.csv`; RDA labels verified from `mocho/output/rda_properties_rda-5.4.9.csv`; VRA properties from `mocho/output/mapping_vra_to_rda.csv`; RiC-O properties from `mocho/output/mapping_rico_to_rda.csv`.
+
+---
+
+## Decision 4: dc:title — dual-emit with class-specific title predicate
+
+**Decision**: For every `dc:title` value, two triples are emitted: `dc:title` (universal cross-WEMI handle) and a class-specific title predicate determined by the target class of the node. The class-specific predicate is looked up from `output/config/lookup_class_prop_alignment.csv` (columns: `edm_class, target_class, wemi, edm_prop, target_prop`). When `target_prop == edm_prop`, only `dc:title` is emitted.
+
+**Class-specific predicates for dc:title**:
+
+| target_class | wemi | target_prop | Notes |
+|---|---|---|---|
+| `rdac:C10007`, `mocho:Manifestation` | M | `rdam:P30134` "has title of manifestation" | rdac classes only |
+| `rdac:C10001`, `mocho:ImmovableWork`, `mocho:ImageWork`, `ec:EditorialWork` | W | `rdaw:P10088` "has title of work" | rdac-derived mocho classes |
+| `vra:Image`, `vra:Work` | M/W | `vra:title` | VRA Core has its own title property |
+| `rico:RecordSet`, `rico:Record`, `rico:RecordPart` | — | `rico:hasOrHadTitle` | RiC-O; WEMI not applicable |
+| `aco:AudioManifestation`, `mocho:ImageManifestation`, `mo:Musical*`, `ec:MediaResource`, `doco:*` | M | `dc:title` | No vocab-specific title property; dc:title only |
+
+**Rationale**: `dc:title` is declared `rdfs:subPropertyOf dct:title` in mocho's RDA→DCT map (`mapRDA2DCT.ttl`), and `rdam:P30134` / `rdaw:P10088` are declared `rdfs:subPropertyOf dct:title` in the same file. QLever has no OWL reasoner, so the entailment is not materialized from subPropertyOf chains — dual-emit at ingest time is the practical approach. `dc:title` serves as the cross-WEMI query handle; the class-specific property serves WEMI-aware consumers.
+
+**W+M nodes**: For W+M assignments (e.g. `rdac:C10001` + `rdac:C10007` from sparte002 Library htype dispatch), `dc:title` + `rdaw:P10088` goes on the Work node; `dc:title` + `rdam:P30134` goes on the Manifestation node — both derived from the same source `dc:title` value.
+
+**Source**: `output/config/lookup_class_prop_alignment.csv` — currently populated for `dc:title`; extended as other properties are decided.
+
+---
+
+## Decision 5: Five predicate remappings — DC/EDM → RDA Manifestation-level
+
+**Decision**: The following five source predicates are replaced by their Manifestation-level RDA equivalents. Source rationale: `mocho/output/mapping_dct_to_rda.csv` provides the DC → RDA sub-property mapping; Manifestation-level (`rdam:`) properties are selected per D9.
+
+| json_key | Source predicate | Target predicate | Label |
+|---|---|---|---|
+| `title` | `dc:title` | `rdam:P30134` | "has title of manifestation" |
+| `description` | `dc:description` | `rdam:P30137` | "has note on manifestation" |
+| `date` | `dc:date` | `rdam:P30278` | "has date of manifestation" |
+| `issued` | `dc:issued` | `rdam:P30278` | "has date of manifestation" (same as `date`) |
+| `isPartOf` | `dcterms:isPartOf` | `rdam:P30020` | "is part of manifestation" |
+
+Note: `dc:title` dual-emit is governed by D4. For `description`, `date`, `issued`, `isPartOf` the source predicate is replaced, not dual-emitted — these do not have the cross-WEMI querying motivation that title has.
+
+---
+
+## Decision 8: dcterms:alternative — class-specific variant title dispatch
+
+**Decision**: `dcterms:alternative` is mapped per target class:
+
+| target_class | wemi | target_prop |
+|---|---|---|
+| `rdac:C10007`, `mocho:Manifestation` | M | `rdam:P30128` "has variant title of manifestation" |
+| `rdac:C10001` | W | `rdaw:P10086` "has variant title of work" |
+| all others | — | `dcterms:alternative` (keep as-is) |
+
+**Rationale**: `rdam:P30128` is the correct Manifestation-level variant title property; `rdam:P30131` "has abbreviated title" is too narrow — it implies a formally abbreviated form (e.g. acronym), not a generic alternative title. `rdaw:P10086` is the Work-level parallel. No equivalent found in VRA, RiC-O, MO, or ACO; those classes keep the source predicate. RiC-O uses `rico:hasOrHadTitle` for all title types distinguished by `rico:hasTitleType`, but emitting the same predicate for both main title and alternative would conflate them without type context — keeping `dcterms:alternative` is the safer fallback.
+
+**Closes open question from D5.**
+
+**Source**: `output/config/lookup_class_prop_alignment.csv` (dcterms:alternative rows).
+
+---
+
+## Decision 9: dc:date and dc:issued — class-specific date predicate dispatch
+
+**Decision**: `dc:date` and `dc:issued` are mapped per target class via `output/config/lookup_class_prop_alignment.csv`. The mapping is:
+
+| target_class | wemi | dc:date | dc:issued |
+|---|---|---|---|
+| `rdac:C10007`, `mocho:Manifestation` | M | `rdam:P30278` "has date of manifestation" | `rdam:P30011` "has date of publication" |
+| `mocho:ImageManifestation`, `mocho:ImmovableWork`, `mocho:ImageWork` | M/W | `dc:date` | `dc:issued` |
+| `rdac:C10001` | W | `rdaw:P10219` "has date of work" | N/A |
+| `aco:AudioManifestation`, `mo:MusicalManifestation`, `mo:MusicalWork` | M/W | `dc:date` | `dc:issued` |
+| `doco:*`, `ec:MediaResource`, `ec:EditorialWork` | M/W | `dc:date` | `dc:issued` |
+| `vra:Image` | M | `vra:dateCreated` | `dc:issued` |
+| `vra:Work` | W | `vra:dateCreated` | N/A |
+| `rico:RecordSet`, `rico:Record`, `rico:RecordPart` | — | `rico:creationDate` | `rico:publicationDate` |
+
+**N/A** rows are not emitted — no meaningful publication date applies at Work level in RDA or VRA.
+
+**Rationale**:
+- `rdam:P30278` and `rdam:P30011` are the correct Manifestation-level RDA properties. `dc:date` is a generic date; `dc:issued` specifically denotes publication — `rdam:P30011` "has date of publication" captures this distinction.
+- `rdac:C10001` Work nodes receive `rdaw:P10219` "has date of work" for `dc:date`; `dc:issued` is not applicable at Work level.
+- VRA classes use `vra:dateCreated` (approximate to `rdaw:P10219`; confirmed in `mapping_vra_to_rda.csv`).
+- RiC-O classes use `rico:creationDate` / `rico:publicationDate` — native archival date properties with no RDA equivalent (confirmed "no match" in `mapping_rico_to_rda.csv`).
+- All other classes (aco, mo, doco, ec, mocho subclasses) keep the source predicate — no date property exists in their respective vocabularies.
+
+**Closes open question from D5.**
+
+**Source**: `output/config/lookup_class_prop_alignment.csv` (dc:date and dc:issued rows).
+
+---
+
+## Decision 7: Creator URI resolution — emit dcterms:creator when Agent is DDB org or GND
+
+**Decision**: When a `ProvidedCHO.creator` value resolves to an `edm:Agent` whose
+`about` URI is a DDB organization URI (`http://www.deutsche-digitale-bibliothek.de/organization/…`)
+or a GND URI (`http://d-nb.info/gnd/…`), emit:
+
+```turtle
+<cho> dcterms:creator <agent.about> .
+```
+
+Resolution is attempted in two steps, in priority order:
+
+1. **URI match**: `creator[].resource` == `agent[].about` — direct IRI equality.
+2. **Label match**: `creator[].$` matched against any `agent[].prefLabel[].$` after
+   comma-order normalization (`"Lastname, Firstname"` ↔ `"Firstname Lastname"`).
+   Applied only when step 1 fails or `creator[].resource` is absent.
+
+If neither step resolves, fall back to the `rdam:P30329` plain-literal path (D2).
+
+**Corpus evidence** (`data/items-excerpt-1000.json`, 488 creator values):
+- URI match → DDB org / GND: 301 (61.7%)
+- Label match → DDB org / GND (after normalization): 269 (55.1%)
+
+See `notes/corpus-analysis.md §1` and `data/analysis/creator_agent_coverage.csv`.
+
+**Rationale**: An IRI-valued `dcterms:creator` provides a stable node for GND/VIAF/Wikidata `owl:sameAs` alignment and a target for Phase 1b `rdaa:` property attachment (`link_gnd_agents.py`), without requiring a separate reconciliation step. `dcterms:creator` is used for the IRI triple (agent as entity); `rdam:P30329` is reserved for the Manifestation-scoped plain-literal fallback (D2).
+
+**Closes open question from D2.**
+
+---
+
+## Decision 10: dc:description — class-specific note predicate dispatch
+
+**Decision**: `dc:description` is mapped per target class via `output/config/lookup_class_prop_alignment.csv`:
+
+| target_class | wemi | target_prop |
+|---|---|---|
+| `rdac:C10007`, `mocho:Manifestation` | M | `rdam:P30137` "has note on manifestation" |
+| `rdac:C10001` | W | `rdaw:P10330` "has note on work" |
+| `vra:Image`, `vra:Work` | M/W | `vra:description` |
+| `rico:RecordSet`, `rico:Record`, `rico:RecordPart` | — | `rico:note` |
+| all others (aco, mo, doco, ec, mocho subclasses) | M/W | `dc:description` |
+
+**Rationale**:
+- `rdam:P30137` is the most generic Manifestation-level note property in `mapping_dct_to_rda.csv`; no narrower property (e.g. `rdaw:P10109` "has summary") is warranted without knowing whether the source value is a summary, a content note, or a scope note.
+- `rdaw:P10330` is the Work-level parallel for `rdac:C10001` W nodes.
+- VRA classes use `vra:description` — a free-text description field with no structural RDA equivalent (confirmed "no match" in `mapping_vra_to_rda.csv`).
+- RiC-O classes use `rico:note` — native archival note property with no RDA equivalent (confirmed "no match" in `mapping_rico_to_rda.csv`).
+- All other classes (aco, mo, doco, ec, mocho subclasses) have no description property in their respective vocabularies; the source predicate `dc:description` is retained.
+
+**Source**: `mapping_dct_to_rda.csv`, `mapping_vra_to_rda.csv`, `mapping_rico_to_rda.csv`.
+
+---
+
+## Decision 12: dcterms:isPartOf — class-specific part-relation dispatch
+
+**Decision**: `dcterms:isPartOf` is mapped per target class via `output/config/lookup_class_prop_alignment.csv`:
+
+| target_class | wemi | target_prop |
+|---|---|---|
+| `rdac:C10007`, `mocho:Manifestation` | M | `rdam:P30020` "is part of manifestation" |
+| `rdac:C10001` | W | `rdaw:P10019` "is part of work" |
+| `vra:Image`, `vra:Work` | M/W | `vra:partOf` |
+| `rico:RecordSet`, `rico:Record`, `rico:RecordPart` | — | `dcterms:isPartOf` |
+| all others (aco, mo, doco, ec, mocho subclasses) | M/W | `dcterms:isPartOf` |
+
+**Corpus range**: Values are DDB item IRIs (`http://www.deutsche-digitale-bibliothek.de/item/…`), DDB internal UUIDs, or plain literals (~1%, collection name strings). Corpus sample: 611 values in 1,000 records.
+
+**Rationale**:
+- `rdam:P30020` "is part of manifestation" and `rdaw:P10019` "is part of work" are the direct RDA equivalents at M and W level respectively (confirmed in `mapping_dct_to_rda.csv`).
+- VRA uses `vra:partOf` — maps to `rdaw:P10019` per `mapping_vra_to_rda.csv`; applies to both `vra:Image` and `vra:Work`.
+- RiC-O: `rico:isOrWasComponentOf` domain is restricted to `rico:Instantiation`, not `rico:RecordResource` — no clean native equivalent for the Record hierarchy. `dcterms:isPartOf` is kept as a valid queryable fallback.
+- All other classes have no part-relation property in their vocabularies; `dcterms:isPartOf` is kept.
+
+**Source**: `mapping_dct_to_rda.csv`, `mapping_vra_to_rda.csv`, `mapping_rico_to_rda.csv`.
+
+---
+
+## Decision 11: dcterms:language — re-cast LOC URI as rico:Language for RiC-O classes
+
+**Decision**: For RiC-O target classes (`rico:RecordSet`, `rico:Record`, `rico:RecordPart`), `dcterms:language` is emitted using `rico:hasOrHadLanguage`. The LOC ISO 639-2 URI (e.g. `http://id.loc.gov/vocabulary/iso639-2/ger`) is additionally typed as `rico:Language` via a stub triple.
+
+**Emitted triples** (RiC-O classes only):
+```turtle
+<cho>     rico:hasOrHadLanguage <http://id.loc.gov/vocabulary/iso639-2/ger> .
+<loc-uri> a rico:Language .
+```
+
+For all non-RiC-O classes, `dcterms:language <LOC-URI>` is kept as-is (range `dcterms:LinguisticSystem`).
+
+**Rationale**: The LOC ISO 639-2 URIs are authoritative language identifiers. Asserting `rico:Language` on them is a projection into mocho's class space, consistent with how GND URIs are asserted as `mocho:Agent` stubs. The LOC MADS/RDF definition (`madsrdf:Language`) does not prevent additional typing. This enables well-typed `rico:hasOrHadLanguage` triples without minting new URIs.
+
+**dc:language** (literal): kept as `dc:language` for all classes including RiC-O. `rico:hasOrHadLanguage` expects a `rico:Language` instance (a URI), not a literal — the literal form has no direct RiC-O equivalent. The literal is retained as a cross-WEMI query handle.
+
+**WEMI mismatch note**: Both `dc:language` and `dcterms:language` are Expression-level in RDA (`rdae:P20006` "has language of expression"); no `rdam:` equivalent exists. Language triples are emitted on the Manifestation node as a pragmatic shortcut until Expression nodes are minted. See `transform-future-plan.md §2`.
+
+---
+
+## Decision 13: edm:Agent — property mapping to mocho:Agent stub
+
+**Decision**: All `edm:Agent` nodes are typed as `mocho:Agent` (Phase 0 stub). Properties are mapped per `output/config/lookup_class_prop_alignment.csv` (rows 549–572), generated by `scripts/gen_agent_alignment_rows.py`.
+
+**Source namespace note**: DDB uses `gndo:` directly for agent-demographic properties (`gndo:dateOfBirth`, `gndo:dateOfDeath`, `gndo:dateOfEstablishment`, `gndo:dateOfTermination`, `gndo:gender`, `gndo:placeOfBirth`, `gndo:placeOfDeath`, `gndo:professionOrOccupation`, `gndo:biographicalOrHistoricalInformation`). These are passthrough — `edm_prop == target_prop`. The `align_ddbedm_to_mocho.py` script incorrectly resolved these as `edm:` (fallback for properties absent from `ddbedm_1.0.ttl`); the correct namespace is confirmed from `~/Documents/claude/mocho/ontology/gnd_20251218.ttl`.
+
+**Non-trivial remappings**:
+
+| edm_prop | target_prop | Reason |
+|---|---|---|
+| `dc:identifier` | `gndo:gndIdentifier` | GND number literal → GND-native identifier property |
+| `edm:altLabel` | `skos:altLabel` | `edm:altLabel rdfs:subPropertyOf skos:altLabel`; promote to superclass |
+| `edm:sameAs` | `owl:sameAs` | EDM declares these equivalent |
+
+**Passthrough properties** (no transformation): `gndo:dateOfBirth`, `gndo:dateOfDeath`, `gndo:dateOfEstablishment`, `gndo:dateOfTermination`, `gndo:gender`, `gndo:placeOfBirth`, `gndo:placeOfDeath`, `gndo:professionOrOccupation`, `gndo:biographicalOrHistoricalInformation`, `skos:prefLabel`, `skos:note`, `foaf:name`, `dc:date`, `dc:type`, `dct:hasPart`, `dct:isPartOf`, `edm:begin`, `edm:end`, `edm:hasMet`, `edm:isRelatedTo`, `edm:wasPresentAt`.
+
+**Domain mismatches deferred**: `gndo:dateOfEstablishment` / `gndo:dateOfTermination` apply to `gndo:CorporateBody` and `gndo:ConferenceOrEvent`, not `gndo:DifferentiatedPerson`. `edm:begin` / `edm:end` are generic temporals that map to type-specific gndo date properties. Both are emitted as-is under `mocho:Agent` until agent type is resolved. See `transform-future-plan.md §10`.
+
+**Source**: `~/Documents/claude/mocho/ontology/gnd_20251218.ttl` (property domain analysis); `output/config/lookup_class_prop_alignment.csv`.
+
+---
+
+## Decision 6: aggregationEntity and hierarchyPosition — skip, no triple emitted
+
+**Decision**: `ddb:aggregationEntity` (boolean string `"true"`/`"false"`) and `ddb:hierarchyPosition` (zero-padded sort key, e.g. `"000000000014848"`) are not emitted as triples.
+
+**Rationale**: Both are DDB-internal fields with no mocho/RDA equivalent. `aggregationEntity` is a grouping flag used by the DDB portal UI. `hierarchyPosition` is a sort key for the display hierarchy. Neither carries semantic content useful to downstream graph consumers.

@@ -8,11 +8,11 @@
 
 ## 0. Pipeline overview
 
-For each sector, the pipeline reads a sqlite database (`objs` table, `bufgz` column — gzip-compressed cortex JSON), decompresses each record, and writes to four named-graph output streams. The sector is known at query time from the database (one DB per sector).
+Two input modes: POC uses `data/items-all-goethe-faust.json` (JSONL); full corpus reads `s2.sqlite` (`objs` table, `bufgz` column — gzip-compressed cortex JSON). In both cases the pipeline writes to four named-graph output streams.
 
 ```
-sector.sqlite  (table: objs, columns: id, bufgz, …)
-      │  ← optional: filter by list of DDB object IDs
+s2.sqlite  (table: objs, columns: id, bufgz, …)        ← full corpus
+      │  ← filter by list of DDB object IDs (optional)
       │
       ▼  decompress bufgz → cortex JSON
       │
@@ -45,7 +45,7 @@ Named graph names follow kebab-case URL path conventions (D20).
 
 mt007 (NOT DIGITIZED) records are **skipped** in streams [2] and [3] — no mocho or work triples emitted (D15). Stream [1] still emits raw EDM triples for mt007 records (faithfulness over filtering).
 
-**Reference corpus**: `goethe-faust/` uses `data/items-all-goethe-faust.json` (JSONL, 115,432 records) for rapid iteration. JSONL and sqlite/bufgz carry identical cortex JSON structure; field paths in §1 apply to both. D1 governs the JSONL pass; D19 governs the sqlite pass.
+**POC**: `data/items-all-goethe-faust.json` (JSONL, 115,432 records) for rapid iteration. JSONL and sqlite/bufgz carry identical cortex JSON structure; field paths in §1 apply to both. D1 governs the JSONL pass; D19 governs the `s2.sqlite` pass.
 
 ### 0.1 Debug mode
 
@@ -66,10 +66,10 @@ When `--debug` is set, after the main run also produce:
 
 | Mode | File | Format | Records | Path |
 |---|---|---|---|---|
-| Reference corpus | `items-all-goethe-faust.json` | JSONL (one JSON object per line) | 115,432 | `data/items-all-goethe-faust.json` |
-| Full corpus | `<sector>.sqlite` | sqlite (`objs` table; `bufgz` column = gzip-compressed cortex JSON) | varies | one DB per sector |
+| POC | `items-all-goethe-faust.json` | JSONL (one JSON object per line) | 115,432 | `data/items-all-goethe-faust.json` |
+| Full corpus | `s2.sqlite` | sqlite (`objs` table; `bufgz` column = gzip-compressed cortex JSON) | ~27M | — |
 
-In both modes the cortex JSON structure is identical. The sector is inferred from `provider-info.domains[0]` in JSONL mode and known from the DB filename in sqlite mode. Key fields consumed:
+In both modes the cortex JSON structure is identical. The sector is inferred from `provider-info.domains[0]` in JSONL mode and known from the DB at query time in sqlite mode. Key fields consumed:
 
 | Field | JSONL path | Used by |
 |---|---|---|
@@ -94,33 +94,9 @@ Dispatch is **not uniform**. Per sector × mediatype stratum, `transform-adr.md`
 | **htype first** | Apply htype lookup → DoCO/RiC-O class(es); then add the fixed mediatype class on top regardless of htype result |
 | **dc:type only** | Assign fixed class(es) directly (no htype lookup); or apply `audio_type2class.json` for AUDIO strata |
 
-### 2.1 Dispatch table (from `transform-adr.md` §1.2)
+### 2.1 Dispatch table
 
-| Sector × Mediatype | Mode | htype source | Fixed / config class(es) |
-|---|---|---|---|
-| sparte001 × AUDIO | htype first | `lookup_htype_doco_rico.csv` | + `aco:AudioManifestation` (M) |
-| sparte001 × IMAGE | htype first | `lookup_htype_doco_rico.csv` | + `mocho:ImageManifestation` (M) |
-| sparte001 × TEXT | htype first | `lookup_htype_doco_rico.csv` | + `mocho:Manifestation` (M) |
-| sparte001 × VIDEO | htype first | `lookup_htype_doco_rico.csv` | + `ec:EditorialWork` (W) + `ec:MediaResource` (M) |
-| sparte002 × AUDIO | htype first | `lookup_htype_doco_rico.csv` | + `aco:AudioManifestation` (M) |
-| sparte002 × IMAGE | htype first | `lookup_htype_doco_rico.csv` | + `mocho:ImageManifestation` (M) |
-| sparte002 × TEXT | htype first | `lookup_htype_doco_rico.csv` | + `mocho:Manifestation` (M) |
-| sparte002 × VIDEO | htype first | `lookup_htype_doco_rico.csv` | + `ec:EditorialWork` (W) + `ec:MediaResource` (M) |
-| sparte003 × IMAGE | dc:type only | — | fixed: `mocho:ImmovableWork` (W) + `mocho:ImageManifestation` (M) |
-| sparte004 × AUDIO | dc:type only | — | `audio_type2class.json` |
-| sparte004 × IMAGE | dc:type only | — | fixed: `mocho:ImageManifestation` (M) |
-| sparte004 × TEXT | htype first | `lookup_htype_doco_rico.csv` | + `mocho:Manifestation` (M) |
-| sparte005 × AUDIO | dc:type only | — | `audio_type2class.json` → `aco:AudioManifestation` (M) |
-| sparte005 × IMAGE | dc:type only | — | fixed: `mocho:ImageWork` (W) + `mocho:ImageManifestation` (M) |
-| sparte005 × TEXT | htype first | `lookup_htype_doco_rico.csv` | + `mocho:Manifestation` (M) |
-| sparte005 × VIDEO | dc:type only | — | fixed: `ec:EditorialWork` (W) + `ec:MediaResource` (M) |
-| sparte006 × AUDIO | dc:type only | — | fixed: `aco:AudioManifestation` (M) |
-| sparte006 × IMAGE | dc:type only | — | fixed: `vra:Work` (W) + `vra:Image` (M) |
-| sparte006 × TEXT | htype first | `lookup_htype_doco_rico.csv` | + `mocho:Manifestation` (M) |
-| sparte006 × VIDEO | dc:type only | — | fixed: `ec:EditorialWork` (W) + `ec:MediaResource` (M) |
-| sparte007 × IMAGE | dc:type only | — | fixed: `mocho:ImageManifestation` (M) |
-| sparte007 × TEXT | htype first | `lookup_htype_doco_rico.csv` | + `mocho:Manifestation` (M) |
-| *(fallback)* | — | — | `mocho:Manifestation` (D9) |
+→ See **`transform-revised-plan.md` §1.1** for the canonical, up-to-date dispatch table (sparte × mediatype × htype → domain class). The table previously inlined here has been superseded by that version.
 
 ### 2.2 htype first — two-layer logic
 

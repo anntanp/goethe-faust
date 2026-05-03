@@ -126,6 +126,7 @@ This constraint is realised in `output/config/image_type2class.json` (D11,
 | sparte005 Media Library × IMAGE | dc:type only | fixed: `mocho:ImageWork` (W) + `mocho:ImageManifestation` (M) | htype absent in all records; too many unique dc:types — default to `mocho:ImageManifestation` |
 | sparte005 Media Library × TEXT | htype first | `output/config/lookup_htype_doco_rico.csv` → `mocho:Manifestation` (M) | htype vocabulary is bounded; dc:type open and only partially observed in 115k-record snapshot of 27M DDB objects |
 | sparte005 Media Library × VIDEO | dc:type only | fixed: `ec:EditorialWork` (W) + `ec:MediaResource` (M) | htype absent in all records |
+| sparte006 Museum × TEXT | htype first | `output/config/lookup_htype_doco_rico.csv` → `mocho:Manifestation` (M) | htype present in some records; absent → `mocho:Manifestation` |
 | sparte006 Museum × AUDIO | dc:type only | fixed: `aco:AudioManifestation` (M) | htype absent in all records |
 | sparte006 Museum × IMAGE | dc:type only | fixed: `vra:Work` (W) + `vra:Image` (M) | htype absent in all records; too many unique dc:types — default to `mocho:ImageManifestation` |
 | sparte006 Museum × VIDEO | dc:type only | fixed: `ec:EditorialWork` (W) + `ec:MediaResource` (M) | htype absent in all records |
@@ -190,7 +191,19 @@ Run: `scripts/validate_dispatch.py` → `output/dispatch_validation.csv` (2026-0
 | **fallback D9** | **42** |
 | mt007 skipped | 42,360 |
 
-**Total dispatched**: 73,030 records (63.3% of corpus). **Fallback D9**: 42 records — likely sparte006 Museum TEXT and other small unaccounted strata not yet in §1.2. To investigate: run `grep dispatch_rule=fallback output/dispatch_validation.csv` to identify the sector × mediatype combinations.
+**mt007 skipped by sector**:
+
+| Sector | mt007 records |
+|---|---|
+| sparte001 Archive | 21,745 |
+| sparte002 Library | 20,335 |
+| sparte006 Museum | 203 |
+| sparte004 Research | 53 |
+| sparte003 Monument | 15 |
+| sparte005 Media Library | 9 |
+| **Total** | **42,360** |
+
+**Total dispatched**: 73,072 records (63.3% of corpus). **Fallback D9**: 42 records — likely sparte006 Museum TEXT and other small unaccounted strata not yet in §1.2. To investigate: run `grep dispatch_rule=fallback output/dispatch_validation.csv` to identify the sector × mediatype combinations.
 
 ---
 
@@ -441,8 +454,8 @@ The WebResource URI is derived from `binaries.binary[].local_pathname` (or
 (`primary: true`) is emitted per record. If `binaries.binary` is null or empty,
 no triple is emitted.
 
-`mocho:mimeType` is distinct from `mocho:mediatype`:
-- `mocho:mediatype` → vocnet-mtype concept IRI (`vocnet-mtype:mt002`) — semantic category
+`mocho:mimeType` is distinct from `mocho:mediaType`:
+- `mocho:mediaType` → vocnet-mtype concept IRI (`vocnet-mtype:mt002`) — semantic category
 - `mocho:mimeType` → string literal (`"image/jpeg"`) — technical format identifier
 
 ### Non-EDM fields reference table
@@ -454,4 +467,14 @@ transform-side bridging:
 |---|---|---|---|
 | `binaries.binary[].mimetype` | `mocho:mimeType` | DataProperty / xsd:string | On WebResource; primary binary only; null if no digital file |
 | `edm.RDF.Agent[].type.resource` (sector) | `mocho:sector` | ObjectProperty / skos:Concept | Resolved via `provider-info.domains` lookup; see D9 |
-| `edm.RDF.Concept[].about` (mediatype) | `mocho:mediatype` | ObjectProperty / skos:Concept | From flat Concept list in `edm.RDF.Concept[]`; see D9 |
+| `edm.RDF.Concept[].about` (mediatype) | `mocho:mediaType` | ObjectProperty / skos:Concept | From flat Concept list in `edm.RDF.Concept[]`; see D9 |
+
+---
+
+## D14 — PhysicalThing.hierarchyType: deferred
+
+**Decision**: `retype_cho()` handles `ProvidedCHO` only. `PhysicalThing` entities (55,771 records, 48.3% coverage) also carry `hierarchyType` but are not retyped in this pass.
+
+**Rationale**: PhysicalThing is an EDM modelling artefact for physical carrier description; its rdf:type mapping requires a separate alignment decision (likely CIDOC-CRM or LRMoo). Skipping it does not affect the correctness of the ProvidedCHO output.
+
+**Consequence**: `PhysicalThing.hierarchyType` will appear in the unmatched keys stats. This is expected and documented.

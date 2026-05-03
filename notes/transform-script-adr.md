@@ -2,7 +2,7 @@
 
 **Date**: 2026-04-14  
 **Status**: Accepted  
-**Related**: `transform-adr.md` (D0 — design), `mocho/notes/alignment-ddbedm-mocho-adr.md`
+**Related**: `transform-adr.md` (D0 — design), `transform-props-mapping-adr.md` (property decisions — D6/D7/D8 moved there), `mocho/notes/alignment-ddbedm-mocho-adr.md`
 
 ---
 
@@ -95,17 +95,7 @@ htype codes are counted in `objects_missing_specific_type` in stats output.
 
 ## Decision 4: PhysicalThing.hierarchyType skipped this pass
 
-**Decision**: `retype_cho()` handles `ProvidedCHO` only. `PhysicalThing`
-entities (55,771 records, 48.3% coverage) also carry `hierarchyType` but are
-not retyped in this pass.
-
-**Rationale**: The scope of this POC is the CHO graph. PhysicalThing is an
-EDM modelling artefact for physical carrier description; its rdf:type mapping
-requires a separate alignment decision (likely CIDOC-CRM or LRMoo). Skipping
-it does not affect the correctness of the ProvidedCHO output.
-
-**Consequence**: `PhysicalThing.hierarchyType` will appear in the unmatched
-keys stats. This is expected and documented.
+→ Moved to **`transform-adr.md` D14**.
 
 ---
 
@@ -125,108 +115,19 @@ Turtle prefix compression is valuable for human-readable hand-authored files.
 
 ## Decision 6: Triple subject keys — IRI correction + value-type dispatch
 
-**Decision**: Three JSON keys carry subject data: `dcSubject`, `dcTermsSubject`,
-`dcTermSubject`. These are handled by a dedicated `emit_subject_triples()`
-function, not the generic alignment loop.
-
-**Background**: Corpus inspection revealed that `dcTermsSubject` was
-incorrectly mapped to `dc:subject` (`http://purl.org/dc/elements/1.1/subject`)
-in `alignment_ddbedm_mocho.csv`. The correct IRI is `dcterms:subject`
-(`http://purl.org/dc/terms/subject`). This was a derivation error in the
-alignment script's IRI resolution step; `dcTermSubject` (note: missing `s`) was
-the one correctly resolved to `dcterms:subject` via an explicit `OVERRIDES` entry
-in `align_ddbedm_to_mocho.py`. The fix was applied directly to the CSV (42 rows:
-`edm_prefix` `dc→dcterms`, `edm_iri` corrected).
-
-**Dispatch logic**:
-- Literal value (string or lang-tagged text) → RDA candidates for
-  `("ProvidedCHO", "dcSubject")` — i.e. the dc:subject path.
-- IRI value (`{"resource": ...}`) → RDA candidates for
-  `("ProvidedCHO", "dcTermSubject")` — i.e. the dcterms:subject path.
-
-**Deduplication**: `emit_subject_triples()` collects values from all three keys
-and deduplicates `(pred_nt, obj_nt)` pairs in a per-record set before writing.
-This prevents duplicate triples when the same value appears under multiple keys
-(occurs in ~60% of records).
-
-**Rationale**: `dc:subject` is conventionally used for uncontrolled literals;
-`dcterms:subject` for IRI references to controlled vocabulary terms (GND, LCSH,
-etc.). Value-type dispatch applies this convention without requiring agent-type
-knowledge. The per-record set dedup is cheap (reset each record) and removes
-the problem at the source.
+→ **Moved to `transform-props-mapping-adr.md` D1.**
 
 ---
 
 ## Decision 7: Creator fan-out — whitelist to Manifestation-level creator property
 
-**Decision**: `dc:creator` (json_key: `creator`) is mapped to a single RDA
-property: `rdam:P30263 has creator agent of manifestation`
-(`http://rdaregistry.info/Elements/m/P30263`). The alignment table's 464
-Work-level candidates are bypassed.
-
-**Background**: The alignment table produces 464 candidates for `creator`,
-all at the Work WEMI level — including highly specific properties such as
-"has production company", "has plaintiff corporate body", "has appellee
-corporate body". These are correct sub-properties of Work-level creator
-properties in the RDA hierarchy but are wrong for a generic `dc:creator` value
-where the creator role is unknown.
-
-The choice of WEMI level is determined by D9: since all ProvidedCHOs are typed
-as `mocho:Manifestation`, the creator property should be at the Manifestation
-level. `rdam:P30263` is present in mocho (confirmed in `mocho-full.owl`).
-
-**Note on alignment CSV**: `rdam:P30263` was found in `alignment_ddbedm_mocho.csv`
-under `dc:format` with the wrong label "has reduction ratio designation" — a
-DC→RDA map derivation error (P30263 has no semantic relation to dc:format).
-The erroneous row was removed from both `alignment_ddbedm_mocho.csv` and the
-upstream `mocho/output/mapping_dct_to_rda.csv`.
-
-**Alternatives considered**:
-- *Emit all 464*: Semantically very noisy; a Goethe letter would assert
-  "has plaintiff corporate body" for the author. Rejected.
-- *Use rdaw:P10065 has creator agent of work*: Work-level; inconsistent with
-  the Manifestation typing of ProvidedCHO (D9). Rejected.
-- *Use mediatype dispatch*: Route to specific properties based on the record's
-  mediatype Concept IRI. Adds complexity; correct role remains unknown even
-  with mediatype. Rejected for POC.
-
-**Rationale**: `rdam:P30263` is the generic Manifestation-level creator property,
-consistent with the `mocho:Manifestation` base type assigned to all ProvidedCHOs
-(D9). Specific role properties should be emitted only after GND agent enrichment
-(Phase 1b) resolves the creator's function.
+→ **Moved to `transform-props-mapping-adr.md` D2.** Note: IRI corrected from `rdam:P30263` to `rdam:P30329` "has creator agent of manifestation".
 
 ---
 
 ## Decision 8: Contributor fan-out — keep dc:contributor as-is
 
-**Decision**: `dc:contributor` (json_key: `contributor`) is emitted using the
-original `dc:contributor` predicate
-(`http://purl.org/dc/elements/1.1/contributor`). No RDA property is used.
-
-**Background**: The alignment table produces 360 candidates for `contributor`,
-spread across Expression (293), Manifestation (50), Item (16), and Work (1)
-WEMI levels. The single Work-level candidate is "has academic supervisor" —
-semantically wrong as a default. The Expression-level candidates are all specific
-performer roles (conductor, actor, dancer, etc.). No generic "has contributor
-agent" superclass exists in mocho's current import.
-
-**Alternatives considered**:
-- *Whitelist generic RDA property*: No suitable candidate found. `P20052` in
-  the alignment table is incorrectly mapped as "has recordist agent" (a
-  derivation error in the DC→RDA map). Rejected.
-- *Emit all 360*: Semantically noisy; a 19th-century correspondence bundle
-  would assert "has dancer agent" for each addressee. Rejected.
-- *Skip contributor entirely*: Loses the contributor link for 26.2% of records
-  until Phase 1b. Rejected in favour of keeping the DC predicate.
-- *Mediatype dispatch*: Route to Manifestation-level properties by mediatype
-  (e.g. `mt003 Text → rdam:P30328 has contributor agent of text`). Adds
-  complexity and is still wrong for mixed-media records. Rejected for POC.
-
-**Rationale**: `dc:contributor` is a valid, well-understood predicate. Keeping
-it preserves the contributor link in the output graph without asserting a
-specific role that cannot be determined from the DC value alone. The output is
-not mocho-RDA aligned for this field, but it is correct and queryable. Phase 1b
-GND agent enrichment will replace this with typed RDA role triples.
+→ **Moved to `transform-props-mapping-adr.md` D3.**
 
 ---
 
@@ -254,37 +155,18 @@ GND agent enrichment will replace this with typed RDA role triples.
 
 ---
 
-## Decision 9: Every ProvidedCHO is typed as mocho:Manifestation
+## Decision 9: mocho:Manifestation as fallback type for ProvidedCHO
 
-**Decision**: `retype_cho()` unconditionally emits
-`<cho_uri> rdf:type mocho:Manifestation` for every ProvidedCHO. Where a
-`hierarchyType` code is present and maps to a DoCO or RiC-O class, that class
-is emitted as an additional, more specific rdf:type. The `edm:ProvidedCHO`
-fallback type is not emitted.
+**Decision**: `mocho:Manifestation` is the fallback `rdf:type` for any ProvidedCHO not matched by the sector × mediatype dispatch table (`transform-adr.md §1.2`). The `edm:ProvidedCHO` type is not emitted. Where a `hierarchyType` code maps to a DoCO or RiC-O class, that class is accumulated alongside the mediatype class (see D10).
 
-**Rationale**: `edm:ProvidedCHO` is an EDM modelling artefact describing the
-role of the entity within an EDM Aggregation, not an ontological type for the
-object itself. In the mocho/WEMI model, DDB items — regardless of media type,
-institutional sector, or structural position — represent cultural heritage
-objects as provided by an institution, which maps to the Manifestation level of
-the WEMI hierarchy. `mocho:Manifestation` is therefore the correct base type
-for all ProvidedCHOs.
+*Note*: the earlier formulation ("unconditionally emitted for every ProvidedCHO") is superseded by `transform-adr.md §1.2`, which assigns domain-specific classes (e.g. `rdac:C10007`, `aco:AudioManifestation`, `vra:Image`, `rico:RecordSet`) per sector × mediatype stratum. `mocho:Manifestation` is emitted only when no stratum matches (~42 records, 0.04% of corpus).
 
-The DoCO or RiC-O class (where present) is a specialisation of this base type,
-describing the structural or archival nature of the object within its
-Manifestation. Emitting both types allows SPARQL queries to match either the
-general Manifestation class or the specific structural class.
+**Rationale**: `edm:ProvidedCHO` is an EDM modelling artefact, not an ontological type. DDB items map to the Manifestation level of the WEMI hierarchy — the carrier as held and provided by an institution. `mocho:Manifestation` is therefore the correct base/fallback type. Domain-specific subclasses (D11, D12) refine this where sector and mediatype allow.
 
 **Alternatives considered**:
-- *Keep `edm:ProvidedCHO` as fallback*: Preserves EDM provenance but asserts
-  an EDM structural class in the mocho graph. Rejected: mixes EDM and mocho
-  semantics in a way that misleads downstream consumers.
-- *Omit rdf:type for pending/missing htype*: Leaves ~22,475 records (19.5%)
-  with no class. Rejected: untyped nodes are harder to query and do not reflect
-  the known WEMI alignment.
-- *Type as mocho:Work instead*: A DDB item could be argued to be a Work. Rejected:
-  the ProvidedCHO represents the object as held and provided — the carrier level
-  — which is Manifestation, not the abstract Work.
+- *Keep `edm:ProvidedCHO` as fallback*: Mixes EDM and mocho semantics. Rejected.
+- *Omit rdf:type when no stratum matches*: Leaves fallback records untyped. Rejected.
+- *Type as mocho:Work instead*: ProvidedCHO represents the carrier level, not the abstract Work. Rejected.
 
 ---
 
@@ -513,6 +395,106 @@ updated with group classifications and WEMI-slot class assignments per
 `notes/audio-type-class-mapping.md`.
 
 **Reference**: `notes/audio-type-class-mapping.md` §1–2.
+
+---
+
+## Decision 17: dc:date normalization — compact date expansion and range split
+
+**Decision**: Before emitting `rdam:P30278`, apply two normalizations to each `dc:date` value:
+
+1. **Compact date expansion**: YYYYMMDD strings (8 digits, no separators) are reformatted to ISO 8601: `"18300213"` → `"1830-02-13"`.
+2. **Range split**: ISO interval strings of the form `"begin/end"` are split on `/`; two `rdam:P30278` triples are emitted, one per part. Example: `"1915-01-01/1920-12-31"` → `rdam:P30278 "1915-01-01"` + `rdam:P30278 "1920-12-31"`.
+
+Both normalizations apply equally to `dc:issued` values.
+
+**Not in scope**: Role-annotated dates (`"2018 (Fotografische Aufnahme)"`) are emitted as-is. The role string is deferred — it may link to `edm:Event.hasType` but requires a separate decision.
+
+**Corpus basis** (`notes/corpus-analysis.md §2`, 115,432 records): compact dates and range splits together account for ~17% of records with dates. `edm:TimeSpan.begin/.end` (98.2% match rate against `dc:date`) are the structured source of truth; these normalizations align `dc:date` literals to the same form.
+
+**Implementation**: `normalize_date(s)` — detect 8-digit string → reformat; detect `/` → split and return list. Called in `emit_date_triples()` before writing.
+
+---
+
+## Decision 18: Two-stage pipeline for full-corpus scale (27M records)
+
+**Decision**: For the full DDB corpus (27M records), replace the single Python
+streaming script with a two-stage pipeline:
+
+1. **Flatten pass** (Python, stdlib): one streaming pass over the JSONL, fan-out
+   nested entity arrays into per-entity-type flat JSONL files (`cho.jsonl`,
+   `agent.jsonl`, `webresource.jsonl`, `place.jsonl`, `physicalthing.jsonl`,
+   `concept.jsonl`, `timespan.jsonl`). No dispatch logic in this pass.
+
+2. **Dispatch + map pass** (DuckDB): for each flat JSONL file, join against the
+   lookup CSVs and alignment table using SQL. Assemble N-Triple strings as SQL
+   expressions; write directly to `.nt` via `COPY ... TO`. DuckDB reads JSONL and
+   CSV natively; joins are vectorized and process 27M rows in minutes on a single
+   machine (`pip install duckdb`, no server).
+
+Special-case handlers that require conditional logic (IRI vs. literal dispatch,
+GND resolution, dual-emit with class-specific predicates) are implemented as
+DuckDB Python UDFs or a thin post-processing pass — not embedded in the SQL.
+
+**Supersedes D2** (stdlib-only) for the full-corpus pipeline. D2 remains in
+effect for `transform_edm_to_mocho.py` (reference corpus, rapid iteration).
+
+**Alternatives rejected**:
+- *Python multiprocessing*: linear speedup with cores but still slow per-record;
+  output merging adds complexity; I/O-bound above ~10 cores.
+- *SPARQL CONSTRUCT*: requires loading all data into a triplestore first; SPARQL
+  conditional logic is clunky; known to be slow at this scale.
+- *Polars/pandas vectorized*: per-record fan-out (one record → many triples of
+  variable structure) doesn't fit the DataFrame model naturally; verbose for
+  nested arrays.
+
+**Rationale**: Class dispatch and property mapping are joins. DuckDB is a
+columnar query engine designed for exactly this workload — large-file joins
+against lookup tables — with no server overhead. The flatten pass keeps Stage 2
+simple (no `UNNEST` chains on deeply nested structures). The lookup tables already
+exist as CSVs; no data migration is needed.
+
+---
+
+## Decision 19: Full-corpus input — sqlite/bufgz sector database
+
+**Decision**: Two input modes exist:
+- **POC**: `data/items-all-goethe-faust.json` (JSONL, 115,432 records). Governed by D1.
+- **Full corpus**: `s2.sqlite` (`objs` table, `bufgz` column — gzip-compressed cortex JSON, ~27M records). Sector is known from the DB at query time; no per-record sector detection is needed.
+
+**Supersedes D1** for the full-corpus (`s2.sqlite`) path. D1 remains in effect for the POC JSONL path.
+
+**Rationale**: `s2.sqlite` is the production storage format used by `gemea/scripts/py/export_ddb.py`. Reading it directly avoids a JSONL export step. The cortex JSON structure inside `bufgz` is identical to the JSONL records, so all downstream field paths (D3, §1 of `transform-script-plan.md`) apply unchanged.
+
+---
+
+## Decision 20: Named graph naming convention — kebab-case URL paths
+
+**Decision**: Named graph local names follow kebab-case URL path conventions: `ddb-edm`, `mocho`, `work`, `prov`. Full IRIs: `http://gemea.ddb.de/graph/<name>`.
+
+| Graph | IRI | Content |
+|---|---|---|
+| `ddb-edm` | `…/graph/ddb-edm` | Raw EDM triples — faithful round-trip of the cortex JSON `edm.RDF` payload |
+| `mocho` | `…/graph/mocho` | mocho-aligned triples — class dispatch + property mapping |
+| `work` | `…/graph/work` | GND Work entity links for W-level ProvidedCHOs (Phase 1b) |
+| `prov` | `…/graph/prov` | Two-layer PROV-O provenance per `ddbedm-prov-o-plan.md` |
+
+**Rationale**: Kebab-case is consistent with OpenAPI path conventions and existing GeMeA graph names (e.g. `gnd-enrichment`). The `ddb-edm` graph is emitted as priority #1 — a faithful baseline from which `mocho` and `work` graphs can be re-derived or verified. Separating raw EDM from aligned mocho triples allows independent re-runs of the alignment step without re-ingesting source data.
+
+---
+
+## Decision 21: Debug mode — parquet snapshot + 100-record sample + per-record named files
+
+**Decision**: When `--debug` is passed, the script additionally produces:
+
+1. **Parquet snapshot** (`debug/<sector>-raw.parquet`): all cortex JSON fields before any transform — for DuckDB inspection and field-coverage verification.
+2. **100-record sqlite sample** (`debug/<sector>-sample-100.sqlite`): 100 randomly sampled rows from the source DB, same schema — for portable hand-inspection and unit test fixtures.
+3. **Per-record named files** (for the 100 sampled records):
+   - `debug/<graphname>-<ddb-object-id>.nt` and `.ttl` for each output stream
+   - `debug/<ddb-object-id>.jsonld` for the mocho graph only
+
+File naming: `<graphname>` ∈ `{ddb-edm, mocho, work, prov}`; `<ddb-object-id>` is the DDB item identifier string (e.g. `224BB273RJDT6WN7GAIRV4AJ5ES5YPC5`).
+
+**Rationale**: The three debug artifacts serve different inspection needs. The Parquet snapshot enables DuckDB queries across all 100 records (field coverage, value distributions). The sqlite sample is a self-contained fixture for writing unit tests without the full sector DB. The per-record named files allow triple-by-triple inspection and diff between graphs for a single object — the most direct way to verify dispatch and alignment correctness before running at full scale.
 
 ---
 
