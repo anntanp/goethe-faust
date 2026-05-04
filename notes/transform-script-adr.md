@@ -469,16 +469,16 @@ exist as CSVs; no data migration is needed.
 
 ## Decision 20: Named graph naming convention — kebab-case URL paths
 
-**Decision**: Named graph local names follow kebab-case URL path conventions: `ddb-edm`, `mocho`, `work`, `prov`. Full IRIs: `http://gemea.ddb.de/graph/<name>`.
+**Decision**: Named graph local names are `ddbedm`, `mocho`, `work`, `prov`. Full IRIs: `https://gemea.ise.fiz-karlsruhe.de/graph/<name>`.
 
 | Graph | IRI | Content |
 |---|---|---|
-| `ddb-edm` | `…/graph/ddb-edm` | Raw EDM triples — faithful round-trip of the cortex JSON `edm.RDF` payload |
+| `ddbedm` | `…/graph/ddbedm` | Raw EDM triples — faithful round-trip of the cortex JSON `edm.RDF` payload |
 | `mocho` | `…/graph/mocho` | mocho-aligned triples — class dispatch + property mapping |
 | `work` | `…/graph/work` | GND Work entity links for W-level ProvidedCHOs (Phase 1b) |
 | `prov` | `…/graph/prov` | Two-layer PROV-O provenance per `ddbedm-prov-o-plan.md` |
 
-**Rationale**: Kebab-case is consistent with OpenAPI path conventions and existing GeMeA graph names (e.g. `gnd-enrichment`). The `ddb-edm` graph is emitted as priority #1 — a faithful baseline from which `mocho` and `work` graphs can be re-derived or verified. Separating raw EDM from aligned mocho triples allows independent re-runs of the alignment step without re-ingesting source data.
+**Rationale**: `ddbedm` is consistent with the `urn:ddbedm:` URN convention used throughout the PROV-O graph (D12). The `ddbedm` graph is emitted as priority #1 — a faithful baseline from which `mocho` and `work` graphs can be re-derived or verified. Separating raw EDM from aligned mocho triples allows independent re-runs of the alignment step without re-ingesting source data.
 
 ---
 
@@ -492,9 +492,116 @@ exist as CSVs; no data migration is needed.
    - `debug/<graphname>-<ddb-object-id>.nt` and `.ttl` for each output stream
    - `debug/<ddb-object-id>.jsonld` for the mocho graph only
 
-File naming: `<graphname>` ∈ `{ddb-edm, mocho, work, prov}`; `<ddb-object-id>` is the DDB item identifier string (e.g. `224BB273RJDT6WN7GAIRV4AJ5ES5YPC5`).
+File naming: `<graphname>` ∈ `{ddbedm, mocho, work, prov}`; `<ddb-object-id>` is the DDB item identifier string (e.g. `224BB273RJDT6WN7GAIRV4AJ5ES5YPC5`).
 
 **Rationale**: The three debug artifacts serve different inspection needs. The Parquet snapshot enables DuckDB queries across all 100 records (field coverage, value distributions). The sqlite sample is a self-contained fixture for writing unit tests without the full sector DB. The per-record named files allow triple-by-triple inspection and diff between graphs for a single object — the most direct way to verify dispatch and alignment correctness before running at full scale.
+
+---
+
+## Decision 22: N-Quads output + mocho-graph CHO URI minting
+
+**Decision**: Output format changes from N-Triples (`.nt`) to N-Quads (`.nq`). Every emitted line includes the named graph IRI as the fourth element:
+
+```
+<subject> <predicate> <object> <graph-iri> .
+```
+
+For records assigned to the mocho graph, the CHO subject URI is minted as:
+
+```
+https://gemea.ise.fiz-karlsruhe.de/mocho/<object_id>
+```
+
+where `<object_id>` is the 32-character DDB identifier extracted by the existing `get_object_id()` function. One `owl:sameAs` triple is emitted per record in the mocho graph, linking the minted URI to the original DDB URI. Agent, Place, and WebResource entities retain their original URIs — no minting.
+
+**Cross-reference**: Full rationale in `transform-adr.md D15` (four named-graph stream architecture, URI minting scope).
+
+---
+
+## Decision 23: Aggregation traversal — three triples emitted on CHO
+
+**Decision**: The `edm:Aggregation` block is traversed to emit exactly three predicate–object pairs on the CHO subject. All other Aggregation fields are ignored.
+
+| Aggregation field | Emit |
+|---|---|
+| `isShownAt.resource` | `<cho> dcterms:source <wr-uri>` |
+| `dataProvider[].resource` (URI starts with `http://www.deutsche-digitale-bibliothek.de/organization/`) | `<cho> edm:dataProvider <uri>` |
+| `object[].resource` | `<cho> foaf:thumbnail <uri>` |
+| `aggregatedCHO.resource` | Navigation only — resolves `<cho-uri>`; no triple |
+| `about`, `isShownBy`, `edmRights`, `provider`, `aggregator`, `hasView` | Not emitted |
+
+Dispatch rows already in `output/config/lookup_class_prop_alignment.csv` (rows 572–575). Source: `transform-revised-plan.md §7.2`.
+
+---
+
+## Decision 24: edm:Place label stub
+
+**Decision**: For each `edm:Place` URI referenced by `dc:spatial` or `edm:currentLocation` on the CHO, emit one stub triple into the mocho graph:
+
+```
+<place-uri> rdfs:label "..."@lang
+```
+
+Source path: `edm.RDF.Place[].prefLabel[].@value` + `.@language`. No `rdf:type` triple; no other Place-level triples in Phase 0.
+
+Dispatch row in `output/config/lookup_class_prop_alignment.csv` row 576 (`skos:prefLabel → rdfs:label`). Source: `transform-revised-plan.md §4.2`.
+
+---
+
+## Decision 25: LIDO contributor predicate dispatch
+
+**Decision**: Supersedes D8 ("keep dc:contributor as-is"). The target predicate for each contributor is resolved via the LIDO event type linked to the contributor's agent URI.
+
+Traversal chain:
+
+```
+ProvidedCHO.hasMet[].resource
+  → edm:Event.about (matches contributor URI)
+  → edm:Event.hasType.resource
+  → LIDO type URI
+  → target predicate (via lido_event_types.csv)
+```
+
+Lookup table: `output/config/lido_event_types.csv`. Fallback when no matching Event is found: `dc:contributor`. Only applies when the contributor URI resolves to an `edm:Agent` in the record.
+
+Full decision: `transform-props-mapping-adr.md D3`. Traversal chain details: `transform-revised-plan.md §3.2`.
+
+---
+
+## Decision 26: Work-level GND Werk staging output
+
+**Decision**: When class dispatch assigns a W-slot class (`rdac:C10001` or `mo:MusicalWork`), the transform writes a staging row to a separate DuckDB table for `link_gnd_works.py`. This output is independent of the N-Quads streams.
+
+Staging row fields:
+
+| Field | Source path | Notes |
+|---|---|---|
+| `dc_title` | `ProvidedCHO.title[].$ or .@value` | Primary lookup key |
+| `dc_alternative` | `ProvidedCHO.alternative[].$ or .@value` | List; may be empty |
+| `dc_created` | `ProvidedCHO.created[].$ or .@value` | Date string; not emitted as mocho triple |
+| `creator_uris` | `ProvidedCHO.creator[].resource` | List of GND URIs; may be null |
+| `creator_literals` | `ProvidedCHO.creator[].$` | Stored as `last, first` for lobid-gnd name matching |
+
+The DuckDB table path is passed via `--werk-staging` CLI flag. Source: `transform-revised-plan.md §1.2`.
+
+---
+
+## Decision 27: Bare-ID URI minting for malformed `about` values
+
+**Context**: Some `edm.RDF.*.about` values (and `.resource` cross-references) contain only the bare 32-character DDB internal ID rather than a full HTTP URI. `px.NamedNode()` rejects bare strings — minting is required before any triple can be emitted.
+
+**Decision**: Apply the same scheme used in `export_ddb.py §4.3`:
+
+| Entity type | Minting rule | Example |
+|---|---|---|
+| `ProvidedCHO` | `http://www.deutsche-digitale-bibliothek.de/item/<id>` | `…/item/225LOCJZSZLTA4DCUBFIHG72SPN7JTQZ` |
+| All others (`Aggregation`, `Agent`, `Event`, `Place`, `WebResource`, …) | `urn:ddbedm:<ClassName>:<id>` | `urn:ddbedm:Agent:O5XUSBA7IPKSXYUTN6EQNWK62BQRF7GN` |
+
+Detection: value does not start with `http` or `urn`.
+
+For `.resource` cross-references, the target entity type is resolved from a per-record lookup of all `about` values built before traversal begins.
+
+**Rationale**: `ProvidedCHO` bare IDs are DDB item identifiers — the canonical DDB item URI scheme (`…/item/<id>`) is the correct dereferenceable form and aligns with the `owl:sameAs` link emitted in the mocho graph. All other entity types have no canonical HTTP URI, so the `urn:ddbedm:` scheme encodes both the namespace and the entity class, making the source unambiguous without requiring a dereferenceable endpoint. Consistent with `export-s2-plan.md §4.3`.
 
 ---
 

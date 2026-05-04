@@ -471,6 +471,31 @@ transform-side bridging:
 
 ---
 
+## D15 — Output format: N-Quads; mocho-graph CHO URI minting
+
+**Decision**: Output is N-Quads (`.nq`), not N-Triples. Each line includes the named graph IRI as the fourth element. In the `mocho` named graph, each ProvidedCHO is assigned a minted GeMeA URI instead of the original DDB URI:
+
+```
+https://gemea.ise.fiz-karlsruhe.de/mocho/<object_id>
+```
+
+A `owl:sameAs` triple links the minted URI to the original DDB URI and is emitted in the `mocho` graph:
+
+```
+<https://gemea.ise.fiz-karlsruhe.de/mocho/<object_id>>  owl:sameAs  <original-ddb-uri> .
+```
+
+URI minting applies to **ProvidedCHO only**. Agent, Place, and WebResource nodes retain their original URIs (GND URIs, DDB place URIs, provider URLs).
+
+**Rationale**:
+- N-Quads are required to carry named graph provenance in a single file stream — QLever and most SPARQL 1.1 stores ingest named graphs from N-Quads natively.
+- Minting a GeMeA URI for the CHO separates the enriched mocho view from the raw DDB-EDM view. The `ddbedm` graph retains the original DDB URI as subject; the `mocho` graph uses the minted URI. `owl:sameAs` bridges the two.
+- Minting Agent/Place/WebResource URIs was considered and rejected: GND URIs are authoritative cross-record join keys used by Phase 1b enrichment; re-minting them would require additional `owl:sameAs` triples per entity per record (~3–4× more at 27M-record scale) with no retrieval benefit.
+
+**Implementation**: `get_object_id()` already extracts the 32-char object ID. The minted URI is constructed as `GEMEA_BASE + object_id`. All mocho-graph triples for the CHO use the minted URI as subject.
+
+---
+
 ## D14 — PhysicalThing.hierarchyType: deferred
 
 **Decision**: `retype_cho()` handles `ProvidedCHO` only. `PhysicalThing` entities (55,771 records, 48.3% coverage) also carry `hierarchyType` but are not retyped in this pass.
@@ -478,3 +503,31 @@ transform-side bridging:
 **Rationale**: PhysicalThing is an EDM modelling artefact for physical carrier description; its rdf:type mapping requires a separate alignment decision (likely CIDOC-CRM or LRMoo). Skipping it does not affect the correctness of the ProvidedCHO output.
 
 **Consequence**: `PhysicalThing.hierarchyType` will appear in the unmatched keys stats. This is expected and documented.
+
+---
+
+## D17 — Work URI minting and WEMI link pattern
+
+**Decision**: When class dispatch assigns a W-slot class (`rdac:C10001`, `mo:MusicalWork`), the Work entity in the KG is represented by a minted GeMeA Work URI — not by the GND authority URI directly. The WEMI link pattern is:
+
+```turtle
+<gemea-work-uri>  a rdac:C10001 .
+<gemea-work-uri>  mocho:hasManifestation  <gemea-cho-uri> .
+<gemea-work-uri>  skos:exactMatch         <gnd-uri> .       # only when GND lookup succeeds
+<gemea-cho-uri>   mocho:isManifestationOf <gemea-work-uri> .
+```
+
+Work URI scheme (parallel to CHO minting in D15): `https://gemea.ise.fiz-karlsruhe.de/work/<id>`, where `<id>` is a deterministic hash of the lookup key `(dc:title, dc:creator)` used by `link_gnd_works.py`. When GND lookup fails, `skos:exactMatch` is omitted; the Work URI is still minted and linked to the Manifestation, leaving a stub node for future enrichment.
+
+**Pipeline responsibility**: `transform_edm_to_mocho.py` cannot emit the WEMI link in Phase 0 — the Work URI does not exist until `link_gnd_works.py` resolves it. The transform writes the staging row to DuckDB (D26, `transform-script-adr.md`); `link_gnd_works.py` mints `<gemea-work-uri>`, runs the GND Werk lookup, and writes all Work-related triples into `graph/work`.
+
+**Alternatives considered**:
+
+*Use the GND URI directly as the Work node*: Emit `<gemea-cho-uri> mocho:isManifestationOf <gnd-uri>` and assert `<gnd-uri> a rdac:Work`. Rejected for three reasons:
+1. **Type system conflation**: GND has its own entity model (`gndo:Work`, `gndo:MusicalWork`). Asserting `rdac:Work` on the same URI mixes two type systems on an external resource GeMeA does not own. Future enrichment from lobid-gnd adds triples to the same node under GND's schema, creating a semantically ambiguous entity.
+2. **GND lookup failure leaves no Work node**: If `link_gnd_works.py` finds no GND match, the WEMI link cannot be emitted at all — no stub node is created, and the W-slot class dispatch result is lost from the KG.
+3. **Deduplication fragility**: Multiple Manifestations of the same Werk share the same GND URI, but the deduplication key (`dc:title` + `dc:creator`) may produce slightly different surface forms across records. A minted URI derived from the normalized key is stable regardless of which surface form wins.
+
+*Use `owl:sameAs` instead of `skos:exactMatch`*: `owl:sameAs` asserts full identity — all properties of `<gnd-uri>` are inherited by `<gemea-work-uri>` and vice versa under OWL semantics. This is too strong: GND's `gndo:MusicalWork` type and its bibliographic properties would be inferred on the GeMeA Work entity. `skos:exactMatch` expresses "the same concept in a different vocabulary" without triggering OWL identity closure.
+
+**Named graph**: All Work entity triples and `mocho:isManifestationOf` links are written into `graph/work` by `link_gnd_works.py`. The `graph/mocho` stream (written by `transform_edm_to_mocho.py`) contains only Manifestation-level triples; no `mocho:isManifestationOf` triple is emitted there. This separation allows `graph/work` to be regenerated independently if the GND lookup strategy changes.

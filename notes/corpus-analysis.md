@@ -434,3 +434,35 @@ VRA Core 4 `vra:measurementsSet` supports typed structured measurements (height,
 - Museum descriptions are longer than Archive/Library/Media Library (mean 321 vs ~100–317) and have a high max (20,415 chars), suggesting rich curatorial prose for some objects.
 - Archive has the largest absolute volume (72,208 values, 49,210 records) and near-complete coverage (98.0%) — descriptions are short (median 138 chars) and formulaic.
 - Library and Research have low median lengths (27 and 26 chars) suggesting many values are brief notes rather than full descriptions.
+
+---
+
+## 6. isPartOf — dcterms:isPartOf
+
+**Script**: `scripts/analyse_ispartof.py`
+**Data**: `data/analysis/ispartof_coverage.csv`
+**Corpus**: `data/items-all-goethe-faust.json` (115,432 records)
+
+### 6.1 Volume
+
+| | n | % |
+|---|---|---|
+| Records with isPartOf | 67,539 | 58.5% |
+| Total isPartOf values | 70,311 | — |
+
+### 6.2 Resource classification
+
+| Kind | n | % of values |
+|---|---|---|
+| Full DDB item URL (`…/item/<UUID>`) | 43,814 | 62.3% |
+| Bare 32-char UUID (no base URL) | 22,265 | 31.7% |
+| Label only (no resource) | 4,232 | 6.0% |
+| Other URI | 0 | 0.0% |
+
+### 6.3 Observations
+
+- 94% of values carry a resource — either full URL or bare UUID. No external authority URIs appear.
+- 62.3% use the complete `http://www.deutsche-digitale-bibliothek.de/item/<UUID>` form — directly usable as object IRI.
+- 31.7% carry only the bare 32-char UUID — requires prefixing with `http://www.deutsche-digitale-bibliothek.de/item/` at transform time to produce a valid IRI.
+- 6.0% are label-only with no resource URI — emit as `dcterms:isPartOf "label"^^xsd:string` or skip if IRI-valued triples are required.
+- Transform: normalise bare UUIDs to full URLs; emit `<cho> dcterms:isPartOf <ddb-item-uri>`.

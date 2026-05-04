@@ -16,34 +16,39 @@ s2.sqlite  (table: objs, columns: id, bufgz, …)        ← full corpus
       │
       ▼  decompress bufgz → cortex JSON
       │
-      ├── [1] edm.RDF → raw EDM triples ────────────────────────→ <sector>-ddb-edm.nt
-      │       Priority #1. Faithfully round-trips the EDM payload.   graph/ddb-edm
+      ├── [1] edm.RDF → raw EDM triples ────────────────────────→ <sector>-ddbedm.nq
+      │       Priority #1. Faithfully round-trips the EDM payload.   graph/ddbedm
       │       Baseline for provenance and future re-alignment.
       │
-      ├── [2] edm.RDF alignment → mocho triples ────────────────→ <sector>-mocho.nt
+      ├── [2] edm.RDF alignment → mocho triples ────────────────→ <sector>-mocho.nq
       │       Step 2a: class dispatch (§1.1 transform-revised-plan.md)  graph/mocho
       │       Step 2b: property mapping (transform-props-mapping-plan.md)
+      │       CHO subject: https://gemea.ise.fiz-karlsruhe.de/mocho/<object_id> (script-adr D22)
       │
-      ├── [3] GND Work entity links ──────────────────────────────→ <sector>-work.nt
-      │       W-level ProvidedCHOs → GND Werk via owl:sameAs           graph/work
-      │       Phase 1b; depends on mocho graph IRIs
+      ├── [3] Work-level GND staging ─────────────────────────────→ <sector>-werk-staging.duckdb
+      │       W-slot records only; consumed by link_gnd_works.py      (Phase 0)
+      │       Not an N-Quads stream; DuckDB table (§1.2, D26)
       │
-      └── [4] Provenance triples ──────────────────────────────────→ <sector>-prov.nt
-              Two-layer PROV-O per ddbedm-prov-o-plan.md               graph/prov
+      └── [4] Provenance triples ──────────────────────────────────→ <sector>-prov.nq
+              PROV-O Layer 1 per ddbedm-prov-o-plan.md                  graph/prov
 ```
 
-Named graph base: `http://gemea.ddb.de/`
+Named graph base: `https://gemea.ise.fiz-karlsruhe.de/`
 
-| Stream | Named graph IRI | Output file | Script |
-|---|---|---|---|
-| [1] ddb-edm | `…/graph/ddb-edm` | `<sector>-ddb-edm.nt` | `transform_edm_to_mocho.py` |
-| [2] mocho | `…/graph/mocho` | `<sector>-mocho.nt` | `transform_edm_to_mocho.py` |
-| [3] work | `…/graph/work` | `<sector>-work.nt` | `link_gnd_works.py` |
-| [4] prov | `…/graph/prov` | `<sector>-prov.nt` | `prov_edm_to_mocho.py` |
+Output filename conventions differ by run mode:
+- **POC** (`items-all-goethe-faust.json`): all N-Quads streams combined into one file (`goethe-faust.nq`); graph IRI on every line distinguishes the streams. QLever loads the single file and handles multiple named graphs natively.
+- **Full corpus** (`s2.sqlite`, per sector): one file per stream per sector — `<sector>-<stream>.nq` / `.duckdb` — so each sector can be loaded or re-run independently.
 
-Named graph names follow kebab-case URL path conventions (D20).
+| Stream | Named graph IRI | POC output | Full corpus output | Script |
+|---|---|---|---|---|
+| [1] ddbedm | `…/graph/ddbedm` | `goethe-faust.nq` (combined) | `<sector>-ddbedm.nq` | `transform_edm_to_mocho.py` |
+| [2] mocho | `…/graph/mocho` | `goethe-faust.nq` (combined) | `<sector>-mocho.nq` | `transform_edm_to_mocho.py` |
+| [3] work (staging) | — (DuckDB) | `goethe-faust-werk-staging.duckdb` | `<sector>-werk-staging.duckdb` | `transform_edm_to_mocho.py` → `link_gnd_works.py` |
+| [4] prov | `…/graph/prov` | `goethe-faust.nq` (combined) | `<sector>-prov.nq` | `transform_edm_to_mocho.py` |
 
-mt007 (NOT DIGITIZED) records are **skipped** in streams [2] and [3] — no mocho or work triples emitted (D15). Stream [1] still emits raw EDM triples for mt007 records (faithfulness over filtering).
+Named graph IRIs use base `https://gemea.ise.fiz-karlsruhe.de/graph/<name>` (`transform-script-adr.md` D20). The `urn:ddbedm:` URN scheme is for bare-ID entity minting only (`transform-script-adr.md` D27).
+
+mt007 (NOT DIGITIZED) records are **skipped** in streams [2] and [3] only — no mocho or work triples emitted (`transform-script-adr.md` D15). Streams [1] and [4] still process mt007 records: raw EDM triples (faithfulness) and provenance triples (pipeline audit trail).
 
 **POC**: `data/items-all-goethe-faust.json` (JSONL, 115,432 records) for rapid iteration. JSONL and sqlite/bufgz carry identical cortex JSON structure; field paths in §1 apply to both. D1 governs the JSONL pass; D19 governs the `s2.sqlite` pass.
 
@@ -54,11 +59,11 @@ When `--debug` is set, after the main run also produce:
 1. **Parquet snapshot**: all cortex JSON fields (pre-transform) written to `debug/<sector>-raw.parquet` for DuckDB inspection.
 2. **100-record sqlite sample**: 100 randomly sampled records extracted to `debug/<sector>-sample-100.sqlite` (same schema as source DB).
 3. **Per-record named files** (for the 100 sampled records only):
-   - `debug/<graphname>-<ddb-object-id>.nt` — N-Triples for each output stream
+   - `debug/<graphname>-<ddb-object-id>.nq` — N-Quads for each output stream
    - `debug/<graphname>-<ddb-object-id>.ttl` — Turtle (human-readable)
    - `debug/<ddb-object-id>.jsonld` — JSON-LD for the mocho graph only
 
-`<ddb-object-id>`: the DDB item identifier (e.g. `224BB273RJDT6WN7GAIRV4AJ5ES5YPC5`). `<graphname>`: one of `ddb-edm`, `mocho`, `work`, `prov`. See D21.
+`<ddb-object-id>`: the DDB item identifier (e.g. `224BB273RJDT6WN7GAIRV4AJ5ES5YPC5`). `<graphname>`: one of `ddbedm`, `mocho`, `prov`. (Debug output for the Werk staging / GND linking component is handled separately by `link_gnd_works.py`.) See D21.
 
 ---
 
@@ -79,9 +84,13 @@ In both modes the cortex JSON structure is identical. The sector is inferred fro
 | htype | `edm.RDF.ProvidedCHO.hierarchyType` | class dispatch (Step 1a) |
 | dc:type | `edm.RDF.ProvidedCHO.dcType.$` | class dispatch (Step 1b) |
 | all ProvidedCHO properties | `edm.RDF.ProvidedCHO.*` | property mapping (Step 2) |
-| PhysicalThing array | `edm.RDF.PhysicalThing[]` | archival hierarchy retyping (D10) |
-| WebResource | `edm.RDF.WebResource[0]` | mt002 ImageObject typing (D12) |
-| provenance fields | `source.description.href`, `provider-info.*` | prov triples [B] |
+| PhysicalThing array | `edm.RDF.PhysicalThing[]` | archival hierarchy retyping (`transform-script-adr.md` D10) |
+| WebResource | `edm.RDF.WebResource[0]` | mt002 ImageObject typing (`transform-script-adr.md` D12) |
+| provenance fields | `properties.*`, `provider-info.*`, `source.*`, `binaries.binary[]` | prov triples [4] — see `ddbedm-prov-o-plan.md` for full field mapping |
+
+**Bare-ID `about` values**: some `edm.RDF.*.about` fields and `.resource` references contain only the 32-char DDB internal ID instead of a full URI. Mint before emitting any triple (`transform-script-adr.md` D27):
+- `ProvidedCHO` → `http://www.deutsche-digitale-bibliothek.de/item/<id>`
+- All other entity types → `urn:ddbedm:<ClassName>:<id>`
 
 ---
 
@@ -115,8 +124,8 @@ For `rico:RecordSet` rows, `rico:hasRecordSetType` is asserted twice: `ric-rst:*
 
 ### 2.4 Additional typing
 
-- **PhysicalThing** entities: htype lookup only; no `mocho:Manifestation` (D10)
-- **mt002 WebResources**: typed as `mocho:ImageObject` + `rdac:C10007` + `rdam:P30001 rdact:1018` + `vra:imageOf <cho-uri>` (D12)
+- **PhysicalThing** entities: htype lookup only; no `mocho:Manifestation` (`transform-script-adr.md` D10)
+- **mt002 WebResources**: typed as `mocho:ImageObject` + `rdac:C10007` + `rdam:P30001 rdact:1018` + `vra:imageOf <cho-uri>` (`transform-script-adr.md` D12)
 
 ### 2.5 Lookup tables
 
@@ -136,29 +145,38 @@ For each ProvidedCHO, iterate over EDM properties and emit target triples.
 ### 3.1 General property dispatch
 
 1. Look up `(target_class, edm_prop)` in `output/config/lookup_class_prop_alignment.csv`
-   - If `target_prop != edm_prop` → emit both `edm_prop` and `target_prop` (dual-emit; D4, `transform-props-mapping-adr.md`)
+   - If `target_prop != edm_prop` → emit both `edm_prop` and `target_prop` (dual-emit; `transform-props-mapping-adr.md` D4)
    - If `target_prop == edm_prop` → emit `edm_prop` only
-2. Five predicates remapped to RDA Manifestation-level (D5):
+2. Five predicates remapped to RDA Manifestation-level (`transform-props-mapping-adr.md` D5):
 
 | edm_prop | target_prop |
 |---|---|
-| `dc:title` | `rdam:P30134` (+ dual-emit `dc:title`; D4) |
+| `dc:title` | `rdam:P30134` (+ dual-emit `dc:title`; `transform-props-mapping-adr.md` D4) |
 | `dc:description` | `rdam:P30137` |
 | `dc:date` | `rdam:P30278` |
 | `dc:issued` | `rdam:P30278` |
-| `dcterms:isPartOf` | `rdam:P30020` |
+| `dcterms:isPartOf` | `rdam:P30020` (object sanitised — see note) |
 
-3. Two properties skipped — no triple emitted (D6):
+   **isPartOf sanitisation**: before emitting, normalise the resource value:
+   - Full DDB URL (`http://www.deutsche-digitale-bibliothek.de/item/<UUID>`) → use as-is
+   - Bare 32-char UUID → prepend `http://www.deutsche-digitale-bibliothek.de/item/`
+   - Label-only (no resource) → skip; no triple emitted in graph/mocho
+
+3. Two properties skipped in `graph/mocho` — no mocho triple emitted:
    - `ddb:aggregationEntity`
    - `ddb:hierarchyPosition`
+
+   Both are DDB-internal structural fields with no mocho alignment equivalent. They are preserved verbatim in `graph/ddbedm` via the passthrough (stream [1]).
 
 ### 3.2 Special handlers
 
 | Handler | Keys | Logic | ADR |
 |---|---|---|---|
-| `emit_subject_triples()` | `dcSubject`, `dcTermsSubject`, `dcTermSubject` | IRI value → `dcterms:subject`; literal → `dc:subject`; dedup per record | D1 |
-| `emit_creator_triples()` | `creator` | two-track dispatch (see §3.2.2) | D2, D7 |
-| `emit_contributor_triples()` | `contributor` | LIDO event type dispatch via edm:Agent + edm:Event (see §3.2.3) | D3 |
+| `emit_subject_triples()` | `dcSubject`, `dcTermsSubject`, `dcTermSubject` | IRI value → `dcterms:subject <uri>` + `<uri> rdfs:label "label"@lang`; literal → `dc:subject "string"`; dedup per record | `transform-props-mapping-adr.md` D1 |
+| `emit_creator_triples()` | `creator` | two-track dispatch (see §3.2.2) | `transform-props-mapping-adr.md` D2 |
+| `emit_contributor_triples()` | `contributor` | LIDO event type dispatch via edm:Agent + edm:Event (see §3.2.3) | `transform-props-mapping-adr.md` D3 |
+| `emit_aggregation_triples()` | `Aggregation.*` | `dcterms:source` (isShownAt), `edm:dataProvider` (org URI filter), `foaf:thumbnail` (object) | `transform-script-adr.md` D23 |
+| `emit_place_stubs()` | `Place[].prefLabel` | `<place-uri> rdfs:label "..."@lang` for each Place referenced by CHO | `transform-script-adr.md` D24 |
 
 #### 3.2.1 `dc:title` — dual-emit
 
@@ -175,30 +193,36 @@ else:
 
 #### 3.2.2 `dc:creator` — two-track dispatch
 
+Both tracks run independently for every creator value (`transform-props-mapping-plan.md §4`).
+
 ```python
 def emit_creator_triples(cho_iri, creator_values, agents, target_class, alignment):
-    # Track 1 — class dispatch
+    # Track 1 — class-specific predicate (always runs)
     target_prop = alignment.get((target_class, "dc:creator"))
-    # target_prop is rdam:P30329, rdaw:P10065, dcterms:creator, or TBD
+    # target_prop: rdam:P30329 (M), rdaw:P10065 (W), rdae:P20053 (E)
 
     for cv in creator_values:
-        label = cv.get("$", "")
-        resource = cv.get("resource", "")
+        label    = (cv.get("$") or "").strip()
+        resource = (cv.get("resource") or "").strip()
 
-        # Track 2 — Agent URI resolution
+        # Track 1: emit class-specific predicate (IRI if available, else literal)
+        if target_prop and target_prop != "TBD":
+            if resource:
+                emit(cho_iri, target_prop, URIRef(resource))
+            elif label:
+                emit(cho_iri, target_prop, Literal(label))
+
+        # Track 2: resolve Agent URI → dcterms:creator + agent stub (independent of Track 1)
         agent = resolve_agent(label, resource, agents)  # URI match, then label match
         if agent and is_ddb_or_gnd(agent["about"]):
             agent_uri = URIRef(agent["about"])
-            emit(cho_iri, DCTERMS.creator, agent_uri)
+            emit(cho_iri, DCTERMS.creator, agent_uri)   # generic cross-WEMI handle
             emit(agent_uri, RDF.type, MOCHO.Agent)
             emit(agent_uri, RDFS.label, Literal(agent["prefLabel"]))
-            # Track 1 not emitted when Track 2 resolves (dcterms:creator covers it)
-            continue
-
-        # Track 1 only — no URI resolved
-        if target_prop and target_prop not in ("TBD", "dcterms:creator"):
-            emit(cho_iri, target_prop, Literal(label))
+        # if no URI resolved: Track 2 silent (no literal fallback on dcterms:creator)
 ```
+
+When a URI resolves, a creator gets two predicate triples — one class-specific (`rdam:P30329 <uri>`) and one generic (`dcterms:creator <uri>`) — consistent with the dual-emit pattern (`transform-props-mapping-adr.md` D4). Source: `transform-props-mapping-adr.md` D2, `transform-props-mapping-plan.md §4`.
 
 #### 3.2.3 `dc:contributor` — LIDO event type dispatch
 
@@ -259,55 +283,82 @@ def emit_contributor_triples(cho_iri, contributor_values, event_participant_inde
         # if neither: skip
 ```
 
-**Fallback rules**:
-- No matching Event for contributor URI → `dc:contributor`
-- Contributor is label-only (no `resource`) → look up event by label match against Agent prefLabel (same normalization as `emit_creator_triples()`); if unresolved, `dc:contributor`
-- LIDO event type not in `lido_event_types.csv` → `dc:contributor`
+**Fallback rules** (all cases → `dc:contributor`):
+- No matching Event found for contributor URI
+- Contributor is label-only (no `resource`)
+- LIDO event type not in `lido_event_types.csv`
 
-**Config source**: `output/config/lido_event_types.csv` — columns: `resource, label, rdam_prop, rdaw_prop, vra_image_prop, vra_work_prop, rico_prop, dc_fallback`. See ADR D3 for full dispatch table and property rationale.
+Definitive spec: `transform-props-mapping-plan.md §5`. Config source: `output/config/lido_event_types.csv`. Full dispatch table and property rationale: `transform-props-mapping-adr.md D3`.
 
 ### 3.3 Lookup table
 
 | Table | Keyed by | Output | ADR |
 |---|---|---|---|
-| `output/config/lookup_class_prop_alignment.csv` | `(target_class, edm_prop)` | `target_prop` | D4 |
-| `output/config/lido_event_types.csv` | `lido_hastype_resource` | `{rdam_prop, rdaw_prop, vra_image_prop, vra_work_prop, rico_prop, dc_fallback}` | D3 |
+| `output/config/lookup_class_prop_alignment.csv` | `(target_class, edm_prop)` | `target_prop` | `transform-props-mapping-adr.md` D4 |
+| `output/config/lido_event_types.csv` | `lido_hastype_resource` | `{rdam_prop, rdaw_prop, vra_image_prop, vra_work_prop, rico_prop, dc_fallback}` | `transform-props-mapping-adr.md` D3 |
 
 `lookup_class_prop_alignment.csv` populated for `dc:title`, `dc:creator`, `dcterms:alternative`, `dc:date`, `dc:issued`, `dc:description`. Expanded as property decisions are made in `transform-props-mapping-plan.md`.
 
 ---
 
-## 4. Output [A] — CHO triples
+## 4. Output — four streams
 
-| File | Content | Named graph |
+All N-Quads output uses `.nq` format; each line includes the named graph IRI as the fourth element (`transform-script-adr.md` D22). See §0 for filename conventions per run mode.
+
+**POC** (`output/goethe-faust.nq` — all streams combined; `output/goethe-faust-werk-staging.duckdb`):
+
+| Named graph | Content | Records |
 |---|---|---|
-| `output/goethe-faust-mocho.nt` | All CHO, PhysicalThing, WebResource triples | `http://gemea.ddb.de/graph/mocho` |
+| `…/graph/ddbedm` | Verbatim EDM passthrough — all `edm.RDF.*` fields; all records including mt007 | All |
+| `…/graph/mocho` | Aligned mocho triples — CHO subject minted as `https://gemea.ise.fiz-karlsruhe.de/mocho/<object_id>` (`transform-script-adr.md` D22); `owl:sameAs` to original DDB URI; Agent/Place/WebResource retain original URIs | All except mt007 |
+| `…/graph/prov` | PROV-O — Layer 1 per-item (`transform-adr.md` D11) | All |
+| — (DuckDB) | W-slot staging rows: dc:title, dc:alternative[], dc:created, creator URIs, creator literals (`last, first`) | W-slot records only (`transform-script-adr.md` D26) |
+
+`link_gnd_works.py` (Phase 0) consumes the DuckDB staging table and writes a separate file:
+
+| Named graph | Content | Output file |
+|---|---|---|
+| `…/graph/work` | WEMI link triples: `rdac:C10001`, `mocho:hasManifestation`, `mocho:isManifestationOf`, `skos:exactMatch` (`transform-adr.md` D17, `transform-script-adr.md` D26) | POC: `goethe-faust-work.nq`; full corpus: `<sector>-work.nq` |
+
+**Full corpus**: `transform_edm_to_mocho.py` outputs split into `<sector>-ddbedm.nq`, `<sector>-mocho.nq`, `<sector>-prov.nq`, `<sector>-werk-staging.duckdb` per sector DB.
 
 ---
 
-## 5. Concurrent [B] — Provenance triples
+## 5. Provenance triples — PROV-O
 
-Script: `scripts/prov_edm_to_mocho.py` (pending)
+Fully specified in `notes/ddbedm-prov-o-plan.md`. Implemented inside `transform_edm_to_mocho.py` (not a separate script). Source: `transform-adr.md` D11 (per-item pattern).
 
-Emits PROV-O triples per record: source entity → DDB item derivation chain, `prov:Agent` for institution and pipeline, `prov:generatedAtTime`. Pattern from `transform-adr.md` D11 (PROV-O).
+**Layer 1 — per item** (Without-Activity pattern; 6 node types per record: 5-node base + SourceRecord from `binaries.binary[]`):
 
-| File | Content | Named graph |
+| Node | rdf:type | Source fields |
 |---|---|---|
-| `output/goethe-faust-mocho-prov.nt` | PROV-O provenance triples | `http://gemea.ddb.de/graph/prov` |
+| CHO entity | `prov:Entity` | `edm.RDF.ProvidedCHO.about` |
+| Dataset | `dcat:Dataset`, `prov:Entity` | `source.description.record.*` |
+| XSLT pipeline | `prov:SoftwareAgent` | fixed IRI |
+| Provider | `prov:Agent`, `foaf:Organization` | `provider-info.*` |
+| DDB (fixed) | `prov:Agent`, `foaf:Organization` | fixed |
+| SourceRecord | `prov:Entity` | `binaries.binary[]` |
 
-Runs over the same JSONL input as [A]; does not depend on [A]'s output.
+**Layer 2 — per run** (Full Activity pattern): **Future work. Not implemented by `transform_edm_to_mocho.py`.** Intended to extend PROV-O coverage to LM-assisted enrichments and inter-script lineage. Specified in `ddbedm-prov-o-plan.md §3`.
 
 ---
 
-## 6. Concurrent [C] — GND linking triples (Phase 1b)
+## 6. Work-level GND staging (Phase 0)
 
-Script: `scripts/link_gnd_agents.py` (Phase 1b)
+Script: `scripts/link_gnd_works.py` (Phase 0; reads DuckDB staging table produced by `transform_edm_to_mocho.py`)
 
-Enriches `edm:Agent` nodes created in [A] with GND authority data. Depends on [A] output (needs minted Agent IRIs) or runs as a second pass over the JSONL with the same IRI minting logic.
+When class dispatch assigns a W-slot class (`rdac:C10001` or `mo:MusicalWork`), `transform_edm_to_mocho.py` inserts a staging row into `output/goethe-faust-werk-staging.duckdb`. Fields: `dc_title`, `dc_alternative[]`, `dc_created`, `creator_uris[]`, `creator_literals` (`last, first`). See `transform-script-adr.md` D26 and `transform-revised-plan.md §1.2`.
 
-| File | Content | Named graph |
-|---|---|---|
-| `output/goethe-faust-mocho-gnd.nt` | GND enrichment triples for agents | `http://gemea.ddb.de/graph/gnd-enrichment` |
+`link_gnd_works.py` consumes the staging table, performs ISBD title extraction + NER fallback + lobid-gnd Werk lookup, mints `<gemea-work-uri>` (`https://gemea.ise.fiz-karlsruhe.de/work/<id>`), and writes Work entity triples + WEMI links into `graph/work`:
+
+```turtle
+<gemea-work-uri>  a rdac:C10001 .
+<gemea-work-uri>  mocho:hasManifestation  <gemea-cho-uri> .
+<gemea-work-uri>  skos:exactMatch         <gnd-uri> .       # when GND lookup succeeds
+<gemea-cho-uri>   mocho:isManifestationOf <gemea-work-uri> .
+```
+
+`transform_edm_to_mocho.py` does not emit `mocho:isManifestationOf` — that link is written by `link_gnd_works.py` only. See `transform-adr.md D17` for full rationale (Work URI minting, `skos:exactMatch` vs `owl:sameAs`, GND URI as Work node rejected).
 
 ---
 
@@ -331,7 +382,7 @@ RDA Manifestation-level via `rdac:C10007`. Document categories (Dissertation, Le
 
 ### 7.3 Photo (mt002)
 
-Sector × dc:type dispatch from `image_type2class.json` (851 entries). W-slot class replaces `mocho:Manifestation` (D11). See `image-type-class-mapping.md` §3.1.
+Sector × dc:type dispatch from `image_type2class.json` (851 entries). W-slot class replaces `mocho:Manifestation` (`transform-script-adr.md` D11). See `image-type-class-mapping.md` §3.1.
 
 ### 7.4 Video (mt005)
 
@@ -339,7 +390,11 @@ dc:type dispatch from `video_type2class.json`. `ec:EditorialWork` [W] + `ec:Medi
 
 ### 7.5 Not Digitized (mt007)
 
-**Skip record — no triples emitted.** SOLR false-positive. Detected at record ingestion time.
+**ddbedm stream**: verbatim EDM triples emitted (faithfulness baseline).
+**prov stream**: provenance triples emitted (pipeline audit trail — the record was seen and processed).
+**mocho, work streams**: skipped — no triples emitted (`transform-script-adr.md` D15).
+
+Detection: `_extract_mediatype_sector()` returns `mt007`; mt007 guard applied before mocho/work handlers fire only.
 
 ---
 
@@ -350,7 +405,7 @@ Purpose:    Generate lookup_dctype_to_class.csv — type dispatch table mapping
             (mediatype, sector, dc_type_de) to mocho-aligned rdf:type class IRIs.
 Usage:      python gen_dctype_class_mapping.py
 Inputs:     scripts/old-config/type2class.json
-            scripts/old-config/audio_type2class.json
+            output/config/audio_type2class.json   ← canonical; do not overwrite
             output/config/image_type2class.json
             output/config/video_type2class.json
 Outputs:    output/config/lookup_dctype_to_class.csv
@@ -388,9 +443,74 @@ CLASS_MAP = {
 
 ## 9. Verification checklist
 
+**Config tables:**
 - [ ] `lookup_dctype_to_class.csv` generated; TBD count = 0
 - [ ] `lookup_class_prop_alignment.csv` fully populated for all EDM properties in `transform-props-mapping-plan.md`
-- [ ] Spot-check dispatch: `Schallplatte` → `mo:MusicalManifestation`; `Zeichnung` (sparte006) → `vra:Work`; `htype_021` → `rdac:C10001 + rdac:C10007`
-- [ ] Named graph IRIs confirmed and consistent across [A]/[B]/[C]
-- [ ] `scripts/README.md` updated for all new/modified scripts
-- [ ] ADR decisions cross-referenced: `transform-adr.md` D11, `transform-script-adr.md` D9–D16, `transform-props-mapping-adr.md` D1–D6
+- [ ] `lido_event_types.csv` present at `output/config/`
+
+**Class dispatch spot-checks:**
+- [ ] `Schallplatte` → `mo:MusicalManifestation`; `Zeichnung` (sparte006) → `vra:Work`; `htype_021` → `rdac:C10001 + rdac:C10007`
+- [ ] mt007 record → ddbedm + prov quads present; mocho/work output empty for that ID
+- [ ] edm:Agent with `gndo:DifferentiatedPerson` type → `mocho:Agent`
+
+**Output streams:**
+- [ ] POC: `goethe-faust.nq` (combined) + `goethe-faust-werk-staging.duckdb` present; full corpus: `<sector>-ddbedm.nq`, `<sector>-mocho.nq`, `<sector>-prov.nq`, `<sector>-werk-staging.duckdb` per sector
+- [ ] All `.nq` lines have exactly four space-separated terms + ` .` (N-Quads format)
+- [ ] Named graph IRIs ∈ `{graph/ddbedm, graph/mocho, graph/prov}` — no `.nt` graph names
+- [ ] mocho graph CHO subjects use `https://gemea.ise.fiz-karlsruhe.de/mocho/<32-char-id>`
+- [ ] `owl:sameAs` count in mocho graph == records_processed (minus mt007 count)
+
+**Stats and logs:**
+- [ ] `output/transform_errors.jsonl` is empty or exceptions reviewed
+- [ ] `output/transform_stats.json` contains `records_processed`, `error_count`, sector/mediatype breakdowns
+- [ ] `--stats full` run produces LIDO event type counts, Agent type distribution, Place label coverage (feeds 30-resource.tex and 40-quality.tex TODOs)
+
+**ADR cross-references confirmed:**
+- [ ] D22 (N-Quads + CHO URI minting), D23 (Aggregation), D24 (Place stubs), D25 (LIDO contributor), D26 (Werk staging)
+- [ ] `transform-adr.md` D11 (PROV-O per-item), D15 (N-Quads architecture), D17 (Work URI minting + WEMI link pattern)
+- [ ] `transform-props-mapping-adr.md` D1–D3 (subject/creator/contributor)
+- [ ] `scripts/README.md` updated: new flags (`--werk-staging`, `--stats`, `--workers`, `--batch-size`, `--ids -`), all four output files
+
+---
+
+## 10. Open review issues
+
+Issues identified during 2026-05-04 review. Work through one by one before implementation.
+
+- [x] **R1 — §0.1 debug `<graphname>` list includes `work`** — resolved: `work` removed from list; Werk staging debug handled separately by `link_gnd_works.py`.
+
+- [x] **R2 — §1 provenance fields row too narrow** — resolved: row updated to `properties.*`, `provider-info.*`, `source.*`, `binaries.binary[]` with pointer to `ddbedm-prov-o-plan.md` as definitive reference.
+
+- [x] **R3 — §3.2 handler table ADR references are ambiguous** — resolved: all three cite `transform-props-mapping-adr.md D1/D2/D3`. D1 also amended: IRI path now emits concept stub `<uri> rdfs:label "label"@lang` in addition to `dcterms:subject <uri>`; literal path keeps `dc:subject "string"`.
+
+- [x] **R4 — §3.2.2 `emit_creator_triples()` Track 2 hardcodes `DCTERMS.creator`** — resolved: `DCTERMS.creator` is correct (generic cross-WEMI handle per `transform-props-mapping-plan.md §4`). Bug was the `continue` making tracks mutually exclusive; fixed to run both independently. Also led to D16 in `transform-adr.md` (Work URI minting + WEMI link pattern).
+
+- [x] **R4b — §3.2.2 `emit_creator_triples()` Track 1: code to be updated** — resolved: code already corrected when R4 was fixed; both tracks run independently, `continue` removed.
+
+- [x] **R5 — §5 Layer 1 node count says 5, table has 6** — resolved: heading updated to "6 node types (5-node base + SourceRecord from `binaries.binary[]`)".
+
+- [x] **R6 — §5 two prov-related named graph URIs are unexplained** — resolved: named graph base updated to `https://gemea.ise.fiz-karlsruhe.de/` throughout; §5 Layer 2 marked as future work (not implemented by `transform_edm_to_mocho.py`); D12 reference removed from §5 source line.
+
+---
+
+- [x] **I1 — §2.3: D16 numbering collision** — resolved: Work URI minting decision renumbered to `transform-adr.md D17`; all references updated in `transform-script-plan.md` and `transform-revised-plan.md`.
+
+- [x] **I2 — §3.1: "(D6)" source unknown** — resolved: skip is intentional; `ddb:aggregationEntity` and `ddb:hierarchyPosition` are DDB-internal structural fields with no mocho alignment equivalent. They are preserved in `graph/ddbedm` via verbatim passthrough. No ADR entry needed; stale "(D6)" reference removed from §3.1.
+
+- [x] **I3 — §3.3 lookup table: bare ADR references** — resolved: both now cite `transform-props-mapping-adr.md D4` and `D3`.
+
+- [x] **I4 — §3.2.3 contributor: label-only fallback logic is unspecified** — resolved: `transform-props-mapping-plan.md §5` is the definitive spec; fallback for all non-matched cases (URI absent, label-only, unknown LIDO type) is simply `dc:contributor`. Erroneous label-match logic removed from §3.2.3.
+
+- [x] **I5 — §3.2.3: bare "ADR D3" reference** — resolved as part of I4; §3.2.3 now cites `transform-props-mapping-adr.md D3`.
+
+- [x] **I6 — §4: `link_gnd_works.py` N-Quads output absent** — resolved: §4 now includes a separate table for `link_gnd_works.py` output (`graph/work`, WEMI link triples, POC filename `goethe-faust-work.nq`).
+
+- [x] **I7 — §8: audio config path inconsistency** — resolved: `output/config/audio_type2class.json` is canonical and must not be overwritten by any script. §8 input list updated accordingly.
+
+- [x] **I8 — §9 verification: two gaps** — resolved: (a) withdrawn — Layer 2 is future work, not implemented by `transform_edm_to_mocho.py`; §9 named-graph list is correct as-is. (b) `transform-adr.md D17` added to ADR cross-reference checklist; D12 removed (Layer 2 out of scope).
+
+- [x] **I9 — §10 R4b: stale text after resolution note** — resolved: stale problem description removed from R4b entry.
+
+- [x] **I10 — §0 / §4: output filename prefix inconsistency** — resolved: POC outputs all N-Quads streams into one combined `goethe-faust.nq`; full corpus uses `<sector>-<stream>.nq` per sector DB. Both §0 stream table and §4 updated to reflect the two conventions.
+
+- [x] **I11 — §1: bare-ID `about` values undocumented** — resolved: §1 note and D27 added. `ProvidedCHO` bare IDs → `http://www.deutsche-digitale-bibliothek.de/item/<id>`; all other entity types → `urn:ddbedm:<ClassName>:<id>`. Consistent with `export-s2-plan.md §4.3` and `export_ddb.py`.

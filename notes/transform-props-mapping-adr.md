@@ -23,12 +23,19 @@ All ProvidedCHOs are typed as `mocho:Manifestation` (D9, `transform-script-adr.m
 **Background**: Corpus inspection revealed that `dcTermsSubject` was incorrectly mapped to `dc:subject` (`http://purl.org/dc/elements/1.1/subject`) in `alignment_ddbedm_mocho.csv`. The correct IRI is `dcterms:subject` (`http://purl.org/dc/terms/subject`). This was a derivation error in the alignment script's IRI resolution step; `dcTermSubject` (note: missing `s`) was correctly resolved to `dcterms:subject` via an explicit `OVERRIDES` entry in `align_ddbedm_to_mocho.py`. The fix was applied directly to the CSV (42 rows: `edm_prefix` `dc→dcterms`, `edm_iri` corrected).
 
 **Dispatch logic**:
-- Literal value (string or lang-tagged text) → RDA candidates for `("ProvidedCHO", "dcSubject")` — i.e. the dc:subject path.
-- IRI value (`{"resource": ...}`) → RDA candidates for `("ProvidedCHO", "dcTermSubject")` — i.e. the dcterms:subject path.
+- Literal value (string or lang-tagged text) → `dc:subject "string"@lang` — uncontrolled annotation; no concept node minted.
+- IRI value (`{"resource": ..., "$": label}`) → two triples:
+  1. `<cho> dcterms:subject <concept-uri>`
+  2. `<concept-uri> rdfs:label "label"@lang` — concept stub (label from `$` field; language from `@language` if present)
 
-**Deduplication**: `emit_subject_triples()` collects values from all three keys and deduplicates `(pred_nt, obj_nt)` pairs in a per-record set before writing. This prevents duplicate triples when the same value appears under multiple keys (occurs in ~60% of records).
+**Deduplication**: `emit_subject_triples()` collects values from all three keys and deduplicates `(pred_nt, obj_nt)` pairs in a per-record set before writing. This prevents duplicate triples when the same value appears under multiple keys (occurs in ~60% of records). Concept stubs (`rdfs:label`) are also deduplicated per record — one label triple per URI.
 
-**Rationale**: `dc:subject` is conventionally used for uncontrolled literals; `dcterms:subject` for IRI references to controlled vocabulary terms (GND, LCSH, etc.). Value-type dispatch applies this convention without requiring agent-type knowledge.
+**Rationale**: The IRI + label stub pattern is strictly better for SPARQL retrieval than a literal-only approach:
+- URI equality tests are index lookups; string matching is a scan with normalization risk.
+- One `rdfs:label` triple per concept URI allows cross-record deduplication for faceting: `GROUP BY ?c ?label COUNT(?cho)` without string normalization.
+- Future enrichment (`skos:broader`, `skos:altLabel`, `owl:sameAs` to GND/LCSH) attaches to the concept node without touching CHO triples.
+
+`dc:subject` is kept for literal-only values as a fallback annotation, signalling "unresolved, no authority URI". This keeps literal subjects queryable without mixing literal and IRI objects under `dcterms:subject`.
 
 ---
 
@@ -252,15 +259,24 @@ See `notes/corpus-analysis.md §1` and `data/analysis/creator_agent_coverage.csv
 | `rico:RecordSet`, `rico:Record`, `rico:RecordPart` | — | `dcterms:isPartOf` |
 | all others (aco, mo, doco, ec, mocho subclasses) | M/W | `dcterms:isPartOf` |
 
-**Corpus range**: Values are DDB item IRIs (`http://www.deutsche-digitale-bibliothek.de/item/…`), DDB internal UUIDs, or plain literals (~1%, collection name strings). Corpus sample: 611 values in 1,000 records.
+**Corpus range** (full corpus, 70,311 values, `data/analysis/ispartof_coverage.csv`):
+
+| Kind | n | % |
+|---|---|---|
+| Full DDB item URL (`http://…/item/<UUID>`) | 43,814 | 62.3% |
+| Bare 32-char UUID | 22,265 | 31.7% |
+| Label-only (no resource) | 4,232 | 6.0% |
+
+**IRI sanitisation**: bare 32-char UUIDs must be prefixed with `http://www.deutsche-digitale-bibliothek.de/item/` before emitting. Full DDB URLs are used as-is.
 
 **Rationale**:
 - `rdam:P30020` "is part of manifestation" and `rdaw:P10019` "is part of work" are the direct RDA equivalents at M and W level respectively (confirmed in `mapping_dct_to_rda.csv`).
 - VRA uses `vra:partOf` — maps to `rdaw:P10019` per `mapping_vra_to_rda.csv`; applies to both `vra:Image` and `vra:Work`.
 - RiC-O: `rico:isOrWasComponentOf` domain is restricted to `rico:Instantiation`, not `rico:RecordResource` — no clean native equivalent for the Record hierarchy. `dcterms:isPartOf` is kept as a valid queryable fallback.
 - All other classes have no part-relation property in their vocabularies; `dcterms:isPartOf` is kept.
+- Label-only values carry no resolvable IRI — emitting a literal object for a property whose range is an IRI would violate the graph model; graph/ddbedm passthrough preserves them without loss.
 
-**Source**: `mapping_dct_to_rda.csv`, `mapping_vra_to_rda.csv`, `mapping_rico_to_rda.csv`.
+**Source**: `mapping_dct_to_rda.csv`, `mapping_vra_to_rda.csv`, `mapping_rico_to_rda.csv`, `scripts/analyse_ispartof.py`.
 
 ---
 

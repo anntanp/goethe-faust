@@ -1,4 +1,4 @@
-# Transform revised plan: EDM → mocho N-Triples
+# Transform revised plan: EDM → mocho N-Quads
 
 **Date**: 2026-04-29  
 **Status**: In progress  
@@ -17,6 +17,18 @@ The transformation has two orthogonal problems that should stay separated:
 
 Both are already solved in data (lookup CSVs). The goal is a thin engine that reads them rather than re-encoding dispatch logic in code. Mapping corrections then require only a CSV edit.
 
+**Output format**: N-Quads (`.nq`), not N-Triples — each line carries the named graph IRI as the fourth element: `<subject> <predicate> <object> <graph> .`
+
+**mocho-graph CHO URI**: In the `mocho` named graph, each ProvidedCHO is identified by a minted GeMeA URI:
+```
+https://gemea.ise.fiz-karlsruhe.de/mocho/<object_id>
+```
+where `<object_id>` is the 32-char DDB object ID. A `owl:sameAs` triple links to the original DDB URI:
+```
+<gemea-uri>  owl:sameAs  <original-ddb-uri> .
+```
+Agent, Place, and WebResource nodes retain their original URIs (GND, DDB-place, provider URLs) — minting only CHO minimises `owl:sameAs` overhead at scale (~1 extra triple per record vs. ~3–4× more if all entity types were minted). See `transform-adr.md D15`.
+
 **At reference-corpus scale (115K records)**: `transform_edm_to_mocho.py` — stdlib Python, record-by-record streaming, special-case handlers called explicitly. See D1–D17 in `transform-script-adr.md`.
 
 **At full-corpus scale (27M records)**: The transform is fundamentally a series of joins — dispatch = join against class tables; property mapping = join against alignment table. Python record-by-record is too slow; SPARQL CONSTRUCT requires a triplestore and performs poorly at this scale. Use a two-stage pipeline instead (see ADR D18):
@@ -33,7 +45,7 @@ Stage 2 — Dispatch + map (DuckDB, vectorized joins):
              + lookup_dctype_to_class.csv     →  class triples (graph/mocho)
              + alignment_ddbedm_mocho.csv     →  property triples (graph/mocho)
   (repeat per entity type)
-  edm.RDF fields → raw EDM triples             →  graph/ddb-edm  (priority #1)
+  edm.RDF fields → raw EDM triples             →  graph/ddbedm  (priority #1)
   W-level ProvidedCHOs → GND Werk links        →  graph/work
   PROV-O triples                               →  graph/prov
 
@@ -44,7 +56,7 @@ Special-case handlers (Python UDFs or post-processing pass):
   handle_mt002_webresource_typing()
 ```
 
-Stage 1 is fast (no logic, just fan-out). Stage 2 runs in minutes on a single machine; DuckDB reads JSONL and CSVs natively. The `emit_mode` column in the alignment CSV (`iri`, `literal`, `dual`, `skip`) covers most property-level variants without custom code. The four output named graphs (`ddb-edm`, `mocho`, `work`, `prov`) match the reference-corpus streams in `transform-script-plan.md` §0.
+Stage 1 is fast (no logic, just fan-out). Stage 2 runs in minutes on a single machine; DuckDB reads JSONL and CSVs natively. The `emit_mode` column in the alignment CSV (`iri`, `literal`, `dual`, `skip`) covers most property-level variants without custom code. The four output named graphs (`ddbedm`, `mocho`, `work`, `prov`) match the reference-corpus streams in `transform-script-plan.md` §0.
 
 ---
 
@@ -56,7 +68,7 @@ Stage 1 is fast (no logic, just fan-out). Stage 2 runs in minutes on a single ma
 
 | Stream | Named graph | Output file |
 |---|---|---|
-| Raw EDM | `…/graph/ddb-edm` | `<sector>-ddb-edm.nt` |
+| Raw EDM | `…/graph/ddbedm` | `<sector>-ddbedm.nt` |
 | mocho-aligned | `…/graph/mocho` | `<sector>-mocho.nt` |
 | GND Work links | `…/graph/work` | `<sector>-work.nt` |
 | Provenance | `…/graph/prov` | `<sector>-prov.nt` |
@@ -183,7 +195,9 @@ dc:type dispatch uses `output/config/lookup_dctype_to_class.csv` (1,647 rows) wi
 
 ### 1.2 Work-level GND Werk lookup table
 
-When §1.1 class dispatch assigns a Work-level class (`rdac:C10001` or `mo:MusicalWork`), an additional row is written to a DuckDB lookup table for GND Werk authority file linking. This is separate from the mocho N-Triples output — it is a staging table consumed by the GND Werk linker (`link_gnd_works.py`, Phase 0).
+When §1.1 class dispatch assigns a Work-level class (`rdac:C10001` or `mo:MusicalWork`), an additional row is written to a DuckDB lookup table for GND Werk authority file linking. This is separate from the mocho N-Quads output — it is a staging table consumed by the GND Werk linker (`link_gnd_works.py`, Phase 0).
+
+The WEMI link pattern and Work URI minting scheme are specified in `transform-adr.md D17`. In summary: `link_gnd_works.py` mints `<gemea-work-uri>` (scheme: `https://gemea.ise.fiz-karlsruhe.de/work/<id>`), links it to the GND authority URI via `skos:exactMatch`, and writes `mocho:hasManifestation` / `mocho:isManifestationOf` links into `graph/work`. `transform_edm_to_mocho.py` does not emit these links — it only writes the staging row.
 
 | Field | Source path | Notes |
 |---|---|---|

@@ -468,19 +468,33 @@ No Manifestation-level "has subject" exists in RDA — subject relationships des
 
 ## §11 isPartOf
 
-Range: IRI (parent DDB item URI or internal UUID) or plain literal (collection name string, ~1% of values).
+**Step 1 (RDA)**: `mapping_dct_to_rda.csv` → `rdam:P30020` "is part of manifestation" (M), `rdaw:P10019` "is part of work" (W).
 
-Class-specific dispatch via `output/config/lookup_class_prop_alignment.csv`:
+**Step 2 (vocab-specific)**: `vra:partOf` for VRA classes (per `mapping_vra_to_rda.csv`). No equivalent in RiC-O, MO, ACO.
+
+**Step 3**: Class dispatch via `output/config/lookup_class_prop_alignment.csv`:
 
 | target_class | wemi | target_prop | Notes |
 |---|---|---|---|
-| `rdac:C10007`, `mocho:Manifestation` | M | `rdam:P30020` "is part of manifestation" | RDA Manifestation-level part relation |
-| `rdac:C10001` | W | `rdaw:P10019` "is part of work" | RDA Work-level part relation |
-| `vra:Image`, `vra:Work` | M/W | `vra:partOf` | Native VRA part relation; maps to `rdaw:P10019` per `mapping_vra_to_rda.csv` |
-| `rico:RecordSet`, `rico:Record`, `rico:RecordPart` | — | `dcterms:isPartOf` | No clean native RiC-O equivalent — `rico:isOrWasComponentOf` domain is `rico:Instantiation`, not `rico:RecordResource`; source predicate kept |
-| all others (aco, mo, doco, ec, mocho subclasses) | M/W | `dcterms:isPartOf` | No vocab-specific part relation; source predicate kept |
+| `rdac:C10007`, `mocho:Manifestation` | M | `rdam:P30020` "is part of manifestation" | |
+| `rdac:C10001` | W | `rdaw:P10019` "is part of work" | |
+| `vra:Image`, `vra:Work` | M/W | `vra:partOf` | |
+| `rico:RecordSet`, `rico:Record`, `rico:RecordPart` | — | `dcterms:isPartOf` | `rico:isOrWasComponentOf` domain restricted to `rico:Instantiation` |
+| all others (aco, mo, doco, ec, mocho subclasses) | M/W | `dcterms:isPartOf` | |
 
-**Connected class**: parent `ProvidedCHO` → same class dispatch applies recursively (parent item is typed independently during its own transform).
+**Step 4**: Object-valued (IRI). IRI sanitisation required before emit — see corpus finding.
+
+**Corpus finding** (`data/analysis/ispartof_coverage.csv`, 70,311 values across 67,539 records):
+
+| Kind | n | % |
+|---|---|---|
+| Full DDB item URL (`http://…/item/<UUID>`) | 43,814 | 62.3% |
+| Bare 32-char UUID | 22,265 | 31.7% |
+| Label-only (no resource) | 4,232 | 6.0% |
+
+**IRI sanitisation**: bare 32-char UUIDs must be prefixed with `http://www.deutsche-digitale-bibliothek.de/item/` before emitting. Full DDB URLs are used as-is. Label-only values have no resource to emit.
+
+**Connected class**: parent `ProvidedCHO` → same class dispatch applies recursively.
 
 ---
 
