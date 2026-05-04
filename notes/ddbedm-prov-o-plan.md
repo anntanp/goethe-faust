@@ -145,7 +145,7 @@ The relevant fields are spread across three top-level blocks:
 | `foaf:name` | `provider-info.provider-name` | string literal |
 | `schema:url` | `provider-info.provider-uri` | URI |
 | `dcterms:identifier` | `provider-info.provider-id` | string literal |
-| `lov:isil` | `provider-info.provider-isil` | URI |
+| `mocho:isil` | `provider-info.provider-isil` | URI |
 
 #### 2.2.7 Source record (`ddb-api:items/<id>/source/record`)
 
@@ -219,7 +219,7 @@ ddb:item/222NZKK63TNRLC2VETRV722VKBDSUVGL
     foaf:name          "Deutsche Fotothek" ;
     schema:url         <http://www.deutschefotothek.de> ;
     dcterms:identifier "99900890" ;
-    lov:isil           <http://ld.zdb-services.de/resource/organisations/DE-2396> .
+    mocho:isil         <http://ld.zdb-services.de/resource/organisations/DE-2396> .
 
 # ── Source record ─────────────────────────────────────────────────────────────
 
@@ -413,5 +413,5 @@ stored in the prov graph.
 | `foaf:` | `http://xmlns.com/foaf/0.1/` |
 | `rdfs:` | `http://www.w3.org/2000/01/rdf-schema#` |
 | `schema:` | `https://schema.org/` |
-| `lov:` | `http://www.w3.org/ns/iana/media-types/` |
+| `mocho:` | `https://ise-fizkarlsruhe.github.io/ddbkg/mocho#` |
 | `xsd:` | `http://www.w3.org/2001/XMLSchema#` |

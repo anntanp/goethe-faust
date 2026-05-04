@@ -134,8 +134,6 @@ For `rico:RecordSet` rows, `rico:hasRecordSetType` is asserted twice: `ric-rst:*
 | `output/config/lookup_htype_doco_rico.csv` | `htype_code` | htype-first strata (layer 1) |
 | `output/config/audio_type2class.json` | `(dc_type_de, sector)` | dc:type only × AUDIO strata |
 
-Note: `lookup_dctype_to_class.csv` (planned in §8) covers only the audio dc:type config path in the current dispatch model. IMAGE and VIDEO strata use fixed classes, not per-value dc:type lookup.
-
 ---
 
 ## 3. Step 2 — Property mapping (`emit_triples()`)
@@ -297,7 +295,7 @@ Definitive spec: `transform-props-mapping-plan.md §5`. Config source: `output/c
 | `output/config/lookup_class_prop_alignment.csv` | `(target_class, edm_prop)` | `target_prop` | `transform-props-mapping-adr.md` D4 |
 | `output/config/lido_event_types.csv` | `lido_hastype_resource` | `{rdam_prop, rdaw_prop, vra_image_prop, vra_work_prop, rico_prop, dc_fallback}` | `transform-props-mapping-adr.md` D3 |
 
-`lookup_class_prop_alignment.csv` populated for `dc:title`, `dc:creator`, `dcterms:alternative`, `dc:date`, `dc:issued`, `dc:description`. Expanded as property decisions are made in `transform-props-mapping-plan.md`.
+`lookup_class_prop_alignment.csv` fully populated — all CHO properties from `transform-props-mapping-plan.md §0.1` plus Agent, Aggregation, and gndo properties.
 
 ---
 
@@ -398,55 +396,11 @@ Detection: `_extract_mediatype_sector()` returns `mt007`; mt007 guard applied be
 
 ---
 
-## 8. `gen_dctype_class_mapping.py` spec
-
-```
-Purpose:    Generate lookup_dctype_to_class.csv — type dispatch table mapping
-            (mediatype, sector, dc_type_de) to mocho-aligned rdf:type class IRIs.
-Usage:      python gen_dctype_class_mapping.py
-Inputs:     scripts/old-config/type2class.json
-            output/config/audio_type2class.json   ← canonical; do not overwrite
-            output/config/image_type2class.json
-            output/config/video_type2class.json
-Outputs:    output/config/lookup_dctype_to_class.csv
-Deps:       stdlib only (json, csv, pathlib)
-```
-
-`CLASS_MAP` (old FRBR/FaBiO → mocho-aligned IRIs):
-```python
-CLASS_MAP = {
-    "mo:MusicalWork":           "http://purl.org/ontology/mo/MusicalWork",
-    "mo:MusicalManifestation":  "http://purl.org/ontology/mo/MusicalManifestation",
-    "mo:MusicalExpression":     "http://purl.org/ontology/mo/MusicalExpression",
-    "mo:Record":                "http://purl.org/ontology/mo/Record",
-    "aco:AudioManifestation":   "https://w3id.org/ac-ontology/aco#AudioManifestation",
-    "aco:AudioClip":            "https://w3id.org/ac-ontology/aco#AudioClip",
-    "aco:AudioFile":            "https://w3id.org/ac-ontology/aco#AudioFile",
-    "vra:Work":                 "http://purl.org/vra/Work",
-    "vra:Image":                "http://purl.org/vra/Image",
-    "ec:EditorialWork":         "http://www.ebu.ch/metadata/ontologies/ebucoreplus#EditorialWork",
-    "ec:MediaResource":         "http://www.ebu.ch/metadata/ontologies/ebucoreplus#MediaResource",
-    "rico:Record":              "https://www.ica.org/standards/RiC/ontology#Record",
-    "mocho:ImmovableWork":      "https://ise-fizkarlsruhe.github.io/ddbkg/mocho#ImmovableWork",
-    "mocho:ImageWork":          "https://ise-fizkarlsruhe.github.io/ddbkg/mocho#ImageWork",
-    # Deprecated FaBiO → omit (empty string = skip)
-    "fabio:PrintObject":        "",
-    "fabio:AnalogItem":         "",
-    "fabio:DigitalItem":        "",
-    "frbr:Work":                "",
-    "frbr:Manifestation":       "",
-    "frbr:Item":                "",
-}
-```
-
----
-
-## 9. Verification checklist
+## 8. Verification checklist
 
 **Config tables:**
-- [ ] `lookup_dctype_to_class.csv` generated; TBD count = 0
-- [ ] `lookup_class_prop_alignment.csv` fully populated for all EDM properties in `transform-props-mapping-plan.md`
-- [ ] `lido_event_types.csv` present at `output/config/`
+- [x] `lookup_class_prop_alignment.csv` fully populated for all EDM properties in `transform-props-mapping-plan.md`
+- [x] `lido_event_types.csv` present at `output/config/`
 
 **Class dispatch spot-checks:**
 - [ ] `Schallplatte` → `mo:MusicalManifestation`; `Zeichnung` (sparte006) → `vra:Work`; `htype_021` → `rdac:C10001 + rdac:C10007`

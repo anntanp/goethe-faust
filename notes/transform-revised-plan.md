@@ -42,8 +42,7 @@ Stage 1 — Flatten (Python streaming, stdlib):
 
 Stage 2 — Dispatch + map (DuckDB, vectorized joins):
   cho.jsonl  + lookup_htype_doco_rico.csv
-             + lookup_dctype_to_class.csv     →  class triples (graph/mocho)
-             + alignment_ddbedm_mocho.csv     →  property triples (graph/mocho)
+             + alignment_ddbedm_mocho.csv     →  class + property triples (graph/mocho)
   (repeat per entity type)
   edm.RDF fields → raw EDM triples             →  graph/ddbedm  (priority #1)
   W-level ProvidedCHOs → GND Werk links        →  graph/work
@@ -190,8 +189,6 @@ Prefixes: `vocnet-htype: <http://ddb.vocnet.org/hierarchietyp/>`, `ric-rst: <htt
 | * | * | — | — | `mocho:Manifestation` (D9 fallback) | M | — | `notes/transform-script-adr.md` D9 |
 
 For `rico:RecordSet` rows, `rico:hasRecordSetType` is asserted twice: `ric-rst:*` (coarse) and `vocnet-htype:htXXX` (fine-grained). `PhysicalThing` ancestors use the same htype rows with no `mocho:Manifestation`.
-
-dc:type dispatch uses `output/config/lookup_dctype_to_class.csv` (1,647 rows) with three-level fallback: `(mediatype, sector, dc_type_de)` → `(*, sector, dc_type_de)` → `(*, *, dc_type_de)`. When a W-slot class is assigned, `mocho:Manifestation` is **not** emitted — the Manifestation role is fulfilled by the WebResource (`mocho:ImageObject`, D12).
 
 ### 1.2 Work-level GND Werk lookup table
 

@@ -104,7 +104,7 @@ Library; `Fotografie` in sparte001 Archive suppresses the image WEMI class entir
 A flat dc:type-only lookup would therefore be wrong even where dc:type coverage is high.
 The sector dimension must be preserved in all dispatch tables derived from this analysis.
 This constraint is realised in `output/config/image_type2class.json` (D11,
-`transform-script-adr.md`) and in the sector-keyed rows of `lookup_dctype_to_class.csv`.
+`transform-script-adr.md`) and in the sector-keyed rows of `output/config/lookup_htype_doco_rico.csv`.
 
 ### 1.2 **Dispatch order derived from coverage**:
 

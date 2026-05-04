@@ -256,7 +256,7 @@ Range: `rdfs:Literal`
 
 Range: `rdfs:Literal` (lang-tagged literal year string)
 
-Open: if `dc:issued` (publication date) should be distinguished from `dc:date` (general date), use `rdam:P30011` "has date of publication" — pending confirmation that `rdam:P30011` is in mocho.
+**Deferred**: `dc:issued` maps to `rdam:P30278` for now. The correct resolution is LIDO event type dispatch via `CHO → edm:hasMet → Event → edm:occurredAt → TimeSpan` — the event type (e.g. lido00228 publication) would select `rdam:P30011` "has date of publication" over `rdam:P30278`. This is the same deferred path as `transform-revised-plan.md §3.2` item 3 and §5.2; `dc:issued` is a stopgap until that traversal is implemented.
 
 ---
 
