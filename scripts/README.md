@@ -426,3 +426,35 @@ writes the gap — IDs present in the list but absent from the JSONL — to
 
 ### `fetch-progress.sh`
 Shell script to monitor fetch progress.
+
+### `sample_validation.py`
+Samples one DDB object per §1.1 dispatch rule for manual class-assignment validation.
+For sparte005 rows, expands each mediatype to 3 sub-rows with distinct dc:type values.
+Rules without a matching record in the corpus are emitted with `ddb_url=NO EXAMPLE FOUND`.
+
+- **Input**: `data/items-all-goethe-faust.json`
+- **Output**: `output/validation_sample.csv`
+  (columns: sparte, mediatype, htype, dc_type, ddb_url, w_class, m_class)
+- **Usage**:
+  ```
+  python scripts/sample_validation.py [--seed N]   # default seed=42
+  ```
+
+### `validate_sample.py`
+Cross-checks `output/validation_sample.csv` against the three dispatch lookup CSVs
+to flag mismatches between §1.1 RULES-encoded classes and lookup table classes.
+Normalises full IRIs to prefixed notation; classifies results as MATCH, MATCH_EMPTY,
+DC_TYPE_OVERRIDE (dc:type lookup overrides base mediatype dispatch — expected),
+MISMATCH, NO_LOOKUP, or NO_EXAMPLE.
+
+- **Inputs**: `output/validation_sample.csv`,
+  `output/config/lookup_htype_doco_rico.csv`,
+  `output/config/lookup_mediatype_class.csv`,
+  `output/config/lookup_dctype_to_class.csv`
+- **Output**: `output/validation_report.csv`
+  (columns: sparte, mediatype, htype, dc_type, ddb_url,
+  rule_w, rule_m, lookup_w, lookup_m, match, source)
+- **Usage**:
+  ```
+  python scripts/validate_sample.py
+  ```

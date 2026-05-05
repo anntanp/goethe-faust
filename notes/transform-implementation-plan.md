@@ -18,6 +18,7 @@ The current script (~730 lines) emits a single N-Triples stream into one file wi
 | `output/config/lookup_class_prop_alignment.csv` | `(target_class, edm_prop) → target_prop` — runtime dispatch |
 | `output/config/lido_event_types.csv` | `lido_uri → {rdam_agent_prop, rdaw_agent_prop, …, dc_agent_fallback}` |
 | `output/config/lookup_htype_doco_rico.csv` | htype_code → (rdf_type, rst_iris) — keep existing loader |
+| `output/config/lookup_mediatype_class.csv` | (sparte, mediatype) → (use_htype, rdf_type_w, rdf_type_m) — new; drives fixed class layer in `retype_entities()` |
 | `output/config/audio_type2class.json` | mt001 group dispatch |
 | `output/alignment_ddbedm_mocho.csv` | general (entity_type, json_key) → rda_iri |
 | `notes/transform-script-plan.md` | Full spec (§0–§10) |
@@ -96,7 +97,10 @@ Reads `output/config/lookup_class_prop_alignment.csv` columns: `edm_class, targe
 ### §4.2 `load_lido_event_types(path)` → `dict[lido_uri_str, dict[col_name, expanded_iri]]`
 Reads `output/config/lido_event_types.csv`. Key: `resource` column (full URI). Columns of interest: `rdam_agent_prop`, `rdaw_agent_prop`, `vra_image_agent_prop`, `vra_work_agent_prop`, `rico_agent_prop`, `dc_agent_fallback`. Expand CURIEs via `_expand_prefix()`.
 
-### §4.3 `load_audio_type2class(path)` → `dict[(sector_iri, dc_type_de), group_char]`
+### §4.3 `load_mediatype_class(path)` → `dict[(sparte_iri, mediatype_iri), row_dict]`
+Reads `output/config/lookup_mediatype_class.csv`. Key: `(sparte, mediatype)` — full IRIs or `"any"`. Value: row dict with keys `use_htype` (bool), `rdf_type_w` (expanded IRI or `""`), `rdf_type_m` (expanded IRI or `""`). Expand CURIEs in `rdf_type_w`/`rdf_type_m` via `_expand_prefix()`. Lookup falls back to `("any", "any")` if exact key not found.
+
+### §4.4 `load_audio_type2class(path)` → `dict[(sector_iri, dc_type_de), group_char]`
 Reads `output/config/audio_type2class.json`. Maps `(sector, dc_type)` → group `"A"/"B"/"C"`. Group A → `mo:MusicalManifestation`, Groups B/C → `aco:AudioManifestation`.
 
 ---
