@@ -7,7 +7,7 @@
 #            $OUT_BASE/merged.nq
 #            $OUT_BASE/werk-staging-merged.duckdb
 #            $OUT_BASE/nt/ddbedm.nt, mocho.nt, prov.nt
-# Deps:      python -m transform (PYTHONPATH=scripts/), duckdb Python package,
+# Deps:      python3 -m transform (PYTHONPATH=scripts/), duckdb Python package,
 #            scripts/split_nq.py (stdlib only)
 # Notes:     Export is skipped per sector if JSONL already exists in EXPORT_DIR.
 #            sqlite_export has no --limit flag; transform is capped with --limit 100000.
@@ -18,7 +18,7 @@ set -euo pipefail
 GOETHE="$(cd "$(dirname "$0")/.." && pwd)"
 SQLITE_DIR=/data/ddb/data
 EXPORT_DIR=/data/ddb/export
-OUT_BASE=$GOETHE/output/transform/gemea-dryrun
+OUT_BASE=/data/ddb/gemea/dryrun
 # ──────────────────────────────────────────────────────────────────────────────
 
 CFG=$GOETHE/output/config
@@ -40,14 +40,14 @@ for n in 1 2 3 4 5 6 7; do
       echo "[$(date '+%F %T')] [s${n}] JSONL exists — skipping export"
     else
       echo "[$(date '+%F %T')] [s${n}] export starting"
-      PYTHONPATH="$SCRIPTS" python -m transform.sqlite_export \
+      PYTHONPATH="$SCRIPTS" python3 -m transform.sqlite_export \
         --db  "$SQLITE_DIR/s${n}.sqlite" \
         --out "$EXPORT_DIR/s${n}.jsonl"
       echo "[$(date '+%F %T')] [s${n}] export done"
     fi
 
     echo "[$(date '+%F %T')] [s${n}] transform starting (limit ${LIMIT})"
-    PYTHONPATH="$SCRIPTS" python -m transform \
+    PYTHONPATH="$SCRIPTS" python3 -m transform \
       --jsonl        "$EXPORT_DIR/s${n}.jsonl" \
       --outdir       "$OUT_BASE/s${n}" \
       --limit        "$LIMIT" \
@@ -74,7 +74,7 @@ NQ_LINES=$(wc -l < "$MERGED_NQ")
 echo "[$(date '+%F %T')] N-Quads merged (${NQ_LINES} quads) → $MERGED_NQ"
 
 # ── Phase 3: merge DuckDB werk_staging ───────────────────────────────────────
-OUT_BASE="$OUT_BASE" python3 <<'PYEOF'
+OUT_BASE="$OUT_BASE" python33 <<'PYEOF'
 import duckdb, glob, os, sys
 out_base = os.environ["OUT_BASE"]
 shards = sorted(glob.glob(f"{out_base}/s*/*-werk-staging.duckdb"))
@@ -94,7 +94,7 @@ PYEOF
 # ── Phase 4: split merged N-Quads into per-graph N-Triples ───────────────────
 NT_DIR=$OUT_BASE/nt
 echo "[$(date '+%F %T')] Splitting N-Quads into per-graph .nt files → $NT_DIR"
-python "$SCRIPTS/split_nq.py" "$MERGED_NQ" --out-dir "$NT_DIR"
+python3 "$SCRIPTS/split_nq.py" "$MERGED_NQ" --out-dir "$NT_DIR"
 echo "[$(date '+%F %T')] Split complete"
 
 echo "[$(date '+%F %T')] Done. All output in: $OUT_BASE"
