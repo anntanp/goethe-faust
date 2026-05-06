@@ -359,3 +359,105 @@ EOF
 
 Single-threaded transform alone would be 30–60 min; sector parallelism roughly
 divides by the number of sectors running concurrently (up to 7).
+
+---
+
+## 7. Full-corpus dryrun — ise-d-teach03 (2026-05-06)
+
+### 7.1 Server paths
+
+| Resource | Path |
+|---|---|
+| SQLite files | `/data/ddb/data/s{1..7}.sqlite` |
+| JSONL export (dryrun) | `/data/ddb/gemea/export/dryrun-s{1..7}.jsonl` |
+| JSONL export (production) | `/data/ddb/gemea/export/s{1..7}.jsonl` |
+| Dryrun output | `/data/ddb/gemea/dryrun/` |
+| Production output | `/data/ddb/gemea/` |
+
+### 7.2 Python environment
+
+- System Python: `/usr/bin/python3` (3.10.12)
+- duckdb 1.5.2 installed at `/home/ann/.local/lib/python3.10/site-packages/`
+- **PYTHONPATH suppresses user site-packages** on this server — setting `PYTHONPATH`
+  causes `import duckdb` to fail even though `python3 -c "import duckdb"` works.
+  Fix: run transform via `cd scripts/ && python3 -m transform` (no PYTHONPATH).
+
+Install duckdb:
+```bash
+python3 -m pip install --user duckdb
+```
+
+### 7.3 Wrapper scripts
+
+`scripts/run_gemea_dryrun.sh` and `scripts/run_gemea_transform.sh` use `cd "$SCRIPTS"`
+inside each subshell instead of `PYTHONPATH`. Run from the project root:
+
+```bash
+bash scripts/run_gemea_dryrun.sh    # 100k records per sector
+bash scripts/run_gemea_transform.sh # full corpus
+```
+
+`sqlite_export` gained a `--limit N` flag (2026-05-06) so the dryrun exports exactly
+100k records from SQLite rather than doing a full sector scan.
+
+### 7.4 Actual throughput (s3 dryrun, 2026-05-06)
+
+| Metric | Value |
+|---|---|
+| Records processed | 83,572 |
+| Wall time | 2 min 36 s |
+| Throughput | **534 rec/s** |
+
+The §6.4 estimate (5,000–10,000 rec/s) was too optimistic. Actual throughput on
+ise-d-teach03 is ~534 rec/s per worker.
+
+### 7.5 Revised runtime estimates
+
+At 534 rec/s per worker, 7 workers in parallel (wall time = slowest sector = s2):
+
+| Phase | Revised estimate |
+|---|---|
+| SQLite → JSONL export (s2, full scan) | 30–60 min |
+| Transform s2 (~18.5M records) | **~9.6 h** |
+| Transform other sectors (parallel with s2) | finish before s2 |
+| Merge + split | < 5 min |
+| **Total wall time** | **~10–11 h** |
+
+### 7.6 Worker capacity — commands
+
+```bash
+# CPU cores
+nproc
+
+# RAM
+free -h
+
+# Current load
+top -bn1 | head -20
+
+# Other active users
+w
+
+# Top processes by CPU
+ps aux --sort=-%cpu | head -20
+
+# Cores available at 50% CPU
+echo "$(nproc) cores → 50% = $(( $(nproc) / 2 )) workers"
+```
+
+Each transform worker uses ~1 core (CPU-bound: gzip decompress + JSON parse + emit)
+and ~200–400 MB RAM (config tables + DuckDB connection). Recommended: cap workers
+at `nproc / 2` unless the server is otherwise idle.
+
+### 7.7 Data quality: empty blobs in SQLite
+
+Some UIDs have empty `bufgz` blobs — `gzip.decompress()` succeeds but returns empty
+bytes, causing `json.loads(b"")` to raise `JSONDecodeError`. These records are skipped
+and logged as warnings:
+
+```
+WARNING s2.sqlite uid=OOVCU2TVJBPFVRDCBPCSLNYVTCDJV637 error: Expecting value: line 1 column 1 (char 0)
+```
+
+Not a pipeline bug — data quality issue in the upstream SQLite. The db filename was
+added to the warning message (2026-05-06) to identify which sector is affected.

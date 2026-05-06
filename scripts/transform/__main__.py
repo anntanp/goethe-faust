@@ -169,9 +169,14 @@ def main() -> None:
     elif args.ids:
         ids_set = load_ids(Path(args.ids))
 
-    import duckdb
-    conn = duckdb.connect(str(werk_path))
-    conn.execute("""
+    try:
+        import duckdb
+        conn = duckdb.connect(str(werk_path))
+    except ImportError:
+        log.warning("duckdb not available — werk_staging will not be written")
+        conn = None
+    if conn is not None:
+        conn.execute("""
         CREATE TABLE IF NOT EXISTS werk_staging (
             ddb_obj_id       VARCHAR PRIMARY KEY,
             cho_uri          VARCHAR,
@@ -288,7 +293,7 @@ def main() -> None:
                 mocho_preds_all.update(pred_info["mocho_preds_all"])
                 mocho_preds_new.update(pred_info["mocho_preds_new"])
 
-            if werk_row:
+            if werk_row and conn is not None:
                 conn.execute(
                     "INSERT OR REPLACE INTO werk_staging VALUES (?,?,?,?,?,?,?,?)",
                     [
@@ -323,7 +328,8 @@ def main() -> None:
                     rate, _fmt_duration(elapsed), eta_str,
                 )
 
-    conn.close()
+    if conn is not None:
+        conn.close()
 
     elapsed_total = time.monotonic() - start_time
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Purpose:   Full GeMeA corpus transform — 39 workers across 7 sectors in parallel (Option C)
+# Purpose:   Full GeMeA corpus transform — 128 workers across 7 sectors in parallel (Option C, teach03)
 # Usage:     bash scripts/run_gemea_transform.sh
 #            Run from the goethe-faust project root, inside a tmux/screen session.
-# Inputs:    /data/gemea/sqlite/s{1..7}.sqlite
+# Inputs:    /data/ddb/data/s{1..7}.sqlite
 # Outputs:   $OUT_BASE/s{1..7}/   (per-sector .nq, .duckdb, -stats.json, -errors.jsonl, .log)
 #            $OUT_BASE/merged.nq
 #            $OUT_BASE/werk-staging-merged.duckdb
@@ -18,24 +18,24 @@ set -euo pipefail
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 GOETHE="$(cd "$(dirname "$0")/.." && pwd)"
-SQLITE_DIR=/data/gemea/sqlite
-EXPORT_DIR=/data/gemea/sqlite/json-export
+SQLITE_DIR=/data/ddb/data
+EXPORT_DIR=/data/ddb/gemea/json-export
+SCRIPTS=$GOETHE/scripts
 HASH=$(find "$SCRIPTS/transform" -name "*.py" | sort | xargs sha256sum | sha256sum | cut -c1-4)
 VERSION="$(date '+%Y%m%d')-$(date '+%H')${HASH}"
-OUT_BASE=/data/gemea/www/downloads/mocho-transform/$VERSION
+OUT_BASE=/data/ddb/gemea/mocho-transform/$VERSION
 # ──────────────────────────────────────────────────────────────────────────────
 
 CFG=$GOETHE/output/config
-SCRIPTS=$GOETHE/scripts
 PYTHON=$( [[ -x "$GOETHE/.venv/bin/python3" ]] && echo "$GOETHE/.venv/bin/python3" || echo python3 )
 
-# Workers per sector — 39 total (70% of 56 cores on teach01)
-# Distributed proportionally to record count so all sectors finish in ~25 min.
-declare -A WORKERS=([1]=5 [2]=24 [3]=1 [4]=2 [5]=3 [6]=3 [7]=1)
+# Workers per sector — 128 total (50% of 256 cores on teach03)
+# Distributed proportionally to record count so all sectors finish simultaneously.
+declare -A WORKERS=([1]=17 [2]=86 [3]=1 [4]=6 [5]=8 [6]=9 [7]=1)
 
 mkdir -p "$EXPORT_DIR" "$OUT_BASE"
 
-echo "[$(date '+%F %T')] Starting GeMeA transform — 39 workers across 7 sectors"
+echo "[$(date '+%F %T')] Starting GeMeA transform — 128 workers across 7 sectors"
 echo "  GOETHE     = $GOETHE"
 echo "  SQLITE_DIR = $SQLITE_DIR"
 echo "  EXPORT_DIR = $EXPORT_DIR"

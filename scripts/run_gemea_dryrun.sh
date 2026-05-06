@@ -25,7 +25,7 @@ OUT_BASE=/data/gemea/dryrun
 CFG=$GOETHE/output/config
 SCRIPTS=$GOETHE/scripts
 PYTHON=$( [[ -x "$GOETHE/.venv/bin/python3" ]] && echo "$GOETHE/.venv/bin/python3" || echo python3 )
-LIMIT=1000
+LIMIT=10000
 
 mkdir -p "$EXPORT_DIR" "$OUT_BASE"
 
@@ -52,7 +52,7 @@ for n in 1 2 3 4 5 6 7; do
       --jsonl        "$EXPORT_DIR/dryrun-s${n}.jsonl" \
       --outdir       "$OUT_BASE/s${n}" \
       --stats        dispatch \
-      --log-interval 100 \
+      --log-interval 1000 \
       --alignment    "$CFG/lookup_class_prop_alignment.csv" \
       --lido         "$CFG/lido_event_types.csv" \
       --htype        "$CFG/lookup_htype_doco_rico.csv" \
