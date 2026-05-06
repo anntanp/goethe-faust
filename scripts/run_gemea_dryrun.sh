@@ -17,15 +17,15 @@ set -euo pipefail
 
 # ── Paths (set before running) ─────────────────────────────────────────────────
 GOETHE="$(cd "$(dirname "$0")/.." && pwd)"
-SQLITE_DIR=/data/ddb/data
-EXPORT_DIR=/data/ddb/export
-OUT_BASE=/data/ddb/gemea/dryrun
+SQLITE_DIR=/data/gemea/sqlite/
+EXPORT_DIR=/data/gemea/dryrun/json-export
+OUT_BASE=/data/gemea/dryrun
 # ──────────────────────────────────────────────────────────────────────────────
 
 CFG=$GOETHE/output/config
 SCRIPTS=$GOETHE/scripts
 PYTHON=$( [[ -x "$GOETHE/.venv/bin/python3" ]] && echo "$GOETHE/.venv/bin/python3" || echo python3 )
-LIMIT=100000
+LIMIT=1000
 
 mkdir -p "$EXPORT_DIR" "$OUT_BASE"
 
@@ -52,7 +52,7 @@ for n in 1 2 3 4 5 6 7; do
       --jsonl        "$EXPORT_DIR/dryrun-s${n}.jsonl" \
       --outdir       "$OUT_BASE/s${n}" \
       --stats        dispatch \
-      --log-interval 10000 \
+      --log-interval 100 \
       --alignment    "$CFG/lookup_class_prop_alignment.csv" \
       --lido         "$CFG/lido_event_types.csv" \
       --htype        "$CFG/lookup_htype_doco_rico.csv" \

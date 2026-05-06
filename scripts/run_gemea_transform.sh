@@ -1,74 +1,118 @@
 #!/usr/bin/env bash
-# Purpose:   Full GeMeA corpus transform — 7 sectors in parallel (Option C)
+# Purpose:   Full GeMeA corpus transform — 39 workers across 7 sectors in parallel (Option C)
 # Usage:     bash scripts/run_gemea_transform.sh
 #            Run from the goethe-faust project root, inside a tmux/screen session.
-# Inputs:    /data/ddb/data/s{1..7}.sqlite
+# Inputs:    /data/gemea/sqlite/s{1..7}.sqlite
 # Outputs:   $OUT_BASE/s{1..7}/   (per-sector .nq, .duckdb, -stats.json, -errors.jsonl, .log)
 #            $OUT_BASE/merged.nq
 #            $OUT_BASE/werk-staging-merged.duckdb
 #            $OUT_BASE/nt/ddbedm.nt, mocho.nt, prov.nt
-# Deps:      .venv/ created by scripts/setup_venv.sh, scripts/split_nq.py (stdlib only)
-# Notes:     EXPORT_DIR needs ~400 GB free for uncompressed JSONL.
-#            Each sector runs export then transform back-to-back in its own subshell.
-#            All 7 subshells are launched in parallel; script waits for all to finish.
+# Deps:      .venv/ created by scripts/setup_venv.sh (optional), duckdb via pip3 --user,
+#            scripts/split_nq.py (stdlib only)
+# Notes:     Sectors with >1 worker: export → split JSONL → N parallel transforms.
+#            Sectors with 1 worker:  export → transform (no split).
+#            cd into scripts/ before python3 -m transform so duckdb (user site-packages)
+#            is visible without PYTHONPATH.
 
 set -euo pipefail
 
-# ── Paths (set before running) ─────────────────────────────────────────────────
-GOETHE="$(cd "$(dirname "$0")/.." && pwd)"   # goethe-faust project root (auto-detected)
-SQLITE_DIR=/data/ddb/data                    # s1.sqlite … s7.sqlite
-EXPORT_DIR=/data/ddb/export                  # per-sector JSONL; needs ~400 GB free
-OUT_BASE=/data/ddb/gemea                     # s1/ … s7/ land here
+# ── Paths ──────────────────────────────────────────────────────────────────────
+GOETHE="$(cd "$(dirname "$0")/.." && pwd)"
+SQLITE_DIR=/data/gemea/sqlite
+EXPORT_DIR=/data/gemea/sqlite/json-export
+HASH=$(find "$SCRIPTS/transform" -name "*.py" | sort | xargs sha256sum | sha256sum | cut -c1-4)
+VERSION="$(date '+%Y%m%d')-$(date '+%H')${HASH}"
+OUT_BASE=/data/gemea/www/downloads/mocho-transform/$VERSION
 # ──────────────────────────────────────────────────────────────────────────────
 
 CFG=$GOETHE/output/config
 SCRIPTS=$GOETHE/scripts
 PYTHON=$( [[ -x "$GOETHE/.venv/bin/python3" ]] && echo "$GOETHE/.venv/bin/python3" || echo python3 )
 
+# Workers per sector — 39 total (70% of 56 cores on teach01)
+# Distributed proportionally to record count so all sectors finish in ~25 min.
+declare -A WORKERS=([1]=5 [2]=24 [3]=1 [4]=2 [5]=3 [6]=3 [7]=1)
+
 mkdir -p "$EXPORT_DIR" "$OUT_BASE"
 
-echo "[$(date '+%F %T')] Starting full GeMeA transform — 7 sectors in parallel"
+echo "[$(date '+%F %T')] Starting GeMeA transform — 39 workers across 7 sectors"
 echo "  GOETHE     = $GOETHE"
 echo "  SQLITE_DIR = $SQLITE_DIR"
 echo "  EXPORT_DIR = $EXPORT_DIR"
 echo "  OUT_BASE   = $OUT_BASE"
+echo "  Workers    = s1:${WORKERS[1]} s2:${WORKERS[2]} s3:${WORKERS[3]} s4:${WORKERS[4]}" \
+     "s5:${WORKERS[5]} s6:${WORKERS[6]} s7:${WORKERS[7]}"
 
-# ── Phase 1+2: export then transform, pipelined per sector ────────────────────
+# ── Phase 1+2: export then transform (chunked where W>1) ──────────────────────
 for n in 1 2 3 4 5 6 7; do
+  W=${WORKERS[$n]}
   (
     mkdir -p "$OUT_BASE/s${n}"
+
+    # Export full sector JSONL
     echo "[$(date '+%F %T')] [s${n}] export starting"
     cd "$SCRIPTS"
     "$PYTHON" -m transform.sqlite_export \
       --db  "$SQLITE_DIR/s${n}.sqlite" \
       --out "$EXPORT_DIR/s${n}.jsonl" \
       2>> "$OUT_BASE/s${n}/export.log"
+    echo "[$(date '+%F %T')] [s${n}] export done"
 
-    TOTAL=$(wc -l < "$EXPORT_DIR/s${n}.jsonl")
-    echo "[$(date '+%F %T')] [s${n}] export done (${TOTAL} records) — transform starting"
+    if [[ $W -eq 1 ]]; then
+      # Single worker — transform directly
+      TOTAL=$(wc -l < "$EXPORT_DIR/s${n}.jsonl")
+      echo "[$(date '+%F %T')] [s${n}] transform starting (1 worker, ${TOTAL} records)"
+      cd "$SCRIPTS"
+      "$PYTHON" -m transform \
+        --jsonl      "$EXPORT_DIR/s${n}.jsonl" \
+        --outdir     "$OUT_BASE/s${n}" \
+        --stats      dispatch \
+        --total      "$TOTAL" \
+        --alignment  "$CFG/lookup_class_prop_alignment.csv" \
+        --lido       "$CFG/lido_event_types.csv" \
+        --htype      "$CFG/lookup_htype_doco_rico.csv" \
+        --mediatype  "$CFG/lookup_mediatype_class.csv" \
+        --audio      "$CFG/audio_type2class.json"
+    else
+      # Multiple workers — split JSONL into W chunks then transform in parallel
+      CHUNK_DIR="$EXPORT_DIR/s${n}_chunks"
+      mkdir -p "$CHUNK_DIR"
+      echo "[$(date '+%F %T')] [s${n}] splitting into ${W} chunks"
+      split -n l/$W "$EXPORT_DIR/s${n}.jsonl" "$CHUNK_DIR/chunk_"
 
-    "$PYTHON" -m transform \
-      --jsonl      "$EXPORT_DIR/s${n}.jsonl" \
-      --outdir     "$OUT_BASE/s${n}" \
-      --stats      dispatch \
-      --total      "$TOTAL" \
-      --alignment  "$CFG/lookup_class_prop_alignment.csv" \
-      --lido       "$CFG/lido_event_types.csv" \
-      --htype      "$CFG/lookup_htype_doco_rico.csv" \
-      --mediatype  "$CFG/lookup_mediatype_class.csv" \
-      --audio      "$CFG/audio_type2class.json"
+      echo "[$(date '+%F %T')] [s${n}] launching ${W} transform workers"
+      for chunk in "$CHUNK_DIR"/chunk_*; do
+        stem=$(basename "$chunk")
+        TOTAL=$(wc -l < "$chunk")
+        mkdir -p "$OUT_BASE/s${n}/$stem"
+        (
+          cd "$SCRIPTS"
+          "$PYTHON" -m transform \
+            --jsonl      "$chunk" \
+            --outdir     "$OUT_BASE/s${n}/$stem" \
+            --stats      dispatch \
+            --total      "$TOTAL" \
+            --alignment  "$CFG/lookup_class_prop_alignment.csv" \
+            --lido       "$CFG/lido_event_types.csv" \
+            --htype      "$CFG/lookup_htype_doco_rico.csv" \
+            --mediatype  "$CFG/lookup_mediatype_class.csv" \
+            --audio      "$CFG/audio_type2class.json"
+        ) &
+      done
+      wait  # wait for all chunk workers of this sector
+    fi
 
-    echo "[$(date '+%F %T')] [s${n}] transform done"
+    echo "[$(date '+%F %T')] [s${n}] done"
   ) &
 done
 
-echo "[$(date '+%F %T')] All 7 sector workers launched — waiting for completion..."
+echo "[$(date '+%F %T')] All sector workers launched — waiting for completion..."
 wait
 echo "[$(date '+%F %T')] All sectors complete — merging"
 
 # ── Phase 3: merge N-Quads ────────────────────────────────────────────────────
 MERGED_NQ=$OUT_BASE/merged.nq
-cat "$OUT_BASE"/s*/*.nq > "$MERGED_NQ"
+find "$OUT_BASE" -name "*.nq" | sort | xargs cat > "$MERGED_NQ"
 NQ_LINES=$(wc -l < "$MERGED_NQ")
 echo "[$(date '+%F %T')] N-Quads merged (${NQ_LINES} quads) → $MERGED_NQ"
 
@@ -76,7 +120,7 @@ echo "[$(date '+%F %T')] N-Quads merged (${NQ_LINES} quads) → $MERGED_NQ"
 OUT_BASE="$OUT_BASE" "$PYTHON" <<'PYEOF'
 import duckdb, glob, os, sys
 out_base = os.environ["OUT_BASE"]
-shards = sorted(glob.glob(f"{out_base}/s*/*-werk-staging.duckdb"))
+shards = sorted(glob.glob(f"{out_base}/**/*-werk-staging.duckdb", recursive=True))
 if not shards:
     print("No werk_staging shards found — skipping DuckDB merge")
     sys.exit(0)
@@ -96,4 +140,4 @@ echo "[$(date '+%F %T')] Splitting N-Quads into per-graph .nt files → $NT_DIR"
 "$PYTHON" "$SCRIPTS/split_nq.py" "$MERGED_NQ" --out-dir "$NT_DIR"
 echo "[$(date '+%F %T')] Split complete"
 
-echo "[$(date '+%F %T')] Done. All output in: $OUT_BASE"
+echo "[$(date '+%F %T')] Done. Output: $OUT_BASE"
