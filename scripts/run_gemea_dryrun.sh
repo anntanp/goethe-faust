@@ -4,7 +4,6 @@
 #            Run from the goethe-faust project root, inside a tmux/screen session.
 # Inputs:    /data/ddb/data/s{1..7}.sqlite
 # Outputs:   $OUT_BASE/s{1..7}/   (per-sector .nq, .duckdb, -stats.json, -errors.jsonl, .log)
-#            $OUT_BASE/merged.nq
 #            $OUT_BASE/werk-staging-merged.duckdb
 #            $OUT_BASE/nt/ddbedm.nt, mocho.nt, prov.nt
 # Deps:      .venv/ created by scripts/setup_venv.sh (optional), duckdb via pip3 --user,
@@ -85,7 +84,7 @@ out = f"{out_base}/werk-staging-merged.duckdb"
 conn = duckdb.connect(out)
 conn.execute(f"CREATE TABLE werk_staging AS SELECT * FROM '{shards[0]}'")
 for p in shards[1:]:
-    conn.execute(f"INSERT OR REPLACE INTO werk_staging SELECT * FROM '{p}'")
+    conn.execute(f"INSERT INTO werk_staging SELECT * FROM '{p}'")
 rows = conn.execute("SELECT COUNT(*) FROM werk_staging").fetchone()[0]
 conn.close()
 print(f"werk_staging merged ({len(shards)} shards, {rows} rows) → {out}")

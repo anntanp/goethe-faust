@@ -4,7 +4,6 @@
 #            Run from the goethe-faust project root, inside a tmux/screen session.
 # Inputs:    /data/ddb/data/s{1..7}.sqlite
 # Outputs:   $OUT_BASE/s{1..7}/   (per-sector .nq, .duckdb, -stats.json, -errors.jsonl, .log)
-#            $OUT_BASE/merged.nq
 #            $OUT_BASE/werk-staging-merged.duckdb
 #            $OUT_BASE/nt/ddbedm.nt, mocho.nt, prov.nt
 # Deps:      .venv/ created by scripts/setup_venv.sh (optional), duckdb via pip3 --user,
@@ -110,12 +109,6 @@ echo "[$(date '+%F %T')] All sector workers launched — waiting for completion.
 wait
 echo "[$(date '+%F %T')] All sectors complete — merging"
 
-# ── Phase 3: merge N-Quads ────────────────────────────────────────────────────
-MERGED_NQ=$OUT_BASE/merged.nq
-find "$OUT_BASE" -name "*.nq" | sort | xargs cat > "$MERGED_NQ"
-NQ_LINES=$(wc -l < "$MERGED_NQ")
-echo "[$(date '+%F %T')] N-Quads merged (${NQ_LINES} quads) → $MERGED_NQ"
-
 # ── Phase 3: merge DuckDB werk_staging ───────────────────────────────────────
 OUT_BASE="$OUT_BASE" "$PYTHON" <<'PYEOF'
 import glob, os, sys
@@ -133,16 +126,31 @@ out = f"{out_base}/werk-staging-merged.duckdb"
 conn = duckdb.connect(out)
 conn.execute(f"CREATE TABLE werk_staging AS SELECT * FROM '{shards[0]}'")
 for p in shards[1:]:
-    conn.execute(f"INSERT OR REPLACE INTO werk_staging SELECT * FROM '{p}'")
+    conn.execute(f"INSERT INTO werk_staging SELECT * FROM '{p}'")
 rows = conn.execute("SELECT COUNT(*) FROM werk_staging").fetchone()[0]
 conn.close()
 print(f"werk_staging merged ({len(shards)} shards, {rows} rows) → {out}")
 PYEOF
 
-# ── Phase 4: split merged N-Quads into per-graph N-Triples ───────────────────
+# ── Phase 4: split each .nq → per-chunk .nt, then merge by graph ─────────────
 NT_DIR=$OUT_BASE/nt
-echo "[$(date '+%F %T')] Splitting N-Quads into per-graph .nt files → $NT_DIR"
-"$PYTHON" "$SCRIPTS/split_nq.py" "$MERGED_NQ" --out-dir "$NT_DIR"
-echo "[$(date '+%F %T')] Split complete"
+mkdir -p "$NT_DIR"
+echo "[$(date '+%F %T')] Splitting N-Quads into per-chunk .nt files"
+while IFS= read -r nq; do
+  "$PYTHON" "$SCRIPTS/split_nq.py" "$nq" &
+done < <(find "$OUT_BASE" -name "*.nq" | sort)
+wait
+echo "[$(date '+%F %T')] All splits done — merging by graph → $NT_DIR"
+
+declare -A seen
+while IFS= read -r f; do
+  s="${f##*-}"; s="${s%.nt}"
+  seen["$s"]=1
+done < <(find "$OUT_BASE" -name "*-*.nt" ! -path "$NT_DIR/*")
+for slug in "${!seen[@]}"; do
+  find "$OUT_BASE" -name "*-${slug}.nt" ! -path "$NT_DIR/*" | sort | xargs cat > "$NT_DIR/${slug}.nt"
+  echo "[$(date '+%F %T')] → $NT_DIR/${slug}.nt"
+done
+echo "[$(date '+%F %T')] Split+merge complete"
 
 echo "[$(date '+%F %T')] Done. Output: $OUT_BASE"
