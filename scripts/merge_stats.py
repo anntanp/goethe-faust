@@ -126,14 +126,13 @@ def main() -> None:
                         help="Output file (default: <out_base>/combined-stats.json)")
     args = parser.parse_args()
 
-    paths = sorted(args.out_base.rglob("*-stats.json"))
+    out_path = args.out or args.out_base / f"{args.out_base.name}-stats.json"
+    paths = sorted(p for p in args.out_base.rglob("*-stats.json") if p != out_path)
     if not paths:
-        print(f"No *-stats.json files found under {args.out_base}")
+        print(f"No shard *-stats.json files found under {args.out_base}")
         return
 
     result = merge(paths)
-
-    out_path = args.out or args.out_base / f"{args.out_base.name}-stats.json"
     with open(out_path, "w") as f:
         json.dump(result, f, indent=2)
 
