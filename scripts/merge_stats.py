@@ -137,6 +137,9 @@ def main() -> None:
     with open(out_path, "w") as f:
         json.dump(result, f, indent=2)
 
+    for p in paths:
+        p.unlink()
+
     r = result["records"]
     t = result["triples"]
     print(f"Merged {len(paths)} shards → {out_path}")
