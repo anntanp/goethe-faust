@@ -53,6 +53,7 @@ for n in 1 2 3 4 5 6 7; do
       --outdir       "$OUT_BASE/s${n}" \
       --stats        dispatch \
       --log-interval 1000 \
+      --total        "$LIMIT" \
       --alignment    "$CFG/lookup_class_prop_alignment.csv" \
       --lido         "$CFG/lido_event_types.csv" \
       --htype        "$CFG/lookup_htype_doco_rico.csv" \
