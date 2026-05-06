@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Dict, List, Tuple
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -21,9 +22,9 @@ DEFAULT_OUTPUT_BASE  = PROJECT_DIR / "output" / "transform"
 # ─── Type aliases ─────────────────────────────────────────────────────────────
 
 NQuad     = str
-NQList    = list[NQuad]
-PropAlign = dict[tuple[str, str], str]   # (target_class, edm_prop) → target_prop_iri
-AgentDict = dict[str, object]
+NQList    = List[NQuad]
+PropAlign = Dict[Tuple[str, str], str]   # (target_class, edm_prop) → target_prop_iri
+AgentDict = Dict[str, object]
 
 # ─── Named graphs ─────────────────────────────────────────────────────────────
 
