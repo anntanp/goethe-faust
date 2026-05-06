@@ -38,7 +38,8 @@ for n in 1 2 3 4 5 6 7; do
   (
     mkdir -p "$OUT_BASE/s${n}"
     echo "[$(date '+%F %T')] [s${n}] export starting"
-    PYTHONPATH="$SCRIPTS" "$PYTHON" -m transform.sqlite_export \
+    cd "$SCRIPTS"
+    "$PYTHON" -m transform.sqlite_export \
       --db  "$SQLITE_DIR/s${n}.sqlite" \
       --out "$EXPORT_DIR/s${n}.jsonl" \
       2>> "$OUT_BASE/s${n}/export.log"
@@ -46,7 +47,7 @@ for n in 1 2 3 4 5 6 7; do
     TOTAL=$(wc -l < "$EXPORT_DIR/s${n}.jsonl")
     echo "[$(date '+%F %T')] [s${n}] export done (${TOTAL} records) — transform starting"
 
-    PYTHONPATH="$SCRIPTS" "$PYTHON" -m transform \
+    "$PYTHON" -m transform \
       --jsonl      "$EXPORT_DIR/s${n}.jsonl" \
       --outdir     "$OUT_BASE/s${n}" \
       --stats      dispatch \

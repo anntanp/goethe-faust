@@ -7,9 +7,11 @@
 #            $OUT_BASE/merged.nq
 #            $OUT_BASE/werk-staging-merged.duckdb
 #            $OUT_BASE/nt/ddbedm.nt, mocho.nt, prov.nt
-# Deps:      .venv/ created by scripts/setup_venv.sh, scripts/split_nq.py (stdlib only)
+# Deps:      .venv/ created by scripts/setup_venv.sh (optional), duckdb via pip3 --user,
+#            scripts/split_nq.py (stdlib only)
 # Notes:     Each sector exports exactly LIMIT records from SQLite then transforms.
 #            dryrun-s{N}.jsonl files are written to EXPORT_DIR (separate from production).
+#            Runs from SCRIPTS dir (cd) so transform package is found without PYTHONPATH.
 
 set -euo pipefail
 
@@ -38,14 +40,15 @@ for n in 1 2 3 4 5 6 7; do
   (
     mkdir -p "$OUT_BASE/s${n}"
     echo "[$(date '+%F %T')] [s${n}] export starting (limit ${LIMIT})"
-    PYTHONPATH="$SCRIPTS" "$PYTHON" -m transform.sqlite_export \
+    cd "$SCRIPTS"
+    "$PYTHON" -m transform.sqlite_export \
       --db    "$SQLITE_DIR/s${n}.sqlite" \
       --out   "$EXPORT_DIR/dryrun-s${n}.jsonl" \
       --limit "$LIMIT" \
       2>> "$OUT_BASE/s${n}/export.log"
 
     echo "[$(date '+%F %T')] [s${n}] export done — transform starting"
-    PYTHONPATH="$SCRIPTS" "$PYTHON" -m transform \
+    "$PYTHON" -m transform \
       --jsonl        "$EXPORT_DIR/dryrun-s${n}.jsonl" \
       --outdir       "$OUT_BASE/s${n}" \
       --stats        dispatch \
