@@ -17,9 +17,9 @@ set -euo pipefail
 
 # ── Paths (set before running) ─────────────────────────────────────────────────
 GOETHE="$(cd "$(dirname "$0")/.." && pwd)"
-SQLITE_DIR=/data/gemea/sqlite/
-EXPORT_DIR=/data/gemea/dryrun/json-export
-OUT_BASE=/data/gemea/dryrun
+SQLITE_DIR=/data/ddb/data
+EXPORT_DIR=/data/ddb/gemea/dryrun/json-export
+OUT_BASE=/data/ddb/gemea/dryrun
 # ──────────────────────────────────────────────────────────────────────────────
 
 CFG=$GOETHE/output/config
