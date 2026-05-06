@@ -118,7 +118,12 @@ echo "[$(date '+%F %T')] N-Quads merged (${NQ_LINES} quads) → $MERGED_NQ"
 
 # ── Phase 3: merge DuckDB werk_staging ───────────────────────────────────────
 OUT_BASE="$OUT_BASE" "$PYTHON" <<'PYEOF'
-import duckdb, glob, os, sys
+import glob, os, sys
+try:
+    import duckdb
+except ImportError:
+    print("duckdb not available — skipping werk_staging merge")
+    sys.exit(0)
 out_base = os.environ["OUT_BASE"]
 shards = sorted(glob.glob(f"{out_base}/**/*-werk-staging.duckdb", recursive=True))
 if not shards:

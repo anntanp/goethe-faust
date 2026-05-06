@@ -68,15 +68,14 @@ echo "[$(date '+%F %T')] All 7 sector workers launched — waiting for completio
 wait
 echo "[$(date '+%F %T')] All sectors complete — merging"
 
-# ── Phase 3: merge N-Quads ────────────────────────────────────────────────────
-MERGED_NQ=$OUT_BASE/merged.nq
-cat "$OUT_BASE"/s*/*.nq > "$MERGED_NQ"
-NQ_LINES=$(wc -l < "$MERGED_NQ")
-echo "[$(date '+%F %T')] N-Quads merged (${NQ_LINES} quads) → $MERGED_NQ"
-
 # ── Phase 3: merge DuckDB werk_staging ───────────────────────────────────────
 OUT_BASE="$OUT_BASE" "$PYTHON" <<'PYEOF'
-import duckdb, glob, os, sys
+import glob, os, sys
+try:
+    import duckdb
+except ImportError:
+    print("duckdb not available — skipping werk_staging merge")
+    sys.exit(0)
 out_base = os.environ["OUT_BASE"]
 shards = sorted(glob.glob(f"{out_base}/s*/*-werk-staging.duckdb"))
 if not shards:
@@ -92,10 +91,38 @@ conn.close()
 print(f"werk_staging merged ({len(shards)} shards, {rows} rows) → {out}")
 PYEOF
 
-# ── Phase 4: split merged N-Quads into per-graph N-Triples ───────────────────
+# ── Phase 4: split each sector .nq → per-sector .nt, then merge by graph ─────
 NT_DIR=$OUT_BASE/nt
-echo "[$(date '+%F %T')] Splitting N-Quads into per-graph .nt files → $NT_DIR"
-"$PYTHON" "$SCRIPTS/split_nq.py" "$MERGED_NQ" --out-dir "$NT_DIR"
-echo "[$(date '+%F %T')] Split complete"
+mkdir -p "$NT_DIR"
+echo "[$(date '+%F %T')] Splitting per-sector N-Quads into .nt files"
+for n in 1 2 3 4 5 6 7; do
+  for nq in "$OUT_BASE/s${n}"/*.nq; do
+    [[ -f "$nq" ]] || continue
+    "$PYTHON" "$SCRIPTS/split_nq.py" "$nq"
+    echo "[$(date '+%F %T')] [s${n}] split $(basename "$nq")"
+  done
+done
+
+echo "[$(date '+%F %T')] Merging per-graph .nt files → $NT_DIR"
+# Discover graph slugs from any sector, then cat all sectors for each graph
+for f in "$OUT_BASE"/s*/*-*.nt; do
+  [[ -f "$f" ]] || continue
+  slug="${f%-*}"       # strip last hyphen-segment
+  slug="${f##*-}"      # last segment after hyphen = graph slug + .nt
+  slug="${slug%.nt}"
+  break
+done
+# Collect all unique graph slugs across all sectors
+declare -A seen
+for f in "$OUT_BASE"/s*/*-*.nt; do
+  [[ -f "$f" ]] || continue
+  s="${f##*-}"; s="${s%.nt}"
+  seen["$s"]=1
+done
+for slug in "${!seen[@]}"; do
+  cat "$OUT_BASE"/s*/*-"${slug}.nt" > "$NT_DIR/${slug}.nt"
+  echo "[$(date '+%F %T')] → $NT_DIR/${slug}.nt"
+done
+echo "[$(date '+%F %T')] Split+merge complete"
 
 echo "[$(date '+%F %T')] Done. All output in: $OUT_BASE"

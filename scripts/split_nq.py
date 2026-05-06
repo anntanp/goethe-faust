@@ -22,42 +22,47 @@ from collections import defaultdict
 from pathlib import Path
 
 
-def split_nq(nq_path: Path, out_dir: Path) -> tuple[dict[str, int], int]:
-    graphs: dict[str, list[str]] = defaultdict(list)
+def split_nq(nq_path: Path, out_dir: Path) -> tuple:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    handles: dict = {}
+    counts: dict = defaultdict(int)
     skipped = 0
 
-    with open(nq_path, encoding="utf-8") as fh:
-        for line in fh:
-            line = line.rstrip("\r\n")
-            if not line or line.startswith("#"):
-                continue
-            # Graph IRI is always <...> — find the last " <" to avoid splitting
-            # inside literal objects that may contain spaces.
-            body = line.rstrip(" .")
-            last_lt = body.rfind(" <")
-            if last_lt == -1:
-                skipped += 1
-                continue
-            graph_iri = body[last_lt + 1:]
-            # Validate: must be a well-formed absolute IRI <scheme://...> with no spaces.
-            # Fragments with no scheme (e.g. <br>, <;>) come from unescaped newlines in
-            # literal values that split a quad across multiple file lines.
-            if not (graph_iri.startswith("<") and graph_iri.endswith(">")
-                    and " " not in graph_iri and "://" in graph_iri):
-                skipped += 1
-                continue
-            triple = body[:last_lt] + " .\n"
-            graphs[graph_iri].append(triple)
+    try:
+        with open(nq_path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.rstrip("\r\n")
+                if not line or line.startswith("#"):
+                    continue
+                # Graph IRI is always <...> — find the last " <" to avoid splitting
+                # inside literal objects that may contain spaces.
+                body = line.rstrip(" .")
+                last_lt = body.rfind(" <")
+                if last_lt == -1:
+                    skipped += 1
+                    continue
+                graph_iri = body[last_lt + 1:]
+                # Validate: must be a well-formed absolute IRI <scheme://...> with no spaces.
+                # Fragments with no scheme (e.g. <br>, <;>) come from unescaped newlines in
+                # literal values that split a quad across multiple file lines.
+                if not (graph_iri.startswith("<") and graph_iri.endswith(">")
+                        and " " not in graph_iri and "://" in graph_iri):
+                    skipped += 1
+                    continue
+                if graph_iri not in handles:
+                    slug = graph_iri.strip("<>").rstrip("/").rsplit("/", 1)[-1]
+                    handles[graph_iri] = open(out_dir / f"{nq_path.stem}-{slug}.nt", "w", encoding="utf-8", buffering=1 << 20)
+                handles[graph_iri].write(body[:last_lt] + " .\n")
+                counts[graph_iri] += 1
+    finally:
+        for fh in handles.values():
+            fh.close()
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    counts: dict[str, int] = {}
-    for graph_iri, triples in graphs.items():
-        slug = graph_iri.strip("<>").rstrip("/").rsplit("/", 1)[-1]
-        out_path = out_dir / f"{slug}.nt"
-        out_path.write_text("".join(triples), encoding="utf-8")
-        counts[slug] = len(triples)
-
-    return counts, skipped
+    slug_counts = {
+        f"{nq_path.stem}-{iri.strip('<>').rstrip('/').rsplit('/', 1)[-1]}": n
+        for iri, n in counts.items()
+    }
+    return slug_counts, skipped
 
 
 def main() -> None:
