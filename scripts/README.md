@@ -6,6 +6,19 @@ any working directory.
 
 ---
 
+## Post-processing
+
+### `split_nq.py`
+Splits an N-Quads file into one N-Triples file per named graph. Graph IRI is
+stripped from each quad; the output filename encodes the target graph slug.
+NQ wrapping is deferred to QLever load time (transform-script-adr.md D28).
+
+- **Input**: `output/goethe-faust.nq` (or any `.nq` produced by the transform)
+- **Output**: `<out-dir>/<slug>.nt` per named graph (default: same dir as input)
+- **Usage**: `python scripts/split_nq.py output/goethe-faust.nq [--out-dir output/nt]`
+
+---
+
 ## Ontology alignment (run in order)
 
 ### `profile_json_keys.py`

@@ -13,15 +13,16 @@
 | `--ids FILE` | _(none — all records)_ | ID allowlist file (one 32-char DDB ID per line), or `-` to read from stdin; omit to process all records |
 | `--outdir DIR` | `output/transform/YYYYMMDD_HHMMSS` | Output directory; auto-timestamped if omitted |
 
-Each invocation writes a self-contained run directory:
+Each invocation writes a self-contained run directory. Output filenames are derived
+from the input filename stem (e.g. `s2.jsonl` → `s2.nq`, `s2-stats.json`, …):
 
 ```
 output/transform/YYYYMMDD_HHMMSS/
-    goethe-faust.nq                   N-Quads (ddbedm + mocho + prov named graphs)
-    goethe-faust-werk-staging.duckdb  DuckDB werk_staging table (W-slot records only)
-    transform_stats.json              Run statistics (see §4)
-    transform_errors.jsonl            Per-record errors
-    transform.log                     Full run log
+    <stem>.nq                   N-Quads (ddbedm + mocho + prov named graphs)
+    <stem>-werk-staging.duckdb  DuckDB werk_staging table (W-slot records only)
+    <stem>-stats.json           Run statistics (see §4)
+    <stem>-errors.jsonl         Per-record errors
+    <stem>.log                  Full run log
 ```
 
 ---

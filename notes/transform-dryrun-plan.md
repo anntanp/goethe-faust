@@ -7,35 +7,27 @@ Planning notes for running `transform_edm_to_mocho.py` on the full GeMeA corpus
 
 ## 0. Pipeline overview
 
+One SQLite file per sector (`s1.sqlite` … `s7.sqlite`). Each sector runs independently.
+
 ```mermaid
 flowchart LR
-  A[("s2.sqlite\n18.5M rows")]
+  A1[("s1.sqlite")] -->|"sqlite_export.py"| B1["s1.jsonl"]
+  A2[("s2.sqlite")] -->|"sqlite_export.py"| B2["s2.jsonl"]
+  A3[("s3.sqlite")] -->|"sqlite_export.py"| B3["s3.jsonl"]
+  AN[("sN.sqlite")] -->|"sqlite_export.py"| BN["sN.jsonl"]
 
-  A -->|"sequential scan\nsqlite_export.py"| B["export_by_sector()"]
+  B1 -->|"python -m transform"| C1["s1/\n.nq + .duckdb"]
+  B2 -->|"python -m transform"| C2["s2/\n.nq + .duckdb"]
+  B3 -->|"python -m transform"| C3["s3/\n.nq + .duckdb"]
+  BN -->|"python -m transform"| CN["sN/\n.nq + .duckdb"]
 
-  B --> C1["sparte001.jsonl"]
-  B --> C2["sparte002.jsonl"]
-  B --> C3["sparte003.jsonl"]
-  B --> C4["sparte004.jsonl"]
-  B --> C5["sparte005.jsonl"]
-  B --> C6["sparte006.jsonl"]
-  B --> C7["sparte007.jsonl"]
-
-  C1 -->|"python -m transform"| D1["sparte001/\n.nq + .duckdb"]
-  C2 -->|"python -m transform"| D2["sparte002/\n.nq + .duckdb"]
-  C3 -->|"python -m transform"| D3["sparte003/\n.nq + .duckdb"]
-  C4 -->|"python -m transform"| D4["sparte004/\n.nq + .duckdb"]
-  C5 -->|"python -m transform"| D5["sparte005/\n.nq + .duckdb"]
-  C6 -->|"python -m transform"| D6["sparte006/\n.nq + .duckdb"]
-  C7 -->|"python -m transform"| D7["sparte007/\n.nq + .duckdb"]
-
-  D1 & D2 & D3 & D4 & D5 & D6 & D7 -->|"cat"| E1[/"merged.nq"/]
-  D1 & D2 & D3 & D4 & D5 & D6 & D7 -->|"INSERT OR REPLACE"| E2[("werk-staging\n-merged.duckdb")]
+  C1 & C2 & C3 & CN -->|"cat"| E1[/"merged.nq"/]
+  C1 & C2 & C3 & CN -->|"INSERT OR REPLACE"| E2[("werk-staging\n-merged.duckdb")]
 ```
 
 Steps:
-1. **Export** (single pass, `sqlite_export.py`) — routes each record to its sector JSONL
-2. **Transform** (7 workers in parallel, `python -m transform`) — one worker per sector JSONL
+1. **Export** (`sqlite_export.py`) — sequential scan of each `sN.sqlite` → one JSONL per sector
+2. **Transform** (`python -m transform`) — one worker per sector, all in parallel
 3. **Merge** — `cat` N-Quads shards; DuckDB `INSERT OR REPLACE` across staging files
 
 ---
@@ -64,13 +56,13 @@ done
 wait
 
 # merge .nq shards (order doesn't matter for N-Quads)
-cat output/transform/parallel/chunk_*/goethe-faust.nq > output/transform/merged.nq
+cat output/transform/parallel/chunk_*/*.nq > output/transform/merged.nq
 
 # merge DuckDB staging tables
 python3 - <<'EOF'
 import duckdb, glob
 conn = duckdb.connect("output/transform/merged-werk-staging.duckdb")
-shards = sorted(glob.glob("output/transform/parallel/chunk_*/goethe-faust-werk-staging.duckdb"))
+shards = sorted(glob.glob("output/transform/parallel/chunk_*/*-werk-staging.duckdb"))
 conn.execute(f"CREATE TABLE werk_staging AS SELECT * FROM '{shards[0]}'")
 for p in shards[1:]:
     conn.execute(f"INSERT OR REPLACE INTO werk_staging SELECT * FROM '{p}'")
@@ -181,11 +173,11 @@ python -m transform \
 Output lands in `output/transform/YYYYMMDD_HHMMSS/`:
 
 ```
-goethe-faust.nq                 N-Quads (all named graphs)
-goethe-faust-werk-staging.duckdb
-transform_stats.json            dispatch breakdown
-transform_errors.jsonl          per-record errors (if any)
-transform.log
+s2-sample.nq                    N-Quads (all named graphs)
+s2-sample-werk-staging.duckdb
+s2-sample-stats.json            dispatch breakdown
+s2-sample-errors.jsonl          per-record errors (if any)
+s2-sample.log
 ```
 
 ### 3.3 Validate
@@ -290,44 +282,50 @@ transform can be re-run on the same JSONL without re-touching the SQLite.
 
 ## 6. Full-corpus run plan (Parallelizable Option C)
 
-### 6.1 Step 1 — Export per-sector JSONL
+### 6.1 Step 1 — Export each sector SQLite to JSONL
 
-Add `--sector` filter to `extract_sqlite_sample.py` (or write a dedicated
-`export_sqlite_by_sector.py`). One JSONL file per sector:
+One `sN.sqlite` per sector — sequential full-table scan, no routing needed.
+`sqlite_export.py` (transform package module):
 
+```bash
+GEMEA=gemea/data/sqlite
+EXPORT=/tmp/gemea-export
+
+for n in 1 2 3 4 5 6 7; do
+  PYTHONPATH=goethe-faust/scripts python -m transform.sqlite_export \
+    --db  $GEMEA/s${n}.sqlite \
+    --out $EXPORT/s${n}.jsonl &
+done
+wait
 ```
-/tmp/gemea-export/sparte001.jsonl   # Archive
-/tmp/gemea-export/sparte002.jsonl   # Library   (largest — ~10M records estimated)
-/tmp/gemea-export/sparte003.jsonl   # Monument Preservation
-/tmp/gemea-export/sparte004.jsonl   # Research
-/tmp/gemea-export/sparte005.jsonl   # Media Library
-/tmp/gemea-export/sparte006.jsonl   # Museum
-/tmp/gemea-export/sparte007.jsonl   # Others
-```
 
-Sector is readable from each record's `edm.RDF.Concept[].about` where `about`
-starts with `http://ddb.vocnet.org/sparte/`. Export reads SQLite sequentially
-(full table scan), writes each line to the correct sector file — single pass,
-no per-UID lookups.
+### 6.2 Step 2 — Export + transform pipelined per sector
 
-### 6.2 Step 2 — Run transform workers in parallel
+Each sector runs in its own subshell: export finishes, then transform starts
+immediately — no waiting for other sectors. All 7 subshells run in parallel.
 
 ```bash
 GOETHE=goethe-faust
 CFG=$GOETHE/output/config
+GEMEA=gemea/data/sqlite
 EXPORT=/tmp/gemea-export
 
-for sector in sparte001 sparte002 sparte003 sparte004 sparte005 sparte006 sparte007; do
-  PYTHONPATH=$GOETHE/scripts python -m transform \
-    --jsonl $EXPORT/${sector}.jsonl \
-    --outdir $GOETHE/output/transform/gemea/${sector} \
-    --stats dispatch \
-    --alignment $CFG/lookup_class_prop_alignment.csv \
-    --lido      $CFG/lido_event_types.csv \
-    --htype     $CFG/lookup_htype_doco_rico.csv \
-    --mediatype $CFG/lookup_mediatype_class.csv \
-    --audio     $CFG/audio_type2class.json \
-    &
+for n in 1 2 3 4 5 6 7; do
+  (
+    PYTHONPATH=$GOETHE/scripts python -m transform.sqlite_export \
+      --db  $GEMEA/s${n}.sqlite \
+      --out $EXPORT/s${n}.jsonl \
+    && \
+    PYTHONPATH=$GOETHE/scripts python -m transform \
+      --jsonl   $EXPORT/s${n}.jsonl \
+      --outdir  $GOETHE/output/transform/gemea/s${n} \
+      --stats dispatch \
+      --alignment $CFG/lookup_class_prop_alignment.csv \
+      --lido      $CFG/lido_event_types.csv \
+      --htype     $CFG/lookup_htype_doco_rico.csv \
+      --mediatype $CFG/lookup_mediatype_class.csv \
+      --audio     $CFG/audio_type2class.json
+  ) &
 done
 wait
 ```
@@ -336,12 +334,12 @@ wait
 
 ```bash
 # merge N-Quads
-cat $GOETHE/output/transform/gemea/sparte*/gemea.nq > $GOETHE/output/transform/gemea/merged.nq
+cat $GOETHE/output/transform/gemea/s*/goethe-faust.nq > $GOETHE/output/transform/gemea/merged.nq
 
 # merge DuckDB staging
 python3 - <<'EOF'
 import duckdb, glob
-shards = sorted(glob.glob("goethe-faust/output/transform/gemea/sparte*/goethe-faust-werk-staging.duckdb"))
+shards = sorted(glob.glob("goethe-faust/output/transform/gemea/s*/goethe-faust-werk-staging.duckdb"))
 conn = duckdb.connect("goethe-faust/output/transform/gemea/werk-staging-merged.duckdb")
 conn.execute(f"CREATE TABLE werk_staging AS SELECT * FROM '{shards[0]}'")
 for p in shards[1:]:

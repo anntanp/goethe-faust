@@ -6,30 +6,85 @@ DuckDB werk_staging table for GND Werk linking.
 
 ---
 
-## transform_edm_to_mocho.py
+## Package structure
 
-### Pipeline
+| Module | Contents |
+|---|---|
+| `constants.py` | IRIs, prefix table, dispatch tables, path defaults, type aliases |
+| `utils.py` | N-Quads formatting, URI minting, value normalisation |
+| `loaders.py` | CSV/JSON config loaders |
+| `emitters.py` | Triple emitters: ddbedm passthrough, mocho alignment, PROV-O, werk_staging |
+| `transform.py` | `transform_record` — per-record orchestration |
+| `__main__.py` | CLI entry point (`python -m transform`) |
+| `sqlite_export.py` | `export()` — sequential SQLite → JSONL export for bulk runs |
+
+---
+
+## Pipeline
+
+### Development / goethe-faust corpus
 
 ```
 data/items-all-goethe-faust.json      JSONL input
-data/ids-all-goethe-faust.txt         ID allowlist (optional)
 output/config/*.csv / *.json          dispatch + alignment tables
           │
           ▼
-  transform_edm_to_mocho.py
+  python -m transform   (from scripts/)
           │
           └── output/transform/YYYYMMDD_HHMMSS/
-                  goethe-faust.nq                  N-Quads (all named graphs)
-                  goethe-faust-werk-staging.duckdb  DuckDB werk_staging table
-                  transform_stats.json              run statistics
-                  transform_errors.jsonl            per-record errors
-                  transform.log                     run log
+                  <stem>.nq                   N-Quads (all named graphs)
+                  <stem>-werk-staging.duckdb  DuckDB werk_staging table
+                  <stem>-stats.json           run statistics
+                  <stem>-errors.jsonl         per-record errors
+                  <stem>.log                  run log
 ```
 
-Each invocation creates a new timestamped run directory. Use `--outdir` to set
-an explicit path instead.
+`<stem>` is the input filename without extension (e.g. `items-all-goethe-faust.json` → `items-all-goethe-faust`). Each invocation creates a new timestamped run directory. Use `--outdir` to override.
 
-### Named graphs
+### Full GeMeA corpus (Option C parallel)
+
+One `sN.sqlite` per sector. Each sector runs in its own subshell — export then
+transform back-to-back — with all sectors in parallel:
+
+```
+s1.sqlite ─┐                          s1/ (.nq + .duckdb)  ─┐
+s2.sqlite ─┤  sqlite_export + transform  s2/ (.nq + .duckdb)  ─┤  cat → merged.nq
+  ...      ─┤  (pipelined per sector,    ...                  ─┤  duckdb → merged.duckdb
+sN.sqlite ─┘   all in parallel)       sN/ (.nq + .duckdb)  ─┘
+```
+
+```bash
+GOETHE=goethe-faust
+CFG=$GOETHE/output/config
+GEMEA=gemea/data/sqlite
+EXPORT=/tmp/gemea-export
+
+for n in 1 2 3 4 5 6 7; do
+  (
+    PYTHONPATH=$GOETHE/scripts python -m transform.sqlite_export \
+      --db  $GEMEA/s${n}.sqlite \
+      --out $EXPORT/s${n}.jsonl \
+    && \
+    PYTHONPATH=$GOETHE/scripts python -m transform \
+      --jsonl  $EXPORT/s${n}.jsonl \
+      --outdir $GOETHE/output/transform/gemea/s${n} \
+      --stats dispatch \
+      --alignment $CFG/lookup_class_prop_alignment.csv \
+      --lido      $CFG/lido_event_types.csv \
+      --htype     $CFG/lookup_htype_doco_rico.csv \
+      --mediatype $CFG/lookup_mediatype_class.csv \
+      --audio     $CFG/audio_type2class.json
+  ) &
+done
+wait
+
+# merge
+cat $GOETHE/output/transform/gemea/s*/*.nq > $GOETHE/output/transform/gemea/merged.nq
+```
+
+See [`notes/transform-dryrun-plan.md`](../../notes/transform-dryrun-plan.md) for the full plan including DuckDB merge.
+
+## Named graphs
 
 | Graph IRI | Content |
 |---|---|
@@ -39,7 +94,7 @@ an explicit path instead.
 
 `werk_staging` rows are written to DuckDB, not to the N-Quads file.
 
-### Inputs
+## Inputs
 
 | File | Description |
 |---|---|
@@ -51,51 +106,46 @@ an explicit path instead.
 | `output/config/lido_event_types.csv` | LIDO event URI → agent predicates per WEMI level |
 | `output/config/audio_type2class.json` | `dc:type` → audio group (A/B/C) for mt001 dispatch |
 
-### CLI arguments
+## CLI
 
-Run `python scripts/transform/transform_edm_to_mocho.py --help` for the full argument list.
-Full descriptions, defaults, and examples: [`notes/transform-cli-spec.md`](../../notes/transform-cli-spec.md).
+Run from the `scripts/` directory. Full argument list: `python -m transform --help`.
 
-Quick reference:
-
-| Group | Key arguments |
+| Group | Arguments |
 |---|---|
-| Input / output | `--jsonl`, `--ids`, `--outdir` |
-| Lookup tables | `--alignment`, `--lido`, `--htype`, `--mediatype`, `--audio` |
+| I/O | `--jsonl FILE`, `--ids FILE`, `--outdir DIR` |
+| Config | `--alignment`, `--lido`, `--htype`, `--mediatype`, `--audio` |
 | Stats | `--stats none\|basic\|dispatch\|full` (default: `basic`) |
-| Logging | `--log-level`, `--debug` |
+| Logging | `--log-level DEBUG\|INFO\|WARNING\|ERROR`, `--debug` |
 | Development | `--limit N` |
 
 **Stats recommendation**: `--stats dispatch` for full-corpus runs; `--stats full --limit 50000`
-when vocabulary coverage data is needed. See [`notes/transform-stats-plan.md`](../../notes/transform-stats-plan.md)
-for the schema and performance trade-offs.
-
-### Usage
+for vocabulary coverage data. Schema and performance trade-offs: [`notes/transform-stats-plan.md`](../../notes/transform-stats-plan.md).
 
 ```bash
-# full corpus, default stats (basic)
-python scripts/transform/transform_edm_to_mocho.py
+# full corpus, default stats
+python -m transform
 
 # full corpus, dispatch stats (recommended for production)
-python scripts/transform/transform_edm_to_mocho.py --stats dispatch
+python -m transform --stats dispatch
 
 # first 500 records, debug logging
-python scripts/transform/transform_edm_to_mocho.py --limit 500 --debug
+python -m transform --limit 500 --debug
 
-# vocabulary coverage sample (full stats on 50k records)
-python scripts/transform/transform_edm_to_mocho.py --limit 50000 --stats full
+# vocabulary coverage sample
+python -m transform --limit 50000 --stats full
 
-# explicit output directory (no timestamp)
-python scripts/transform/transform_edm_to_mocho.py --outdir output/transform/dev
+# explicit output directory
+python -m transform --outdir ../output/transform/dev
 
 # custom ID filter
-python scripts/transform/transform_edm_to_mocho.py --ids data/ids-sample.txt
+python -m transform --ids ../data/ids-sample.txt
 ```
 
-### Tests
+## Tests
 
 ```bash
-python -m pytest scripts/transform/tests/ -q
+# from project root
+.venv/bin/python -m pytest scripts/transform/tests/ -q
 ```
 
 42 unit tests covering loaders, class dispatch (§1.1), N-Quad formatting, PROV node

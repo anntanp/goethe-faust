@@ -1,52 +1,44 @@
 """
-Purpose:    Unit tests for transform_edm_to_mocho.py
-Usage:      pytest scripts/transform/tests/test_transform.py
+Purpose:    Unit tests for the transform package.
+Usage:      pytest scripts/transform/tests/ -q
 Deps:       pytest
 Assumes:    Run from project root (goethe-faust/).
 """
 
 from __future__ import annotations
 
-import importlib.util
 import sys
 from pathlib import Path
 
 import pytest
 
-# ── Load module under test ────────────────────────────────────────────────────
-_PROJECT = Path(__file__).resolve().parents[3]
-sys.argv = ["transform_edm_to_mocho"]
-_spec = importlib.util.spec_from_file_location(
-    "transform_edm_to_mocho",
-    _PROJECT / "scripts" / "transform" / "transform_edm_to_mocho.py",
+# ── Package import ────────────────────────────────────────────────────────────
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # adds scripts/ to sys.path
+
+from transform.constants import GRAPH_MOCHO, MOCHO_NS, PROJECT_DIR
+from transform.utils import (
+    coerce_list,
+    make_nq,
+    mint_bare_id,
+    mint_cho_uri,
+    normalize_date,
+    value_to_nt_obj,
+    _escape_literal,
+    get_object_id,
 )
-_mod = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_mod)  # type: ignore[union-attr]
-
-# Import names we test
-coerce_list             = _mod.coerce_list
-make_nq                 = _mod.make_nq
-mint_bare_id            = _mod.mint_bare_id
-mint_cho_uri            = _mod.mint_cho_uri
-normalize_date          = _mod.normalize_date
-value_to_nt_obj         = _mod.value_to_nt_obj
-_escape_literal         = _mod._escape_literal
-get_object_id           = _mod.get_object_id
-retype_entities         = _mod.retype_entities
-emit_creator_triples    = _mod.emit_creator_triples
-emit_contributor_triples = _mod.emit_contributor_triples
-emit_subject_triples    = _mod.emit_subject_triples
-emit_aggregation_triples = _mod.emit_aggregation_triples
-emit_place_stubs        = _mod.emit_place_stubs
-werk_staging_row        = _mod.werk_staging_row
-load_mediatype_class    = _mod.load_mediatype_class
-load_htype_map          = _mod.load_htype_map
-
-GRAPH_MOCHO = _mod.GRAPH_MOCHO
-MOCHO_NS    = _mod.MOCHO_NS
+from transform.emitters import (
+    retype_entities,
+    emit_creator_triples,
+    emit_contributor_triples,
+    emit_subject_triples,
+    emit_aggregation_triples,
+    emit_place_stubs,
+    werk_staging_row,
+)
+from transform.loaders import load_mediatype_class, load_htype_map
 
 # Config table paths
-_CONFIG = _PROJECT / "output" / "config"
+_CONFIG = PROJECT_DIR / "output" / "config"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -73,8 +65,8 @@ def _predicates(lines: list[str]) -> set[str]:
 
 
 def _load_configs():
-    mc_map   = load_mediatype_class(_CONFIG / "lookup_mediatype_class.csv")
-    ht_map   = load_htype_map(_CONFIG / "lookup_htype_doco_rico.csv")
+    mc_map = load_mediatype_class(_CONFIG / "lookup_mediatype_class.csv")
+    ht_map = load_htype_map(_CONFIG / "lookup_htype_doco_rico.csv")
     return mc_map, ht_map
 
 
@@ -148,6 +140,10 @@ class TestValueToNtObj:
         result = value_to_nt_obj('say "hi"')
         assert result == ['"say \\"hi\\""']
 
+    def test_escape_newlines(self):
+        result = value_to_nt_obj("line1\nline2\r\nline3")
+        assert result == ['"line1\\nline2\\r\\nline3"']
+
 
 # ── get_object_id ─────────────────────────────────────────────────────────────
 
@@ -200,38 +196,34 @@ class TestRetypeEntities:
     def test_sparte004_mt003_no_htype_fallback(self, configs):
         """sparte004/mt003 use_htype=True; no htype → fixed M class rdac:C10007."""
         _SPARTE004 = "http://ddb.vocnet.org/sparte/sparte004"
-        lines, target_class, wemi = self._call(_SPARTE004, _MT003, None, configs)
+        lines, target_class, wemi, _flags = self._call(_SPARTE004, _MT003, None, configs)
         types = _rdf_types(lines)
         assert "http://rdaregistry.info/Elements/c/C10007" in types
         assert wemi == "M"
 
     def test_sparte001_mt003_htype021(self, configs):
         """sparte001/mt003 use_htype=True; htype_021 → rdac:C10001+C10007 from htype, mocho:Manifestation added."""
-        lines, target_class, wemi = self._call(_SPARTE001, _MT003, "htype_021", configs)
+        lines, target_class, wemi, _flags = self._call(_SPARTE001, _MT003, "htype_021", configs)
         types = _rdf_types(lines)
-        # htype_021 gives rdac:C10001 (W) as primary
         assert "http://rdaregistry.info/Elements/c/C10001" in types
-        # Fixed rdf_type_m = mocho:Manifestation added on top
         assert "https://ise-fizkarlsruhe.github.io/ddbkg/mocho#Manifestation" in types
         assert wemi == "W"
 
     def test_sparte003_mt001_fixed(self, configs):
         """sparte003/mt001 use_htype=False → mocho:ImmovableWork (W) + aco:AudioManifestation (M)."""
-        lines, target_class, wemi = self._call(_SPARTE003, _MT001, None, configs)
+        lines, target_class, wemi, _flags = self._call(_SPARTE003, _MT001, None, configs)
         types = _rdf_types(lines)
         assert MOCHO_NS + "ImmovableWork" in types
         assert "https://w3id.org/ac-ontology/aco#AudioManifestation" in types
 
     def test_mt007_guard_does_not_add_types_here(self, configs):
         """retype_entities itself doesn't know about mt007; caller guards. Falls back to mocho:Manifestation."""
-        lines, target_class, wemi = self._call(_SPARTE001, _MT007, None, configs)
-        # sparte001/mt007 → use_htype=True, no htype_type → falls back to mocho:Manifestation
-        types = _rdf_types(lines)
+        lines, target_class, wemi, _flags = self._call(_SPARTE001, _MT007, None, configs)
         assert target_class != ""  # always returns something
 
     def test_unknown_sector_mediatype_fallback(self, configs):
         """Unknown (sector, mediatype) → ('any','any') D9 fallback mocho:Manifestation."""
-        lines, target_class, wemi = self._call("any", "any", None, configs)
+        lines, target_class, wemi, _flags = self._call("any", "any", None, configs)
         types = _rdf_types(lines)
         assert MOCHO_NS + "Manifestation" in types
         assert target_class == MOCHO_NS + "Manifestation"

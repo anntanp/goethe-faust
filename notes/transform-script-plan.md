@@ -59,11 +59,23 @@ When `--debug` is set, after the main run also produce:
 1. **Parquet snapshot**: all cortex JSON fields (pre-transform) written to `debug/<sector>-raw.parquet` for DuckDB inspection.
 2. **100-record sqlite sample**: 100 randomly sampled records extracted to `debug/<sector>-sample-100.sqlite` (same schema as source DB).
 3. **Per-record named files** (for the 100 sampled records only):
-   - `debug/<graphname>-<ddb-object-id>.nq` — N-Quads for each output stream
+   - `debug/<graphname>-<ddb-object-id>.nt` — N-Triples for each output stream (per-graph, no graph column needed)
    - `debug/<graphname>-<ddb-object-id>.ttl` — Turtle (human-readable)
    - `debug/<ddb-object-id>.jsonld` — JSON-LD for the mocho graph only
 
 `<ddb-object-id>`: the DDB item identifier (e.g. `224BB273RJDT6WN7GAIRV4AJ5ES5YPC5`). `<graphname>`: one of `ddbedm`, `mocho`, `prov`. (Debug output for the Werk staging / GND linking component is handled separately by `link_gnd_works.py`.) See D21.
+
+### 0.2 Post-processing: NQ split → per-graph NT
+
+After the transform, `scripts/split_nq.py` splits each `.nq` output into one `.nt` file per named graph. The `.nt` files are the working intermediates for sanitization, validation, and manual inspection. NQ wrapping (adding the graph IRI as the fourth element) is deferred to QLever load time.
+
+| Transform output | Post-processing → | Working intermediates |
+|---|---|---|
+| `<sector>-ddbedm.nq` | `split_nq.py` | `ddbedm.nt` |
+| `<sector>-mocho.nq` | `split_nq.py` | `mocho.nt` |
+| `<sector>-prov.nq` | `split_nq.py` | `prov.nt` |
+
+Graph IRI is derived mechanically from the slug at load time: `…/graph/<slug>`. Rationale: `transform-script-adr.md` D28.
 
 ---
 

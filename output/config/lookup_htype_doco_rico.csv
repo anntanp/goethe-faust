@@ -28,14 +28,14 @@ htype_026,Text,Text,library,"doco:TextChunk, rdac:C10007",,doco rdac,Generic tex
 htype_027,Vers,Verse,library,"doco:Stanza, rdac:C10007",,doco rdac,Verse unit; use doco:Line if single-line resolution required
 htype_028,Vorwort,Preface,library,"doco:Preface, rdac:C10007",,doco rdac,
 htype_029,Widmung,Dedication,library,rdac:C10007,,rdac,No DoCO Dedication class
-htype_030,Bestand,Holding / Fonds,archival,rico:RecordSet,"ric-rst:Fonds, vocnet-htype:ht030",rico,Findbuch Collection*
+htype_030,Bestand,Holding / Fonds,archival,rico:RecordSet,"ric-rst:Fonds, vocnet-htype:ht030",rico,Findbuch + Tektonik; top-level holding node shared by both hierarchies
 htype_031,Gliederung,Classification,archival,rico:RecordSet,"ric-rst:Series, vocnet-htype:ht031",rico,Findbuch Classification
-htype_032,Serie,Series,archival,rico:RecordSet,ric-rst:Series,rico,Findbuch Series
-htype_033,Unterserie,Subseries,archival,rico:RecordSet,"ric-rst:Series, vocnet-htype:ht033",rico,
+htype_032,Serie,Series,archival,rico:RecordSet,"ric-rst:Series, vocnet-htype:ht032",rico,Findbuch Series
+htype_033,Unterserie,Subseries,archival,rico:RecordSet,"ric-rst:Series, vocnet-htype:ht033",rico,Findbuch Subseries
 htype_034,Archivale,File,archival,rico:Record,,rico,Findbuch File; individual archival record
 htype_035,Teil,Part,archival,rico:RecordPart,,rico,Findbuch Item; component part of an archival record
 htype_036,Bestandsserie,Holding Series,archival,rico:RecordSet,"ric-rst:Collection, vocnet-htype:ht036",rico,Tektonik Series
-htype_037,Bestandsklassifikation,Holding Classification,archival,rico:RecordSet,"ric-rst:Collection, vocnet-htype:ht037",rico,
+htype_037,Bestandsklassifikation,Holding Classification,archival,rico:RecordSet,"ric-rst:Collection, vocnet-htype:ht037",rico,Tektonik Classification
 htype_038,Brief,Letter,archival,rico:Record,,rico,Archival letter = individual record within a file or bundle
 htype_039,Konvolut,Bundle,archival,rico:RecordSet,,rico,Bundle of related archival items; no standard RiC-O RecordSetType individual
 htype_040,Mappe,Folder,archival,rico:RecordSet,,rico,Archival folder grouping records; no standard RiC-O RecordSetType individual
@@ -44,4 +44,4 @@ htype_044,Zeitung,Newspaper,library,"rdac:C10001, rdac:C10007",,rdac,Publication
 htype_045,Jahrgang,Year,library,"doco:Part, rdac:C10007",,doco rdac,Annual volume of a newspaper serial
 htype_046,Monat,Month,library,"doco:Part, rdac:C10007",,doco rdac,Monthly issue of a newspaper serial
 htype_047,Tag,Day,library,"doco:Part, rdac:C10007",,doco rdac,Daily edition of a newspaper
-htype_048,Tektonik,Tektonik,archival,rico:RecordSet,mocho:Tektonik,rico,Top-level DDB archival hierarchy node
+htype_048,Tektonik,Tektonik,archival,rico:RecordSet,mocho:Tektonik,rico,Tektonik root; top-level DDB archival hierarchy node

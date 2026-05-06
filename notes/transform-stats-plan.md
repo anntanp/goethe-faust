@@ -46,6 +46,9 @@ Controlled by `--stats {none,basic,dispatch,full}` (default: `basic`).
       "ht030": 500,
       "ht034": 800
     },
+    "uri_sanitized":   29,
+    "uri_split":       4188,
+    "uri_about_split": 1309,
     "errors": {
       "json_parse": 0,
       "transform":  0
@@ -161,6 +164,12 @@ processed = dispatch.htype_hits + dispatch.mediatype_hits + dispatch.fallback_d9
 `by_mediatype` — mediatype distribution within the run (short codes: `mt001`–`mt007`). Since each production run is per-sector, this shows the content-type mix for that sector. Values sum to `records.processed`.
 
 `by_htype` — hierarchy type distribution (short codes: `ht021`, `ht030`, etc.). Empty for sectors with no htype (sparte005, sparte006). Values sum to records that carry a `hierarchyType` field.
+
+`uri_sanitized` — count of IRI object values that contained characters illegal in N-Triples IRI references (RFC 3987 + NT spec: `[\x00-\x20<>"{}|\\^\x7f]`) and were percent-encoded before emission. Applied inside `value_to_nt_obj` via `_sanitize_iri` (ported from `gemea/scripts/py/export_ddb.py`). Counted across both ddbedm and mocho streams.
+
+`uri_split` — count of individual URIs extracted from `resource` fields that contained multiple space-separated URIs (a DDB data quality issue). Each such field is split on whitespace; each part is emitted as a separate triple. Counted across both ddbedm and mocho streams. In the goethe-faust corpus: 1,250 affected fields across `currentLocation`, `isShownAt`, `isShownBy`, `object`, subject fields, `creator`, `contributor`, `happenedAt`.
+
+`uri_about_split` — count of extra `owl:sameAs` triples emitted for entities whose `about` field contained multiple space-separated URIs. The first URI is used as the RDF subject; each additional URI generates one `owl:sameAs` triple anchoring it to the primary subject. In the goethe-faust corpus: 1,178 affected entities (`Place`, `WebResource`, `Agent`), producing 1,309 extra triples.
 
 ### `triples.by_graph`
 Validates the four-stream model: a graph at 0 triples signals a broken stream. `prov` carries ~1 triple per record; `ddbedm` is the largest stream (verbatim EDM passthrough). `werk` triples go to DuckDB, not to the N-Quads file.

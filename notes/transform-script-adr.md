@@ -604,6 +604,38 @@ For `.resource` cross-references, the target entity type is resolved from a per-
 
 ---
 
+## Decision 28: Post-processing NQ split → per-graph NT files
+
+**Decision**: The transform emits `.nq` output unchanged (D22). Immediately after the transform, a post-processing step (`scripts/split_nq.py`) splits each `.nq` file into one `.nt` file per named graph. The `.nt` files are the working intermediates for sanitization, validation, and debugging. NQ wrapping is deferred to QLever load time.
+
+File naming: the output `.nt` slug matches the graph name (e.g. `ddbedm.nt`, `mocho.nt`, `prov.nt`); the load-time wrapper derives the full graph IRI mechanically (`…/graph/<slug>`).
+
+**Rationale**:
+1. **NT is simpler to sanitize**: no graph column; grep/awk/sed operate directly on `<subject> <predicate> <object> .` lines without stripping the fourth element first.
+2. **Late-binding graph IRI**: renaming a named graph (e.g. schema-breaking release, IRI migration) requires changing only the load-time wrapper — not the `.nt` files.
+3. **No generator change**: the transform already routes triples to per-graph output streams (D20, D22). Post-processing the `.nq` output is a small script; the generator is not touched.
+
+**Post-processing script** (`scripts/split_nq.py`):
+
+```python
+from collections import defaultdict
+from pathlib import Path
+
+def split_nq(nq_path: Path, out_dir: Path):
+    graphs: dict[str, list[str]] = defaultdict(list)
+    with open(nq_path) as f:
+        for line in f:
+            parts = line.rstrip(" .\n").rsplit(" ", 1)
+            graphs[parts[1]].append(parts[0] + " .\n")
+    for graph_iri, triples in graphs.items():
+        slug = graph_iri.strip("<>").split("/")[-1]
+        (out_dir / f"{slug}.nt").write_text("".join(triples))
+```
+
+**Amends D22** on the file format question only: D22 governs the generator (NQ output, graph IRI on every emitted line). This decision governs what happens to the `.nq` files after generation; D22 remains in effect for the transform itself.
+
+---
+
 ## Decision 14: Manual curation over automated schema alignment
 
 **Decision**: The alignment table (`alignment_ddbedm_mocho.csv`) and all dispatch

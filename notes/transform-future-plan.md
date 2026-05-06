@@ -212,3 +212,29 @@ Expression lookup key: `(dc:title, dc:creator, dc:language)` — Work title + cr
 Two records sharing the same (title, creator, language) tuple are candidate expressions of the same Work. Deduplication and URI assignment for Expression nodes depends on this lookup.
 
 See `transform-props-mapping-plan.md §13–14` and `transform-props-mapping-adr.md D11`.
+
+---
+
+## §12 Linking vra:Work and mocho:ImageWork to ArtKB and Wikidata
+
+**Prerequisite**: Work-level URI assignment (werk_staging populated; GND Werk lookup complete for §1.2 classes).
+
+`vra:Work` (ht015 Illustration, ht019 Karte, sparte005/mt002 Image) and `mocho:ImageWork` are currently written to N-Quads and DuckDB werk_staging but have no external authority links. Two target KBs:
+
+| KB | Scope | Link predicate |
+|---|---|---|
+| ArtKB | Art works, images, visual objects (German heritage focus) | `owl:sameAs` or `skos:exactMatch` |
+| Wikidata | Broad coverage; Q-items for artworks, maps, photographs | `owl:sameAs` or `skos:exactMatch` |
+
+**Lookup strategy**: title + creator + date tuple → KB entity lookup, analogous to GND Werk lookup in `link_gnd_works.py`. Key fields from werk_staging: `dc_title`, `creator_uris`, `dc_created`.
+
+**Emit**: for each resolved match, add to the mocho named graph:
+```
+<work-uri> owl:sameAs <artkb-uri> .
+<work-uri> owl:sameAs <wikidata-uri> .
+```
+
+**Open questions**:
+- ArtKB API / SPARQL endpoint availability and query interface
+- Wikidata: use `wikidata:P180` (depicts) or direct work Q-item match?
+- Confidence threshold for string-match vs. exact-match linking

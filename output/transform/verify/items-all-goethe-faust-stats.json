@@ -1,0 +1,192 @@
+{
+  "run": {
+    "timestamp": "20260506_154058",
+    "input": "/Users/mta/Documents/claude/goethe-faust/data/items-all-goethe-faust.json",
+    "stats_level": "dispatch",
+    "elapsed_s": 0.1,
+    "interrupted": false
+  },
+  "records": {
+    "processed": 100,
+    "skipped_not_in_ids": 0,
+    "by_mediatype": {
+      "mt003": 41,
+      "mt007": 34,
+      "mt002": 25
+    },
+    "by_htype": {
+      "ht021": 20,
+      "ht034": 19,
+      "ht035": 18,
+      "ht018": 5,
+      "ht007": 4,
+      "ht026": 3,
+      "ht006": 2,
+      "ht001": 2,
+      "ht015": 1,
+      "ht030": 1
+    },
+    "uri_sanitized": 0,
+    "uri_split": 0,
+    "uri_about_split": 0,
+    "errors": {
+      "json_parse": 0,
+      "transform": 0
+    }
+  },
+  "triples": {
+    "total": 15763,
+    "by_graph": {
+      "ddbedm": 9193,
+      "mocho": 1715,
+      "prov": 4855
+    }
+  },
+  "werk_staging": {
+    "rows": 0,
+    "by_class": {}
+  },
+  "dispatch": {
+    "htype_hits": 23,
+    "mediatype_hits": 43,
+    "fallback_d9": 0,
+    "skipped_mt007": 34,
+    "work_classes": {
+      "vra:Work": 11,
+      "mocho:ImageWork": 7,
+      "mocho:ImmovableWork": 1
+    },
+    "expression_classes": {},
+    "manifestation_classes": {
+      "mocho:Manifestation": 23,
+      "doco:TextChunk": 3,
+      "doco:Figure": 1,
+      "mocho:ImageManifestation": 1
+    },
+    "rico_classes": {
+      "rico:RecordPart": 15,
+      "rico:Record": 4
+    }
+  },
+  "ddbedm_classes": {
+    "skos:Concept": 910,
+    "edm:WebResource": 574,
+    "edm:Agent": 337,
+    "edm:Event": 130,
+    "ore:Aggregation": 100,
+    "edm:ProvidedCHO": 100,
+    "edm:Place": 87,
+    "edm:TimeSpan": 79,
+    "edm:PhysicalThing": 43
+  },
+  "ddbedm_vocab": {
+    "properties_all": {
+      "http://www.w3.org/1999/02/22-rdf-syntax-ns#type": 674,
+      "skos:notation": 674,
+      "skos:prefLabel": 660,
+      "dcterms:rights": 615,
+      "dcterms:subject": 436,
+      "edm:hasView": 421,
+      "edm:rights": 235,
+      "edm:hasType": 221,
+      "dc:subject": 218,
+      "edm:dataProvider": 200,
+      "dcterms:isPartOf": 144,
+      "dc:title": 143,
+      "dc:description": 136,
+      "edm:hasMet": 130,
+      "edm:wasPresentAt": 121,
+      "http://www.cidoc-crm.org/cidoc-crm/P11_had_participant": 121,
+      "dc:identifier": 120,
+      "ddb:hierarchyType": 118,
+      "ddb:aggregationEntity": 107,
+      "edm:aggregatedCHO": 100,
+      "edm:isShownAt": 100,
+      "edm:provider": 100,
+      "ddb:hierarchyPosition": 87,
+      "edm:occurredAt": 80,
+      "edm:begin": 79,
+      "edm:end": 79,
+      "dc:type": 76,
+      "dcterms:extent": 75,
+      "edm:type": 66,
+      "edm:isShownBy": 53,
+      "dc:language": 52,
+      "dcterms:language": 52,
+      "dc:contributor": 48,
+      "dc:creator": 47,
+      "dc:date": 46,
+      "edm:currentLocation": 44,
+      "edm:object": 40,
+      "dcterms:issued": 36,
+      "edm:happenedAt": 34,
+      "dc:format": 25,
+      "edm:aggregator": 11,
+      "dcterms:alternative": 5,
+      "dcterms:spatial": 4
+    }
+  },
+  "mocho_vocab": {
+    "properties_all": {
+      "rdfs:label": 188,
+      "dcterms:subject": 167,
+      "http://www.w3.org/1999/02/22-rdf-syntax-ns#type": 151,
+      "dc:subject": 105,
+      "edm:hasMet": 89,
+      "dc:identifier": 71,
+      "owl:sameAs": 66,
+      "dc:title": 66,
+      "mocho:mediaType": 66,
+      "dcterms:source": 66,
+      "edm:dataProvider": 66,
+      "edm:hasType": 63,
+      "dcterms:creator": 47,
+      "dcterms:extent": 46,
+      "foaf:thumbnail": 39,
+      "dc:language": 39,
+      "dc:contributor": 34,
+      "edm:currentLocation": 30,
+      "dc:description": 27,
+      "dcterms:issued": 25,
+      "dcterms:language": 24,
+      "rdam:P30134": 23,
+      "vra:description": 22,
+      "rico:creationDate": 21,
+      "rico:note": 20,
+      "dcterms:isPartOf": 20,
+      "rico:hasOrHadTitle": 19,
+      "rico:hasOrHadIdentifier": 19,
+      "dc:format": 17,
+      "rico:hasOrHadLanguage": 15,
+      "vra:title": 11,
+      "rdam:P30137": 10,
+      "rdam:P30020": 9,
+      "rdaw:P10088": 8,
+      "vra:dateCreated": 8,
+      "dc:date": 6,
+      "rdam:P30329": 4,
+      "dcterms:spatial": 3,
+      "rdam:P30128": 2,
+      "dcterms:alternative": 2,
+      "vra:partOf": 1
+    },
+    "properties_new": {
+      "mocho:mediaType": 66,
+      "rdam:P30134": 23,
+      "vra:description": 22,
+      "rico:creationDate": 21,
+      "rico:note": 20,
+      "rico:hasOrHadTitle": 19,
+      "rico:hasOrHadIdentifier": 19,
+      "rico:hasOrHadLanguage": 15,
+      "vra:title": 11,
+      "rdam:P30137": 10,
+      "rdam:P30020": 9,
+      "rdaw:P10088": 8,
+      "vra:dateCreated": 8,
+      "rdam:P30329": 4,
+      "rdam:P30128": 2,
+      "vra:partOf": 1
+    }
+  }
+}

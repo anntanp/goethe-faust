@@ -1,0 +1,6 @@
+2026-05-06 15:40:42,017 INFO Loading config tables
+2026-05-06 15:40:46,134 INFO Loading config tables
+2026-05-06 15:40:53,090 INFO Loading config tables
+2026-05-06 15:40:53,300 INFO Done: 100 records in 00:00:00 (1213 rec/s) | triples 15763 (mocho 1715) | errors 0
+2026-05-06 15:40:58,053 INFO Loading config tables
+2026-05-06 15:40:58,140 INFO Done: 100 records in 00:00:00 (1876 rec/s) | triples 15763 (mocho 1715) | errors 0
