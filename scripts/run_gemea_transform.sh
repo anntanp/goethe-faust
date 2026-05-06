@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Purpose:   Full GeMeA corpus transform — 128 workers across 7 sectors in parallel (Option C, teach03)
-# Usage:     bash scripts/run_gemea_transform.sh
+# Usage:     bash scripts/run_gemea_transform.sh --new      # wipe previous output and restart
+#            bash scripts/run_gemea_transform.sh --resume   # skip sectors already done
 #            Run from the goethe-faust project root, inside a tmux/screen session.
 # Inputs:    /data/ddb/data/s{1..7}.sqlite
 # Outputs:   $OUT_BASE/s{1..7}/   (per-sector .nq, .duckdb, -stats.json, -errors.jsonl, .log)
@@ -14,6 +15,21 @@
 #            is visible without PYTHONPATH.
 
 set -euo pipefail
+
+# ── Args ───────────────────────────────────────────────────────────────────────
+MODE=""
+for arg in "$@"; do
+  case "$arg" in
+    --new)    MODE=new ;;
+    --resume) MODE=resume ;;
+    *) echo "Usage: $0 [--new|--resume]" >&2; exit 1 ;;
+  esac
+done
+if [[ -z "$MODE" ]]; then
+  echo "Error: specify --new (wipe and restart) or --resume (skip completed sectors)" >&2
+  exit 1
+fi
+# ──────────────────────────────────────────────────────────────────────────────
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 GOETHE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -34,7 +50,12 @@ declare -A WORKERS=([1]=17 [2]=86 [3]=1 [4]=6 [5]=8 [6]=9 [7]=1)
 
 mkdir -p "$EXPORT_DIR" "$OUT_BASE"
 
-echo "[$(date '+%F %T')] Starting GeMeA transform — 128 workers across 7 sectors"
+if [[ "$MODE" == "new" ]]; then
+  echo "[$(date '+%F %T')] --new: wiping previous output"
+  rm -rf "$OUT_BASE"/s{1..7} "$OUT_BASE/nt" "$OUT_BASE/werk-staging-merged.duckdb"
+fi
+
+echo "[$(date '+%F %T')] Starting GeMeA transform (${MODE}) — 128 workers across 7 sectors"
 echo "  GOETHE     = $GOETHE"
 echo "  SQLITE_DIR = $SQLITE_DIR"
 echo "  EXPORT_DIR = $EXPORT_DIR"
@@ -47,6 +68,15 @@ for n in 1 2 3 4 5 6 7; do
   W=${WORKERS[$n]}
   (
     mkdir -p "$OUT_BASE/s${n}"
+
+    # --resume: skip if any .nq already exists and is non-empty
+    if [[ "$MODE" == "resume" ]]; then
+      existing=$(find "$OUT_BASE/s${n}" -name "*.nq" -size +0 2>/dev/null | head -1)
+      if [[ -n "$existing" ]]; then
+        echo "[$(date '+%F %T')] [s${n}] skipping — output exists"
+        exit 0
+      fi
+    fi
 
     # Export full sector JSONL
     echo "[$(date '+%F %T')] [s${n}] export starting"

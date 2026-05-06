@@ -84,6 +84,11 @@ def main() -> None:
     io.add_argument("--jsonl",  type=Path, default=DEFAULT_JSONL,
                     help="JSONL input file (one DDB-EDM JSON object per line); "
                          "default: data/items-all-goethe-faust.json")
+    io.add_argument("--db",     type=Path, default=None,
+                    help="SQLite sector file — reads directly without intermediate JSONL export; "
+                         "mutually exclusive with --jsonl")
+    io.add_argument("--offset", type=int,  default=0,
+                    help="Skip first N rows in SQLite (for parallel workers; use with --db and --limit)")
     io.add_argument("--ids",    type=str,  default=None,
                     help="Path to ID allowlist file (one 32-char DDB ID per line), "
                          "or '-' to read from stdin; omit to process all records")
@@ -142,7 +147,10 @@ def main() -> None:
     outdir = args.outdir or (DEFAULT_OUTPUT_BASE / ts)
     outdir.mkdir(parents=True, exist_ok=True)
 
-    stem        = Path(args.jsonl).stem
+    if args.db:
+        stem = args.db.stem + (f"-{args.offset}" if args.offset else "")
+    else:
+        stem = Path(args.jsonl).stem
     out_path    = outdir / f"{stem}.nq"
     werk_path   = outdir / f"{stem}-werk-staging.duckdb"
     stats_path  = outdir / f"{stem}-stats.json"
@@ -205,11 +213,31 @@ def main() -> None:
     start_time = time.monotonic()
     interrupted = False
 
-    with open(args.jsonl, encoding="utf-8") as inp, \
-         open(out_path, "w", encoding="utf-8") as out, \
+    def _iter_input():
+        if args.db:
+            import gzip
+            import sqlite3 as _sqlite3
+            conn = _sqlite3.connect(str(args.db))
+            try:
+                q = "SELECT uid, bufgz FROM objs"
+                if args.offset:
+                    q += f" LIMIT -1 OFFSET {args.offset}"
+                for uid, buf in conn.execute(q):
+                    try:
+                        yield json.dumps(json.loads(gzip.decompress(buf)))
+                    except Exception as exc:
+                        log.warning("%s uid=%s: %s", args.db.name, uid, exc)
+                        yield ""
+            finally:
+                conn.close()
+        else:
+            with open(args.jsonl, encoding="utf-8") as f:
+                yield from f
+
+    with open(out_path, "w", encoding="utf-8") as out, \
          open(errors_path, "w", encoding="utf-8") as err_fh:
 
-        for line_no, raw in enumerate(inp, 1):
+        for line_no, raw in enumerate(_iter_input(), 1):
             if _stop:
                 interrupted = True
                 log.warning("Interrupted at line %d — writing partial output", line_no)

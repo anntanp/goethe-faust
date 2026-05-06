@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Purpose:   Dryrun — first 100k records per sector across all 7 sectors in parallel
-# Usage:     bash scripts/run_gemea_dryrun.sh
+# Purpose:   Dryrun — first LIMIT records per sector across all 7 sectors in parallel
+# Usage:     bash scripts/run_gemea_dryrun.sh --new      # wipe previous output and restart
+#            bash scripts/run_gemea_dryrun.sh --resume   # skip sectors already done
 #            Run from the goethe-faust project root, inside a tmux/screen session.
 # Inputs:    /data/ddb/data/s{1..7}.sqlite
 # Outputs:   $OUT_BASE/s{1..7}/   (per-sector .nq, .duckdb, -stats.json, -errors.jsonl, .log)
 #            $OUT_BASE/werk-staging-merged.duckdb
-#            $OUT_BASE/nt/ddbedm.nt, mocho.nt, prov.nt
+#            $OUT_BASE/nt/<graph>.nt
 # Deps:      .venv/ created by scripts/setup_venv.sh (optional), duckdb via pip3 --user,
 #            scripts/split_nq.py (stdlib only)
 # Notes:     Each sector exports exactly LIMIT records from SQLite then transforms.
@@ -13,6 +14,21 @@
 #            Runs from SCRIPTS dir (cd) so transform package is found without PYTHONPATH.
 
 set -euo pipefail
+
+# ── Args ───────────────────────────────────────────────────────────────────────
+MODE=""
+for arg in "$@"; do
+  case "$arg" in
+    --new)    MODE=new ;;
+    --resume) MODE=resume ;;
+    *) echo "Usage: $0 [--new|--resume]" >&2; exit 1 ;;
+  esac
+done
+if [[ -z "$MODE" ]]; then
+  echo "Error: specify --new (wipe and restart) or --resume (skip completed sectors)" >&2
+  exit 1
+fi
+# ──────────────────────────────────────────────────────────────────────────────
 
 # ── Paths (set before running) ─────────────────────────────────────────────────
 GOETHE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,7 +44,12 @@ LIMIT=10000
 
 mkdir -p "$EXPORT_DIR" "$OUT_BASE"
 
-echo "[$(date '+%F %T')] Starting GeMeA dryrun — 7 sectors, ${LIMIT} records each"
+if [[ "$MODE" == "new" ]]; then
+  echo "[$(date '+%F %T')] --new: wiping previous output"
+  rm -rf "$OUT_BASE"/s{1..7} "$OUT_BASE/nt" "$OUT_BASE/werk-staging-merged.duckdb"
+fi
+
+echo "[$(date '+%F %T')] Starting GeMeA dryrun (${MODE}) — 7 sectors, ${LIMIT} records each"
 echo "  GOETHE     = $GOETHE"
 echo "  SQLITE_DIR = $SQLITE_DIR"
 echo "  EXPORT_DIR = $EXPORT_DIR"
@@ -38,6 +59,16 @@ echo "  OUT_BASE   = $OUT_BASE"
 for n in 1 2 3 4 5 6 7; do
   (
     mkdir -p "$OUT_BASE/s${n}"
+
+    # --resume: skip if .nq already exists and is non-empty
+    if [[ "$MODE" == "resume" ]]; then
+      existing=$(find "$OUT_BASE/s${n}" -name "*.nq" -size +0 2>/dev/null | head -1)
+      if [[ -n "$existing" ]]; then
+        echo "[$(date '+%F %T')] [s${n}] skipping — output exists"
+        exit 0
+      fi
+    fi
+
     echo "[$(date '+%F %T')] [s${n}] export starting (limit ${LIMIT})"
     cd "$SCRIPTS"
     "$PYTHON" -m transform.sqlite_export \
@@ -65,7 +96,7 @@ done
 
 echo "[$(date '+%F %T')] All 7 sector workers launched — waiting for completion..."
 wait
-echo "[$(date '+%F %T')] All sectors complete — merging"
+echo "[$(date '+%F %T')] All sectors complete"
 
 # ── Phase 3: merge DuckDB werk_staging ───────────────────────────────────────
 OUT_BASE="$OUT_BASE" "$PYTHON" <<'PYEOF'
@@ -82,7 +113,7 @@ if not shards:
     sys.exit(0)
 out = f"{out_base}/werk-staging-merged.duckdb"
 conn = duckdb.connect(out)
-conn.execute(f"CREATE TABLE werk_staging AS SELECT * FROM '{shards[0]}'")
+conn.execute(f"CREATE OR REPLACE TABLE werk_staging AS SELECT * FROM '{shards[0]}'")
 for p in shards[1:]:
     conn.execute(f"INSERT INTO werk_staging SELECT * FROM '{p}'")
 rows = conn.execute("SELECT COUNT(*) FROM werk_staging").fetchone()[0]
@@ -103,15 +134,6 @@ for n in 1 2 3 4 5 6 7; do
 done
 
 echo "[$(date '+%F %T')] Merging per-graph .nt files → $NT_DIR"
-# Discover graph slugs from any sector, then cat all sectors for each graph
-for f in "$OUT_BASE"/s*/*-*.nt; do
-  [[ -f "$f" ]] || continue
-  slug="${f%-*}"       # strip last hyphen-segment
-  slug="${f##*-}"      # last segment after hyphen = graph slug + .nt
-  slug="${slug%.nt}"
-  break
-done
-# Collect all unique graph slugs across all sectors
 declare -A seen
 for f in "$OUT_BASE"/s*/*-*.nt; do
   [[ -f "$f" ]] || continue
