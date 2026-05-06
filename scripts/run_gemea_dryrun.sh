@@ -22,7 +22,7 @@ OUT_BASE=/data/ddb/gemea/dryrun
 
 CFG=$GOETHE/output/config
 SCRIPTS=$GOETHE/scripts
-PYTHON=$GOETHE/.venv/bin/python3
+PYTHON=$( [[ -x "$GOETHE/.venv/bin/python3" ]] && echo "$GOETHE/.venv/bin/python3" || echo python3 )
 LIMIT=100000
 
 mkdir -p "$EXPORT_DIR" "$OUT_BASE"
@@ -36,11 +36,13 @@ echo "  OUT_BASE   = $OUT_BASE"
 # ── Phase 1+2: export (limited) then transform, pipelined per sector ──────────
 for n in 1 2 3 4 5 6 7; do
   (
+    mkdir -p "$OUT_BASE/s${n}"
     echo "[$(date '+%F %T')] [s${n}] export starting (limit ${LIMIT})"
     PYTHONPATH="$SCRIPTS" "$PYTHON" -m transform.sqlite_export \
       --db    "$SQLITE_DIR/s${n}.sqlite" \
       --out   "$EXPORT_DIR/dryrun-s${n}.jsonl" \
-      --limit "$LIMIT"
+      --limit "$LIMIT" \
+      2>> "$OUT_BASE/s${n}/export.log"
 
     echo "[$(date '+%F %T')] [s${n}] export done — transform starting"
     PYTHONPATH="$SCRIPTS" "$PYTHON" -m transform \

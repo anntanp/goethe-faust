@@ -23,7 +23,7 @@ OUT_BASE=/data/ddb/gemea                     # s1/ … s7/ land here
 
 CFG=$GOETHE/output/config
 SCRIPTS=$GOETHE/scripts
-PYTHON=$GOETHE/.venv/bin/python3
+PYTHON=$( [[ -x "$GOETHE/.venv/bin/python3" ]] && echo "$GOETHE/.venv/bin/python3" || echo python3 )
 
 mkdir -p "$EXPORT_DIR" "$OUT_BASE"
 
@@ -36,10 +36,12 @@ echo "  OUT_BASE   = $OUT_BASE"
 # ── Phase 1+2: export then transform, pipelined per sector ────────────────────
 for n in 1 2 3 4 5 6 7; do
   (
+    mkdir -p "$OUT_BASE/s${n}"
     echo "[$(date '+%F %T')] [s${n}] export starting"
     PYTHONPATH="$SCRIPTS" "$PYTHON" -m transform.sqlite_export \
       --db  "$SQLITE_DIR/s${n}.sqlite" \
-      --out "$EXPORT_DIR/s${n}.jsonl"
+      --out "$EXPORT_DIR/s${n}.jsonl" \
+      2>> "$OUT_BASE/s${n}/export.log"
 
     TOTAL=$(wc -l < "$EXPORT_DIR/s${n}.jsonl")
     echo "[$(date '+%F %T')] [s${n}] export done (${TOTAL} records) — transform starting"

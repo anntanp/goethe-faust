@@ -12,7 +12,7 @@ VENV="$GOETHE/.venv"
 
 python3 -m venv "$VENV"
 "$VENV/bin/pip" install --quiet --upgrade pip
-"$VENV/bin/pip" install duckdb
+"$VENV/bin/pip" install -r "$GOETHE/requirements.txt"
 
 echo "Venv ready: $VENV"
 echo "Python: $("$VENV/bin/python3" --version)"

@@ -36,7 +36,7 @@ def export(
                     written += 1
                 except Exception as exc:
                     errors += 1
-                    log.warning("uid=%s error: %s", uid, exc)
+                    log.warning("%s uid=%s error: %s", db_path.name, uid, exc)
 
                 if written % log_interval == 0:
                     log.info("Exported %d records", written)
