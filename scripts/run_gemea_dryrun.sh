@@ -7,10 +7,9 @@
 #            $OUT_BASE/merged.nq
 #            $OUT_BASE/werk-staging-merged.duckdb
 #            $OUT_BASE/nt/ddbedm.nt, mocho.nt, prov.nt
-# Deps:      python3 -m transform (PYTHONPATH=scripts/), duckdb Python package,
-#            scripts/split_nq.py (stdlib only)
-# Notes:     Export is skipped per sector if JSONL already exists in EXPORT_DIR.
-#            sqlite_export has no --limit flag; transform is capped with --limit 100000.
+# Deps:      .venv/ created by scripts/setup_venv.sh, scripts/split_nq.py (stdlib only)
+# Notes:     Each sector exports exactly LIMIT records from SQLite then transforms.
+#            dryrun-s{N}.jsonl files are written to EXPORT_DIR (separate from production).
 
 set -euo pipefail
 
@@ -23,6 +22,7 @@ OUT_BASE=/data/ddb/gemea/dryrun
 
 CFG=$GOETHE/output/config
 SCRIPTS=$GOETHE/scripts
+PYTHON=$GOETHE/.venv/bin/python3
 LIMIT=100000
 
 mkdir -p "$EXPORT_DIR" "$OUT_BASE"
@@ -33,24 +33,19 @@ echo "  SQLITE_DIR = $SQLITE_DIR"
 echo "  EXPORT_DIR = $EXPORT_DIR"
 echo "  OUT_BASE   = $OUT_BASE"
 
-# ── Phase 1+2: export (if needed) then transform ──────────────────────────────
+# ── Phase 1+2: export (limited) then transform, pipelined per sector ──────────
 for n in 1 2 3 4 5 6 7; do
   (
-    if [[ -f "$EXPORT_DIR/s${n}.jsonl" ]]; then
-      echo "[$(date '+%F %T')] [s${n}] JSONL exists — skipping export"
-    else
-      echo "[$(date '+%F %T')] [s${n}] export starting"
-      PYTHONPATH="$SCRIPTS" python3 -m transform.sqlite_export \
-        --db  "$SQLITE_DIR/s${n}.sqlite" \
-        --out "$EXPORT_DIR/s${n}.jsonl"
-      echo "[$(date '+%F %T')] [s${n}] export done"
-    fi
+    echo "[$(date '+%F %T')] [s${n}] export starting (limit ${LIMIT})"
+    PYTHONPATH="$SCRIPTS" "$PYTHON" -m transform.sqlite_export \
+      --db    "$SQLITE_DIR/s${n}.sqlite" \
+      --out   "$EXPORT_DIR/dryrun-s${n}.jsonl" \
+      --limit "$LIMIT"
 
-    echo "[$(date '+%F %T')] [s${n}] transform starting (limit ${LIMIT})"
-    PYTHONPATH="$SCRIPTS" python3 -m transform \
-      --jsonl        "$EXPORT_DIR/s${n}.jsonl" \
+    echo "[$(date '+%F %T')] [s${n}] export done — transform starting"
+    PYTHONPATH="$SCRIPTS" "$PYTHON" -m transform \
+      --jsonl        "$EXPORT_DIR/dryrun-s${n}.jsonl" \
       --outdir       "$OUT_BASE/s${n}" \
-      --limit        "$LIMIT" \
       --stats        dispatch \
       --log-interval 10000 \
       --alignment    "$CFG/lookup_class_prop_alignment.csv" \
@@ -74,7 +69,7 @@ NQ_LINES=$(wc -l < "$MERGED_NQ")
 echo "[$(date '+%F %T')] N-Quads merged (${NQ_LINES} quads) → $MERGED_NQ"
 
 # ── Phase 3: merge DuckDB werk_staging ───────────────────────────────────────
-OUT_BASE="$OUT_BASE" python33 <<'PYEOF'
+OUT_BASE="$OUT_BASE" "$PYTHON" <<'PYEOF'
 import duckdb, glob, os, sys
 out_base = os.environ["OUT_BASE"]
 shards = sorted(glob.glob(f"{out_base}/s*/*-werk-staging.duckdb"))
@@ -94,7 +89,7 @@ PYEOF
 # ── Phase 4: split merged N-Quads into per-graph N-Triples ───────────────────
 NT_DIR=$OUT_BASE/nt
 echo "[$(date '+%F %T')] Splitting N-Quads into per-graph .nt files → $NT_DIR"
-python3 "$SCRIPTS/split_nq.py" "$MERGED_NQ" --out-dir "$NT_DIR"
+"$PYTHON" "$SCRIPTS/split_nq.py" "$MERGED_NQ" --out-dir "$NT_DIR"
 echo "[$(date '+%F %T')] Split complete"
 
 echo "[$(date '+%F %T')] Done. All output in: $OUT_BASE"

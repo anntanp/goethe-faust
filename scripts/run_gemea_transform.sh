@@ -7,8 +7,7 @@
 #            $OUT_BASE/merged.nq
 #            $OUT_BASE/werk-staging-merged.duckdb
 #            $OUT_BASE/nt/ddbedm.nt, mocho.nt, prov.nt
-# Deps:      python3 -m transform (PYTHONPATH=scripts/), duckdb Python package,
-#            scripts/split_nq.py (stdlib only)
+# Deps:      .venv/ created by scripts/setup_venv.sh, scripts/split_nq.py (stdlib only)
 # Notes:     EXPORT_DIR needs ~400 GB free for uncompressed JSONL.
 #            Each sector runs export then transform back-to-back in its own subshell.
 #            All 7 subshells are launched in parallel; script waits for all to finish.
@@ -19,11 +18,12 @@ set -euo pipefail
 GOETHE="$(cd "$(dirname "$0")/.." && pwd)"   # goethe-faust project root (auto-detected)
 SQLITE_DIR=/data/ddb/data                    # s1.sqlite … s7.sqlite
 EXPORT_DIR=/data/ddb/export                  # per-sector JSONL; needs ~400 GB free
-OUT_BASE=/data/ddb/gemea      # s1/ … s7/ land here
+OUT_BASE=/data/ddb/gemea                     # s1/ … s7/ land here
 # ──────────────────────────────────────────────────────────────────────────────
 
 CFG=$GOETHE/output/config
 SCRIPTS=$GOETHE/scripts
+PYTHON=$GOETHE/.venv/bin/python3
 
 mkdir -p "$EXPORT_DIR" "$OUT_BASE"
 
@@ -37,14 +37,14 @@ echo "  OUT_BASE   = $OUT_BASE"
 for n in 1 2 3 4 5 6 7; do
   (
     echo "[$(date '+%F %T')] [s${n}] export starting"
-    PYTHONPATH="$SCRIPTS" python3 -m transform.sqlite_export \
+    PYTHONPATH="$SCRIPTS" "$PYTHON" -m transform.sqlite_export \
       --db  "$SQLITE_DIR/s${n}.sqlite" \
       --out "$EXPORT_DIR/s${n}.jsonl"
 
     TOTAL=$(wc -l < "$EXPORT_DIR/s${n}.jsonl")
     echo "[$(date '+%F %T')] [s${n}] export done (${TOTAL} records) — transform starting"
 
-    PYTHONPATH="$SCRIPTS" python3 -m transform \
+    PYTHONPATH="$SCRIPTS" "$PYTHON" -m transform \
       --jsonl      "$EXPORT_DIR/s${n}.jsonl" \
       --outdir     "$OUT_BASE/s${n}" \
       --stats      dispatch \
@@ -70,7 +70,7 @@ NQ_LINES=$(wc -l < "$MERGED_NQ")
 echo "[$(date '+%F %T')] N-Quads merged (${NQ_LINES} quads) → $MERGED_NQ"
 
 # ── Phase 3: merge DuckDB werk_staging ───────────────────────────────────────
-OUT_BASE="$OUT_BASE" python33 <<'PYEOF'
+OUT_BASE="$OUT_BASE" "$PYTHON" <<'PYEOF'
 import duckdb, glob, os, sys
 out_base = os.environ["OUT_BASE"]
 shards = sorted(glob.glob(f"{out_base}/s*/*-werk-staging.duckdb"))
@@ -90,7 +90,7 @@ PYEOF
 # ── Phase 4: split merged N-Quads into per-graph N-Triples ───────────────────
 NT_DIR=$OUT_BASE/nt
 echo "[$(date '+%F %T')] Splitting N-Quads into per-graph .nt files → $NT_DIR"
-python3 "$SCRIPTS/split_nq.py" "$MERGED_NQ" --out-dir "$NT_DIR"
+"$PYTHON" "$SCRIPTS/split_nq.py" "$MERGED_NQ" --out-dir "$NT_DIR"
 echo "[$(date '+%F %T')] Split complete"
 
 echo "[$(date '+%F %T')] Done. All output in: $OUT_BASE"

@@ -17,6 +17,7 @@ def export(
     out_path: Path,
     *,
     log_interval: int = 100_000,
+    limit: int | None = None,
 ) -> int:
     """Export all records from a single-sector SQLite to a JSONL file.
 
@@ -39,6 +40,8 @@ def export(
 
                 if written % log_interval == 0:
                     log.info("Exported %d records", written)
+                if limit and written >= limit:
+                    break
     finally:
         conn.close()
 
@@ -56,6 +59,8 @@ def main() -> None:
                         help="Path to sector SQLite file (e.g. s2.sqlite)")
     parser.add_argument("--out", type=Path, required=True,
                         help="Output JSONL file path")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="Stop after N records (for dryruns)")
     parser.add_argument("--log-level", default="INFO", dest="log_level",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     args = parser.parse_args()
@@ -65,7 +70,7 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(message)s",
     )
 
-    n = export(args.db, args.out)
+    n = export(args.db, args.out, limit=args.limit)
     print(f"{n:,} records → {args.out}")
 
 
