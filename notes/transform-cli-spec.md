@@ -63,12 +63,10 @@ See [`notes/transform-stats-plan.md`](transform-stats-plan.md) for the full sche
 |---|---|---|
 | `none` | nothing | 0 |
 | `basic` | `run`, `records`, `triples`, `werk_staging` | ~0 |
-| `dispatch` | basic + `dispatch` (WEMI class counts) | ~0 |
-| `full` | dispatch + `mocho_vocab` (per-predicate counts) | minutes — use on samples only |
+| `dispatch` | basic + `dispatch`, `by_mediatype`, `by_htype`, `ddbedm_classes`, `ddbedm_vocab`, `mocho_vocab` | ~0 — all from emitter Counters |
+| `full` | same as `dispatch` (reserved for future additions) | ~0 |
 
-**Recommendation**: `--stats dispatch` for full-corpus runs; `--stats full --limit 50000` when vocabulary coverage data is needed.
-
-The bottleneck at `full` is a per-triple predicate regex over the mocho stream. At 27 M records × ~50 mocho triples ≈ 1.35 B regex matches.
+**Recommendation**: `--stats dispatch` for full-corpus runs. All predicate and class counts are collected during emission — no post-hoc scanning.
 
 ---
 
