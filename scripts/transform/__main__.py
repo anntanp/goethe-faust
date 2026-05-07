@@ -76,6 +76,12 @@ def _fmt_duration(seconds: float) -> str:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "merge":
+        from .merge import main as _merge_main
+        sys.argv = [sys.argv[0]] + sys.argv[2:]
+        _merge_main()
+        return
+
     parser = argparse.ArgumentParser(
         description="Transform DDB-EDM JSONL to mocho N-Quads (§8)"
     )

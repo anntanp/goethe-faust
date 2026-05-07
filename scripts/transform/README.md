@@ -16,6 +16,7 @@ DuckDB werk_staging table for GND Werk linking.
 | `emitters.py` | Triple emitters: ddbedm passthrough, mocho alignment, PROV-O, werk_staging |
 | `transform.py` | `transform_record` — per-record orchestration |
 | `__main__.py` | CLI entry point (`python -m transform`) |
+| `merge.py` | `python -m transform merge` — concat .nq shards, merge DuckDB + stats |
 | `sqlite_export.py` | `export()` — sequential SQLite → JSONL export for bulk runs |
 
 ---
@@ -120,6 +121,28 @@ Run from the `scripts/` directory. Full argument list: `python -m transform --he
 
 **Stats recommendation**: `--stats dispatch` for full-corpus runs; `--stats full --limit 50000`
 for vocabulary coverage data. Schema and performance trade-offs: [`notes/transform-stats-plan.md`](../../notes/transform-stats-plan.md).
+
+## Merging shards
+
+After a parallel run, merge all per-worker outputs into combined files:
+
+```bash
+python -m transform merge /data/ddb/gemea/mocho-transform/20260508_1200xxxx
+```
+
+Finds all `*.nq`, `*-werk-staging.duckdb`, and `*-stats.json` under the run directory
+recursively, merges them, and deletes the shards only after all merges succeed.
+
+| Output | Default path |
+|---|---|
+| N-Quads | `<out_base>/combined.nq` |
+| DuckDB werk_staging | `<out_base>/werk-staging-merged.duckdb` |
+| Stats | `<out_base>/combined-stats.json` |
+
+Override with `--nq`, `--db`, `--stats`. DuckDB merge is skipped if `duckdb` is not
+installed (shard files retained).
+
+---
 
 ```bash
 # full corpus, default stats

@@ -310,7 +310,80 @@ Full run on `data/items-all-goethe-faust.json` (115,432 records) after all audit
 
 ---
 
-## 8. Full-corpus run plan
+## 8. Agent label stub fixes (2026-05-08)
+
+Two bugs in `emitters.py` prevented `rdfs:label` from being emitted on agent stubs in the mocho graph. Both deviate from the spec in `transform-props-mapping-plan.md §4–5` ("Label sourced from `edm:Agent.prefLabel[].$` (first value). Applies to both creator and contributor URI resolutions.").
+
+### 8.1 Bug 1 — `emit_creator_triples`: `isinstance(pref, str)` always False
+
+Track 2 of `emit_creator_triples` emits `dcterms:creator <agent.about>` + `mocho:Agent` type when `resolve_agent` finds a matching `edm:Agent`. It also should emit `rdfs:label` sourced from `agent.prefLabel[].$`. The pre-fix code:
+
+```python
+pref = agent.get("prefLabel") or label
+if pref and isinstance(pref, str):          # always False — prefLabel is a list
+    lines.append(make_nq(agent_nt, RDFS_LABEL, f'"{_escape_literal(pref)}"', graph_iri))
+```
+
+`agent.get("prefLabel")` returns a list (e.g. `[{"$": "Goethe, …", "lang": "de"}]`). `isinstance(list, str)` is always `False`, so no `rdfs:label` was ever emitted from the agent's own prefLabel. When the list was empty, the fallback `or label` set `pref` to the literal string from the creator field — which did pass `isinstance(str)` — but that path is rare and emits without lang-tag.
+
+**Fix**: replace with `coerce_list(agent.get("prefLabel"))` + `value_to_nt_obj` iteration (same pattern as `emit_hastype_triples`); fall back to the `label` string only when prefLabel is empty.
+
+### 8.2 Bug 2 — `emit_contributor_triples`: no `agents_index`, label from `val.get("$")`
+
+`emit_contributor_triples` had no `agents_index` parameter, so:
+
+1. **URI case**: `rdfs:label` was sourced from `val.get("$")` — the literal annotation on the contributor field — not from the matching `edm:Agent.prefLabel`.
+2. **Literal case**: no `resolve_agent` call at all. Contributor literals that matched a DDB/GND agent by label were emitted as plain `dc:contributor "literal"@lang` instead of an agent stub.
+
+**Fix**: add `agents_index: dict[str, AgentDict] | None = None` parameter.
+- **URI case**: `resolve_agent("", primary_resource, _agents)` → use `prefLabel` from agent; fall back to `val.get("$")` if not found.
+- **Literal case**: `resolve_agent(label, "", _agents)` → if DDB/GND match, emit `<cho> <target_prop> <agent.about>` + `mocho:Agent` + `rdfs:label`; else emit plain literal.
+
+Update `emit_mocho_triples` call site to pass `agents_index`.
+
+### 8.3 Test additions
+
+Eight new tests in `scripts/transform/tests/test_transform.py`:
+
+| Class | Test | Covers |
+|---|---|---|
+| `TestEmitCreatorTriplesPrefLabel` | `test_preflabel_list_dict_emitted` | prefLabel list-of-dicts → label emitted |
+| | `test_preflabel_lang_tagged` | lang tag preserved (`"Schiller, Friedrich"@de`) |
+| | `test_preflabel_empty_list_falls_back_to_label` | empty prefLabel → fallback to literal |
+| | `test_uri_track2_uses_agents_index_preflabel` | URI path also uses agents_index prefLabel |
+| `TestEmitContributorTriplesAgentLabel` | `test_uri_case_uses_agents_index_preflabel` | agents_index prefLabel wins over `val["$"]` |
+| | `test_uri_case_fallback_to_literal_label_when_no_index` | no agents_index → `val["$"]` used |
+| | `test_literal_match_emits_agent_stub` | literal matching DDB/GND agent → stub emitted |
+| | `test_literal_no_match_emits_plain_literal` | unmatched literal → plain `dc:contributor` |
+
+Total: 114 tests (106 post-audit + 8 new).
+
+### 8.4 Validation run — goethe-faust corpus (2026-05-08)
+
+Full run on `data/items-all-goethe-faust.json` (115,432 records) after agent label fixes. Output: `output/transform/20260507_232804/`.
+
+| Metric | Pre-fix (20260507_190805) | Post-fix (20260507_232804) | Δ |
+|---|---|---|---|
+| Records processed | 115,432 | 115,432 | — |
+| Triples total | 14,764,352 | 14,782,653 | **+18,301** |
+| ddbedm | 8,957,734 | 8,957,734 | 0 |
+| **mocho** | **1,950,504** | **1,968,805** | **+18,301** |
+| prov | 3,856,114 | 3,856,114 | 0 |
+| `rdfs:label` (mocho) | 302,578 | 320,754 | **+18,176** |
+| `rdf:type` (mocho) | 162,807 | 162,932 | **+125** |
+| `dcterms:creator` | 53,453 | 53,453 | 0 |
+| `dc:contributor` | 36,773 | 36,773 | 0 |
+
+18,176 + 125 = 18,301 — all new mocho triples accounted for by the two fixes.
+
+**Attribution:**
+- **+18,176 `rdfs:label`** — Bug 1. Creator Track 2 now correctly iterates `agent.prefLabel[]` via `value_to_nt_obj`; all previously silenced agent labels are emitted. The contributor literal-match branch contributes its `rdfs:label` half here as well.
+- **+125 `rdf:type mocho:Agent`** — Bug 2 (literal-match path). Contributor literals that previously fell through as plain `dc:contributor "…"@lang` now resolve to DDB/GND agents and emit `mocho:Agent` type stubs.
+- `dcterms:creator` and `dc:contributor` counts unchanged — the fixes add stubs for existing agent resolutions, not new CHO-level predicates.
+
+---
+
+## 9. Full-corpus run plan
 
 See `notes/transform-dryrun-plan.md §6` for the full pipeline:
 
