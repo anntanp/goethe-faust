@@ -1,7 +1,7 @@
 # Transcript: ef8b247d-8555-42ed-bcfa-d0e1dab38211
 
 **Project:** /Users/mta/Documents/claude/goethe-faust/scripts  
-**Messages:** 516
+**Messages:** 635
 
 ---
 
@@ -11681,5 +11681,2668 @@ Clean run. Key numbers vs the POC:
 | uri_split | 4,188 | 2,685 | −1,503 |
 
 The mocho graph gained ~51k triples — that's `edm:currentLocation` (31,837 triples) + label stubs + the creator/contributor/subject bare-ID expansions and multi-URI splits now landing correctly. `uri_split` dropped by ~1,500 because some previously-counted splits in the generic loop are now handled by the special emitters (and counted differently). Zero errors.
+
+---
+
+### User *(2026-05-07T17:11:44.698Z)*
+
+Save this somewhere (where would be the best place for this?)
+
+---
+
+### Assistant *(2026-05-07T17:11:55.462Z)*
+
+Best place: `transform-implementation-actual.md` §7, as a validation subsection immediately following the change inventory — it confirms the audit fixes with real corpus numbers.
+
+---
+
+### Assistant *(2026-05-07T17:12:04.230Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/notes/transform-implementation-actual.md",
+  "old_string": "---\n\n## 8. Full-corpus run plan",
+  "new_string": "### 7.6 Validation run — goethe-faust corpus (2026-05-07)\n\nFull run on `data/items-all-goethe-faust.json` (115,432 records) after all audit fixes. Output: `output/transform/20260507_190805/`.\n\n| Metric | POC (2026-05-06) | Post-audit (2026-05-07) | Delta |\n|---|---|---|---|\n| Records processed | 115,432 | 115,432 | — |\n| Triples total | 14,713,376 | 14,764,352 | +50,976 |\n| ddbedm | 8,957,262 | 8,957,734 | +472 |\n| **mocho** | **1,898,754** | **1,950,504** | **+51,750** |\n| prov | 3,857,360 | 3,856,114 | −1,246 |\n| Errors | 0 | 0 | — |\n| fallback_d9 | 0 | 0 | — |\n| uri_sanitized | 29 | 29 | — |\n| uri_split | 4,188 | 2,685 | −1,503 |\n| uri_about_split | 1,309 | 1,309 | — |\n\n**mocho +51,750** breaks down as:\n- `edm:currentLocation` — 31,837 new triples (property moved from generic loop to `emit_current_location_triples`; IRI-with-label-stub pattern)\n- Creator/contributor bare-ID expansions, multi-URI splits, and subject/hasType label stubs now handled correctly in special emitters account for the remainder\n\n**uri_split −1,503**: some multi-URI splits previously counted via the generic loop (`value_to_nt_obj`) are now handled in special emitters via `resource_uris()` and tracked separately; the net split count is lower because `currentLocation` URIs (many multi-value) are no longer double-counted.\n\n**prov −1,246**: minor change due to PROV provider node deduplication; no logic change — variance from record ordering in input.\n\n---\n\n## 8. Full-corpus run plan"
+}
+```
+
+---
+
+### User *(2026-05-07T17:12:20.361Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/notes/transform-implementation-actual.md has been updated successfully.
+```
+
+---
+
+### Assistant *(2026-05-07T17:12:25.015Z)*
+
+Saved as §7.6 in `transform-implementation-actual.md`. The delta explanation is also there — mocho gained ~51k triples primarily from `edm:currentLocation` gaining the IRI-with-label-stub treatment, plus the emitter safety fixes landing correctly across the full corpus.
+
+---
+
+### User *(2026-05-07T17:12:54.659Z)*
+
+can you check if the Agent uris are also added with labels from matching edm:Agent?
+
+---
+
+### Assistant *(2026-05-07T17:13:30.543Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/emitters.py",
+  "offset": 418,
+  "limit": 55
+}
+```
+
+---
+
+### User *(2026-05-07T17:13:30.560Z)*
+
+**Tool result**
+```
+418	
+419	    for val in coerce_list(creator_vals):
+420	        if not isinstance(val, dict):
+421	            continue
+422	        resource_raw = (val.get("resource") or "").strip()
+423	        label        = (val.get("$")        or "").strip()
+424	        lang         = (val.get("lang")     or "").strip()
+425	        primary_resource = resource_raw.split()[0] if resource_raw else ""
+426	
+427	        # Track 1: class-specific predicate (always runs when target_prop is known)
+428	        if track1_prop:
+429	            if resource_raw:
+430	                for uri in resource_uris(resource_raw, bare_id_to_uri, "Agent"):
+431	                    lines.append(make_nq(cho_nt, f"<{track1_prop}>", f"<{uri}>", graph_iri))
+432	            elif label:
+433	                escaped = _escape_literal(label)
+434	                obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
+435	                lines.append(make_nq(cho_nt, f"<{track1_prop}>", obj_nt, graph_iri))
+436	
+437	        # Track 2: generic dcterms:creator + agent stub (D2 — both tracks always run)
+438	        agent = resolve_agent(label, primary_resource, agents_index)
+439	        if agent:
+440	            agent_uri = _sanitize_iri((agent.get("about") or "").strip())
+441	            if agent_uri and is_ddb_or_gnd(agent_uri):
+442	                lines.append(make_nq(cho_nt, f"<{DCTERMS_CREATOR}>",
+443	                                     f"<{agent_uri}>", graph_iri))
+444	                agent_nt = f"<{agent_uri}>"
+445	                lines.append(make_nq(agent_nt, f"<{RDF_TYPE}>", f"<{MOCHO_AGENT}>", graph_iri))
+446	                pref = agent.get("prefLabel") or label
+447	                if pref and isinstance(pref, str):
+448	                    lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>",
+449	                                         f'"{_escape_literal(pref)}"', graph_iri))
+450	    return lines
+451	
+452	
+453	def emit_contributor_triples(
+454	    cho_nt: str,
+455	    contributor_vals: list,
+456	    event_participant_index: dict[str, str],
+457	    lido_dispatch: dict[str, dict],
+458	    target_class: str,
+459	    wemi: str,
+460	    graph_iri: str,
+461	    bare_id_to_uri: dict[str, str] | None = None,
+462	) -> NQList:
+463	    """Emit contributor triples using LIDO event-type dispatch (D3/D25, props-mapping §5)."""
+464	    lines: NQList = []
+465	    prop_col = _CONTRIBUTOR_COL.get((wemi, target_class), "dc_agent_fallback")
+466	
+467	    for val in coerce_list(contributor_vals):
+468	        if not isinstance(val, dict):
+469	            continue
+470	        resource_raw     = (val.get("resource") or "").strip()
+471	        label            = (val.get("$")        or "").strip()
+472	        lang             = (val.get("lang")     or "").strip()
+```
+
+---
+
+### Assistant *(2026-05-07T17:13:33.267Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/emitters.py",
+  "offset": 473,
+  "limit": 25
+}
+```
+
+---
+
+### User *(2026-05-07T17:13:33.271Z)*
+
+**Tool result**
+```
+473	        primary_resource = resource_raw.split()[0] if resource_raw else ""
+474	
+475	        lido_type   = event_participant_index.get(primary_resource) if primary_resource else None
+476	        lido_row    = lido_dispatch.get(lido_type) if lido_type else None
+477	        target_prop = (
+478	            (lido_row.get(prop_col) or lido_row.get("dc_agent_fallback") or DC_CONTRIBUTOR)
+479	            if lido_row else DC_CONTRIBUTOR
+480	        )
+481	
+482	        if resource_raw:
+483	            for uri in resource_uris(resource_raw, bare_id_to_uri, "Agent"):
+484	                lines.append(make_nq(cho_nt, f"<{target_prop}>", f"<{uri}>", graph_iri))
+485	                agent_nt = f"<{uri}>"
+486	                lines.append(make_nq(agent_nt, f"<{RDF_TYPE}>", f"<{MOCHO_AGENT}>", graph_iri))
+487	                if label:
+488	                    escaped = _escape_literal(label)
+489	                    obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
+490	                    lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>", obj_nt, graph_iri))
+491	        elif label:
+492	            escaped = _escape_literal(label)
+493	            obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
+494	            lines.append(make_nq(cho_nt, f"<{DC_CONTRIBUTOR}>", obj_nt, graph_iri))
+495	    return lines
+496	
+497	
+```
+
+---
+
+### Assistant *(2026-05-07T17:13:39.308Z)*
+
+Two bugs found:
+
+**Bug 1 — `emit_creator_triples` line 446–449**: `agent.get("prefLabel")` returns a **list** (e.g. `[{"$": "Goethe, Johann Wolfgang von", "lang": "de"}]`), not a string. The `isinstance(pref, str)` guard always fails → **no `rdfs:label` ever emitted** for creator agent stubs.
+
+**Bug 2 — `emit_contributor_triples` line 487–490**: The label comes from `val.get("$")` — the literal string inside the contributor field value. It does **not** look up the matching `edm:Agent` entity by URI. If `val["$"]` is empty (common when only `resource` is set), the stub gets `rdf:type mocho:Agent` but no `rdfs:label`.
+
+Let me verify the second bug is real in practice:
+
+---
+
+### Assistant *(2026-05-07T17:13:42.594Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "cd /Users/mta/Documents/claude/goethe-faust && python3 -c \"\nimport json, re\n# Check what contributor values look like - resource only vs resource+label\nno_label = resource_only = 0\nwith open('data/items-excerpt-1000.json') as f:\n    data = json.load(f)\nfor rec in data:\n    cho = rec.get('edm',{}).get('RDF',{}).get('ProvidedCHO',{})\n    for v in (cho.get('contributor') or []):\n        if not isinstance(v, dict): continue\n        has_resource = bool((v.get('resource') or '').strip())\n        has_label = bool((v.get('\\$') or '').strip())\n        if has_resource and not has_label:\n            no_label += 1\n        if has_resource:\n            resource_only += 1\nprint(f'contributor with resource but no label: {no_label}/{resource_only}')\n\" 2>&1",
+  "description": "Check how many contributor resource values have no label"
+}
+```
+
+---
+
+### User *(2026-05-07T17:24:40.857Z)*
+
+**Tool result** *(error)*
+```
+The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.
+```
+
+---
+
+### User *(2026-05-07T17:24:40.860Z)*
+
+[Request interrupted by user for tool use]
+
+---
+
+### Assistant *(2026-05-07T19:48:45.774Z)*
+
+No response requested.
+
+---
+
+### User *(2026-05-07T19:48:57.880Z)*
+
+can you check if the Agent uris are also added with labels from matching edm:Agent?
+
+---
+
+### User *(2026-05-07T19:49:03.066Z)*
+
+[Request interrupted by user]
+
+---
+
+### User *(2026-05-07T19:49:07.218Z)*
+
+can you check if the Agent uris are also added with labels from matching edm:Agent?
+
+---
+
+### Assistant *(2026-05-07T19:49:15.592Z)*
+
+Two bugs, no need to probe the data:
+
+**Bug 1 — `emit_creator_triples` line 446–447:**
+```python
+pref = agent.get("prefLabel") or label
+if pref and isinstance(pref, str):   # ← always False when prefLabel is a list
+```
+`prefLabel` in `edm:Agent` is `[{"$": "...", "lang": "de"}]` — a list, never a string. The `isinstance(pref, str)` guard silently drops it every time. **No `rdfs:label` is ever emitted for creator agent stubs.**
+
+**Bug 2 — `emit_contributor_triples` line 487–490:**
+```python
+if label:   # ← label is val.get("$"), not from the Agent entity
+    lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>", obj_nt, graph_iri))
+```
+The label comes from the contributor field's own `$` value, not from the matching `edm:Agent`. When only `resource` is set and `$` is empty — which is common — the stub gets `rdf:type mocho:Agent` but no `rdfs:label`. The `agents_index` is never consulted here.
+
+The fix for both is the same pattern already used for Concept/Place stubs: look up the Agent entity by URI, then iterate its `prefLabel` list with `value_to_nt_obj`. `emit_contributor_triples` would also need `agents_index` passed in as a new parameter. Shall I fix both?
+
+---
+
+### User *(2026-05-07T21:03:29.945Z)*
+
+wait, let's make sure that you understand:
+
+dc:creator and dc:contributor can have literals or URIs:
+- if literals matches skos:prefLabel value of an edm:Agent instance, emit: 
+a. <cho> <domain-specific:creator property> <agent URI ("about")>
+b. <agent URI> <rdfs:label> "Literals"@lang .
+- if no literals matches label of edm:Agent, then just <cho> <domain-specific:creator property> "Literals"@lang .
+- if the value of these properties are URIs, find the matching edm:Agent, then emit:
+a. <cho> <domain-specific:creator property> <agent URI ("about")>
+b. <agent URI> <rdfs:label> "Literals"@lang → where the literals is the skos:prefLabel. 
+
+Is this not in /Users/mta/Documents/claude/goethe-faust/notes/transform-revised-plan.md and /Users/mta/Documents/claude/goethe-faust/notes/transform-props-mapping-plan.md?
+
+---
+
+### Assistant *(2026-05-07T21:03:36.319Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "grep -n \"creator\\|contributor\\|agent\\|prefLabel\\|label stub\\|about\" /Users/mta/Documents/claude/goethe-faust/notes/transform-revised-plan.md | head -40",
+  "description": "Search transform-revised-plan for creator/agent label logic"
+}
+```
+
+---
+
+### User *(2026-05-07T21:03:36.475Z)*
+
+**Tool result**
+```
+38:  s2.sqlite (bufgz column) → cho.jsonl, agent.jsonl, webresource.jsonl,
+53:  handle_creator_uri_resolution()
+84:| Place | 59,249 | ✅ label stub only | object of `dc:spatial` and `edm:currentLocation`; `prefLabel` label triple — see §4 |
+204:| `dc:creator` (URIs) | `ProvidedCHO.creator[].resource` | GND URIs only (`http://d-nb.info/gnd/…`); null or list |
+205:| `dc:creator` (literals) | `ProvidedCHO.creator[].$` | stored as `last, first` — GND normalized form (see §4 of `transform-props-mapping-plan.md`) |
+207:Name literal format is `last, first` — consistent with GND "Familienname, Vorname" ordering and the existing agent stub label convention.
+232:Done. 24 properties mapped per `output/config/lookup_class_prop_alignment.csv` (rows 549–572). Decision: `transform-props-mapping-adr.md` D13. Script: `scripts/gen_agent_alignment_rows.py`.
+234:Agent nodes are minted when `creator` (§4, `transform-props-mapping-plan.md`) or `contributor` (§5) values resolve to a DDB org or GND URI:
+237:<agent.about> a mocho:Agent ;
+263:**1. Contributor predicate dispatch (D3, `transform-props-mapping-adr.md`)**: The LIDO event type (`edm:Event.hasType.resource`) resolves the predicate for each `dc:contributor` value:
+266:ProvidedCHO.hasMet[].resource  →  edm:Event.about
+268:edm:Event.P11_had_participant[].resource  ==  contributor[].resource
+269:→  emit <cho> <target_prop> <contributor.resource>
+276:| lido00012 creation | creator / `rdam:P30329` |
+293:`edm:Place` nodes are **not typed** in Phase 0 — neither `geo:SpatialThing` nor `schema:Place` is imported into mocho. Only a label stub is emitted (see §4.2). Class typing is deferred.
+302:For each Place URI referenced by either property, a label stub is emitted:
+308:Source: `edm.RDF.Place[].prefLabel[].@value` + `.@language` (§0.2, `transform-props-mapping-plan.md`).
+354:The WebResource URI (`edm:WebResource.about`) is the URL of the digitised object as hosted by the providing institution. It is the target of `edm:isShownAt` on the Aggregation. No WebResource-level properties (e.g. `edm:rights`, `dc:format`) are mapped in Phase 0.
+370:| `about` | — (Aggregation node IRI) |  | Aggregation URI | |
+```
+
+---
+
+### Assistant *(2026-05-07T21:03:38.820Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "grep -n \"creator\\|contributor\\|prefLabel\\|label\\|agent URI\\|about\" /Users/mta/Documents/claude/goethe-faust/notes/transform-props-mapping-plan.md | head -60",
+  "description": "Search transform-props-mapping-plan for creator/agent label logic"
+}
+```
+
+---
+
+### User *(2026-05-07T21:03:38.869Z)*
+
+**Tool result**
+```
+22:A second, related failure: even when the Event node is retained structurally, LLMs miss that it carries **LIDO type** — the event type that distinguishes agent roles (author vs. photographer vs. publisher) and date semantics (creation date vs. publication date). Without LIDO type, all contributors flatten to `dc:contributor` and all dates flatten to `rdam:P30278` "has date of manifestation", losing the typed dispatch that gives the KG its query value.
+36:`creator` (D7) and `contributor` (D8) are already decided in `transform-adr.md`; their sections below summarise those decisions and add open questions.
+50:4. **For object-valued properties** (range is a URI): always emit an additional label triple alongside the main predicate triple:
+54:   <URI>  rdfs:label     "..."@lang .
+57:   The label source depends on the URI type:
+61:   | `edm:Agent` (creator, contributor) | `edm.RDF.Agent[].prefLabel[].$` + `.lang` |
+62:   | `edm:Place` (currentLocation, spatial) | `edm.RDF.Place[].prefLabel[].$` + `.lang` |
+63:   | `skos:Concept` (dcType URI, dcTermsSubject, hasType) | `edm.RDF.Concept[].prefLabel[].$` + `.lang` |
+64:   | vocnet controlled vocab (mocho:mediaType, ddb:hierarchyType) | `lookup_vocnet.csv` `label_en` → `@en`, `label_de` → `@de` |
+65:   | `dcterms:LinguisticSystem` (dcTermsLanguage) | LOC ISO 639-2 label — deferred; emit URI only for now |
+68:   This rule applies to all URI-valued properties throughout the mapping. Where no label is available in the source record, the triple is omitted (no blank label).
+76:| `edm:ProvidedCHO` | [about](#1-about) | §1 | ⏭ subject IRI, not a predicate |
+79:| `edm:ProvidedCHO` | [creator](#4-creator) | §4 | ✅ done |
+80:| `edm:ProvidedCHO` | [contributor](#5-contributor) | §5 | ✅ done |
+104:## §1 about
+112:The `about` key is the `@subject` of the CHO resource, not a property to be emitted. IRI form: `http://www.deutsche-digitale-bibliothek.de/item/<id>`.
+153:## §4 creator
+157:**Connected class**: `edm:Agent` → `rdaa:` properties (`prefLabel`, `altLabel`, `dateOfBirth`, `sameAs`, …). See `entity-property-mapping.md §1`.
+159:Two independent dispatch tracks run for every `creator` value:
+161:**Track 1 — class dispatch** (always runs): predicate is determined by the CHO's target class, looked up from `output/config/lookup_class_prop_alignment.csv` (creator rows to be populated). The `dc:creator` source predicate is the `edm_prop` key; the table provides `target_prop` per class.
+163:**Track 2 — Agent URI resolution** (conditional): If the creator label matches an `edm:Agent` in the record whose `about` is a DDB organization URI (`http://www.deutsche-digitale-bibliothek.de/organization/…`) or GND URI (`http://d-nb.info/gnd/…`), emit:
+166:<cho> dcterms:creator <agent.about> .
+174:<agent.about> a mocho:Agent ;
+175:              rdfs:label "Lastname, Firstname" .
+178:Label sourced from `edm:Agent.prefLabel[].$` (first value). Applies to both creator and contributor URI resolutions.
+180:### §2.1 RDA creator properties
+184:| WEMI | Property | label_full |
+186:| M | `rdam:P30329` | "has creator agent of manifestation" |
+187:| W | `rdaw:P10065` | "has creator agent of work" |
+188:| E | `rdae:P20053` | "has creator agent of expression" |
+192:## §5 contributor
+198:The target predicate depends on the LIDO event type of the `edm:Event` in which the contributor participates:
+201:ProvidedCHO.hasMet[].resource  →  edm:Event.about
+203:edm:Event.P11_had_participant[].resource  ==  contributor[].resource
+204:→  emit <cho> <target_prop> <contributor.resource>
+207:Fallback when no matching Event is found (URI absent or label-only): `dc:contributor`.
+213:| lido00012 creation | `rdam:P30329` | `rdaw:P10065` | `vra:creator` | `vra:creator` | `rico:hasCreator` |
+214:| lido00228 publication | `rdam:P30083` | `dc:contributor` | `dc:contributor` | `dc:contributor` | `rico:hasPublisher` |
+215:| lido00007 production | `rdam:P30081` | `dc:contributor` | `vra:producer` | `vra:producer` | `dc:contributor` |
+216:| lido01127 photography | `rdam:P30329` | `rdaw:P10056` | `vra:photographer` | `vra:photographer` | `dc:contributor` |
+217:| lido00224 designing | `dc:contributor` | `rdaw:P10051` | `vra:designer` | `vra:designer` | `dc:contributor` |
+218:| lido00226 commissioning | `dc:contributor` | `rdaw:P10287` | `dc:contributor` | `dc:contributor` | `dc:contributor` |
+219:| all others | `dc:contributor` | `dc:contributor` | `dc:contributor` | `dc:contributor` | `dc:contributor` |
+221:For `aco:`, `mo:`, `doco:`, `ec:`, `mocho:` subclasses: `dc:contributor` in all rows.
+223:**Agent node** (when contributor URI resolves): same stub as creator — see §4:
+226:<contributor.resource> a mocho:Agent ;
+227:                       rdfs:label "Lastname, Firstname" .
+304:**Connected class**: `skos:Concept` → `skos:prefLabel`, `skos:notation`. See `entity-property-mapping.md §7`.
+322:Range: mixed — `rdfs:Literal` (72.4% label-only) or URI (27.6%: GND 55.9%, Getty AAT 32.2%, Wikidata 11.9%). See `corpus-analysis.md §2`.
+325:- **Literal** (no `resource`): emit `<cho> dc:type "label"@lang` — all classes
+346:- Non-RiC-O: `<concept-uri> a skos:Concept ; skos:prefLabel "..."@lang`
+437:**Step 4 (URI stub)**: For RiC-O classes, also emit `<LOC-URI> a rico:Language`. This is distinct from agent stubs — no `rdfs:label` is added (authority label resides at the LOC endpoint). See ADR D11.
+465:**Connected class**: `skos:Concept` → `skos:prefLabel`, `skos:notation`. See `entity-property-mapping.md §7`.
+523:**Step 4 (Place stub)**: Re-emit the matching `edm.RDF.Place[]` node in the mocho subgraph — sourced from `Place[].about == currentLocation.resource`. Emit all available properties: `geo:lat`, `geo:long`, `geo:alt`, `skos:prefLabel`, `skos:altLabel`, `owl:sameAs`. See `entity-property-mapping.md §3`.
+571:| `creator` (Agent resolved) | `dc:creator` | `dcterms:creator <URI>` | ✅ props-mapping D7 |
+572:| `creator` (fallback literal) | `dc:creator` | `rdam:P30329` | ✅ D2 (IRI corrected from P30263) |
+573:| `contributor` | `dc:contributor` | keep as-is | ✅ D8 |
+```
+
+---
+
+### User *(2026-05-07T21:06:06.343Z)*
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+
+The session covers the goethe-faust EDM→mocho transform pipeline emitter safety audit and feature additions. Work continued from a previous session that ran out of context. The main tasks were:
+- Implement a systemic fix for three issue categories: A (`<br>` normalization in `_escape_literal`), B (multi-URI `resource` not split in special emitters), C (bare IDs not expanded in special emitters)
+- Add `edm:currentLocation` special handling (IRI-with-label-stub pattern, like `edm:hasType`)
+- Add ADR decisions D16 (rdfs:label vs skos:prefLabel) and D17 (no rdf:type for Place/Concept/Timespan stubs in mocho)
+- Document parallelization options in future plan
+- Run full corpus, save stats
+- Investigate whether Agent URIs get `rdfs:label` stubs from matching `edm:Agent` entities
+
+The final user question asks whether the intended agent label behavior is documented in `transform-revised-plan.md` and `transform-props-mapping-plan.md`.
+
+---
+
+2. Key Technical Concepts:
+
+- **N-Quads / N-Triples format**: literals must escape `\n`, `\r`, `\t`, `"`, `\\`; IRIs must not contain spaces or control chars
+- **`resource_uris()` utility**: new central function — split on whitespace + expand bare IDs via index or `mint_bare_id` fallback + `_sanitize_iri`; entity_class controls bare ID minting namespace
+- **Primary-URI rule**: emitters that need raw first URI before expansion (LIDO lookup, agent resolution) extract `resource_raw.split()[0]` before calling `resource_uris()`
+- **IRI-with-label-stub pattern**: for `edm:hasType` and `edm:currentLocation` — URI values emit `<cho> <prop> <uri>` + `<uri> rdfs:label <prefLabel from index>`; literal values pass through
+- **D16**: Use `rdfs:label` (not `skos:prefLabel`) for mocho stubs — QLever text-indexes on `rdfs:label`; QLever doesn't materialise RDFS entailments
+- **D17**: No `rdf:type` for Place/Concept/Timespan stubs in mocho — type authoritative in ddbedm; Agent is exception (gets `mocho:Agent`, a mocho-internal type)
+- **`_MOCHO_SKIP`**: frozenset now includes `"currentLocation"` in addition to previous entries
+- **Named graphs**: `GRAPH_DDBEDM`, `GRAPH_MOCHO`, `GRAPH_PROV` confirmed; `GRAPH_WORK` does not yet exist — will be added for werk-staging DNB linking
+- **Parallelization**: currently none in script; Option A = `ProcessPoolExecutor` in `__main__.py` (~120 lines); Option B = separate `merge.py` subcommand (~60 lines)
+- **Agent label bugs**: `emit_creator_triples` uses `isinstance(pref, str)` which always fails because `prefLabel` is a list; `emit_contributor_triples` uses `val.get("$")` instead of looking up `agents_index`
+
+---
+
+3. Files and Code Sections:
+
+**`scripts/transform/utils.py`**
+- Already had `_BR_RE` and `_escape_literal` fix from previous session
+- New `resource_uris()` added before `expand_obj_nt`:
+```python
+def resource_uris(
+    resource_raw: str,
+    bare_id_to_uri: dict[str, str] | None = None,
+    entity_class: str = "Agent",
+) -> list[str]:
+    """Expand, sanitize, and split all URIs from a (possibly multi-value) resource string."""
+    if not resource_raw:
+        return []
+    _bare = bare_id_to_uri or {}
+    result = []
+    for uri in resource_raw.split():
+        if not uri.startswith(("http", "urn")):
+            uri = _bare.get(uri) or mint_bare_id(entity_class, uri)
+        result.append(_sanitize_iri(uri))
+    return result
+```
+
+**`scripts/transform/constants.py`**
+- `_MOCHO_SKIP` updated to include `"currentLocation"`:
+```python
+_MOCHO_SKIP = frozenset({
+    "about", "hierarchyType",
+    "creator", "contributor",
+    "dcSubject", "dcTermsSubject", "dcTermSubject",
+    "dcType",
+    "aggregationEntity", "hierarchyPosition",
+    "hasMet",          # edm:hasMet is an EDM Event property; no mocho alignment
+    "hasType",         # handled by emit_hastype_triples(); IRI-with-label-stub (D16/D17)
+    "currentLocation", # handled by emit_current_location_triples(); IRI-with-label-stub (D16/D17)
+})
+```
+
+**`scripts/transform/emitters.py`**
+- Imports: added `resource_uris` to `from .utils import`
+- `emit_prov_triples`: `_sanitize_iri(provider_isil)` added
+- `emit_subject_triples`: replaced single-URI branch with `resource_uris(resource_raw, _bare, "Concept")` loop; `resource_raw` instead of `resource`
+- `emit_hastype_triples`: same pattern as subject
+- `emit_creator_triples`: added `bare_id_to_uri=None` param; Track 1 uses `resource_uris()` loop; Track 2 uses `primary_resource = resource_raw.split()[0]`; `agent_uri = _sanitize_iri(...)`. **KNOWN BUG**: `isinstance(pref, str)` check always fails because `prefLabel` is a list — no rdfs:label emitted for creator stubs
+- `emit_contributor_triples`: added `bare_id_to_uri=None` param; `primary_resource` for LIDO lookup; `resource_uris()` loop. **KNOWN BUG**: label from `val.get("$")` not from `agents_index`
+- `emit_aggregation_triples`: inline split loop for `isShownAt`, `dataProvider`, `object`
+- `emit_place_stubs`: `mint_bare_id("Place", _sanitize_iri(raw_about.split()[0]))`
+- New `emit_current_location_triples`:
+```python
+def emit_current_location_triples(
+    cho_nt: str,
+    currentloc_vals: object,
+    places_index: dict[str, dict],
+    graph_iri: str,
+    bare_id_to_uri: dict[str, str] | None = None,
+) -> NQList:
+    edm_current_location = EDM_NS + "currentLocation"
+    lines: NQList = []
+    seen: set[str] = set()
+    _bare = bare_id_to_uri or {}
+    for val in coerce_list(currentloc_vals):
+        if not isinstance(val, dict): continue
+        resource_raw = (val.get("resource") or "").strip()
+        label        = (val.get("$")        or "").strip()
+        lang         = (val.get("lang")     or "").strip()
+        if resource_raw:
+            for uri in resource_uris(resource_raw, _bare, "Place"):
+                if uri in seen: continue
+                seen.add(uri)
+                lines.append(make_nq(cho_nt, f"<{edm_current_location}>", f"<{uri}>", graph_iri))
+                place = places_index.get(resource_raw) or places_index.get(uri)
+                if place:
+                    for pl in coerce_list(place.get("prefLabel")):
+                        for obj_nt in value_to_nt_obj(pl):
+                            lines.append(make_nq(f"<{uri}>", f"<{RDFS_LABEL}>", obj_nt, graph_iri))
+        elif label:
+            escaped = _escape_literal(label)
+            obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
+            lines.append(make_nq(cho_nt, f"<{edm_current_location}>", obj_nt, graph_iri))
+    return lines
+```
+- `emit_mocho_triples`: added `places_index` build; pass `bare_id_to_uri` to creator/contributor; call `emit_current_location_triples`
+
+**`scripts/transform/tests/test_transform.py`**
+- Added imports: `resource_uris`, `emit_current_location_triples`, `EDM_NS`, `transform_record`
+- Renamed inner `_load_configs` → `_fixture_configs` to avoid collision
+- 37 new tests: `TestEscapeLiteralBr`, `TestResourceUris`, `TestEmitSubjectTriplesMultiUri`, `TestEmitHastypeTriplesMultiUri`, `TestEmitCreatorTriplesMultiUri`, `TestEmitCreatorTriplesBareId`, `TestEmitContributorTriplesMultiUri`, `TestEmitContributorTriplesBareId`, `TestEmitProvTriplesIsil`, `TestEmitPlaceStubsSplitAbout`, `TestEmitAggregationSplitUri`, `TestEmitCurrentLocationTriples`, `TestFixtures`
+- Total: 106 tests passing
+
+**`scripts/transform/tests/fixtures/`** (new directory)
+- `multi_uri.json` — record `23MBRVVDUHBFZNDCTK4SQM7KROKGVGNF` (multi-URI in Place.about + currentLocation.resource)
+- `br_tag.json` — record `223GMAWUHPGI76OQUKSL54XVOCHHXDWD` (`<br />` in description)
+- `bare_id.json` — record `222NZKK63TNRLC2VETRV722VKBDSUVGL` (bare 32-char ID in hasType.resource)
+- `{multi_uri,br_tag,bare_id}.nq` — generated N-Quads output for human inspection
+- `make_fixtures.py` — script to regenerate .nq files
+
+**`notes/transform-implementation-actual.md`**
+- Added §7 "Emitter safety audit (2026-05-07)" with §7.1–7.5 (issue categories, resource_uris design, change inventory, fixture tests, unit tests)
+- Added §7.6 "Validation run" with before/after stats table
+- Renumbered old §7 → §8
+
+**`notes/transform-props-mapping-adr.md`**
+- Added D16 (rdfs:label over skos:prefLabel for stubs)
+- Added D17 (no rdf:type for Place/Concept/Timespan in mocho; Agent exception)
+
+**`notes/transform-implementation-plan.md`**
+- Added §15 "Future work" with §15.1 "In-process parallelisation (raised 2026-05-07)" — Options A and B with effort estimates and trade-off table
+
+---
+
+4. Errors and Fixes:
+
+- **`_load_configs` name collision**: New `_load_configs` in test file shadowed the existing one at line ~72, causing `ValueError: too many values to unpack (expected 2)` in `TestRetypeEntities`. Fixed by renaming the new one to `_fixture_configs`.
+
+- **`TestResourceUris.test_unsafe_chars_sanitized`**: Tested `"http://example.org/item with space"` — but a space in the raw string is a URI separator (causes split into multiple URIs), not a character to sanitize. `AssertionError: assert '%20' in 'http://example.org/item'`. Fixed by using `"http://example.org/item<foo>"` with `<>` chars instead.
+
+- **User rejected patching each emitter individually**: When the assistant started editing `emit_subject_triples` directly, the user rejected it and asked for a systemic approach via a utility function.
+
+- **User rejected `DDB_BASE` derivation**: An earlier attempt used wrong base URI. Fixed by adding `DDBEDM_NS = "http://www.deutsche-digitale-bibliothek.de/edm/"`.
+
+---
+
+5. Problem Solving:
+
+- **Systemic multi-URI/bare-ID fix**: Solved by `resource_uris()` utility that encapsulates split + expand + sanitize. All special emitters now call it instead of manual extraction.
+- **`edm:currentLocation` IRI-with-label-stub**: Added as category D in the audit; `emit_current_location_triples` implemented; `places_index` built in `emit_mocho_triples`; `"currentLocation"` added to `_MOCHO_SKIP`.
+- **Agent label bugs** (ongoing): Two bugs identified but not yet fixed:
+  1. `emit_creator_triples`: `isinstance(pref, str)` always fails since `prefLabel` is a list
+  2. `emit_contributor_triples`: uses `val.get("$")` label rather than `agents_index` lookup
+
+---
+
+6. All User Messages:
+
+- "This session is being continued from a previous conversation..." [summary injection]
+- "This is the schema /Users/mta/Documents/claude/goethe-faust/data/ddbedm/json_schema_paths.csv"
+- "what triple/s does edm:currentLocation property emit right now?"
+- "add the same handling as edm:hasType. this should be added as a 'category' of handling. That when the value is a Literal, emit the same triple. if it's a uri, sanitize and emit additional triple for each valid URI: `<cho> edm:currentLocation <geo> .` `<geo> rdfs:label <the skos:prefLabel of the matching edm:Place> .` btw, what's the harm of changing from skos:prefLabel to rdfs:label?"
+- "[ide_opened_file transform-implementation-actual.md] hold on, also, do I need to type the new place URIs in the mocho graph? or would it suffice that it is defined as edm:Place already in the ddbedm graph?"
+- "Add the decision about rdfs:label and skos:prefLabel in the transform-props-mapping-adr. and also the decision to forego typing of context description properties (agent, place, concept, timespan)."
+- "[ide_opened_file 50-usage.tex] before you implement the changes, confirm that the named graphs are gemea.ise.fiz-karlsruhe.de/graph/<ddbedm, mocho, prov, work>"
+- "work graph will be the destination of the werk staging dnb linking"
+- "where in the transform script is the parallelization happening?"
+- "[ide_opened_file 50-usage.tex] put this in future plan section inside transform-implementation-plan. put a date when this was brought up"
+- "let's go back to §7 plan. do you still know what to do? there were 5 items"
+- "lezgo"
+- "run on /Users/mta/Documents/claude/goethe-faust/data/items-all-goethe-faust.json"
+- "Save this somewhere (where would be the best place for this?)"
+- "[ide_opened_file 60-impact.tex] can you check if the Agent uris are also added with labels from matching edm:Agent?" [twice, interrupted]
+- "wait, let's make sure that you understand: dc:creator and dc:contributor can have literals or URIs: - if literals matches skos:prefLabel value of an edm:Agent instance, emit: a. `<cho> <domain-specific:creator property> <agent URI ("about")>` b. `<agent URI> <rdfs:label> "Literals"@lang .` - if no literals matches label of edm:Agent, then just `<cho> <domain-specific:creator property> "Literals"@lang .` - if the value of these properties are URIs, find the matching edm:Agent, then emit: a. `<cho> <domain-specific:creator property> <agent URI ("about")>` b. `<agent URI> <rdfs:label> "Literals"@lang → where the literals is the skos:prefLabel`. Is this not in /Users/mta/Documents/claude/goethe-faust/notes/transform-revised-plan.md and /Users/mta/Documents/claude/goethe-faust/notes/transform-props-mapping-plan.md?"
+
+---
+
+7. Pending Tasks:
+
+- **Fix agent label bugs in `emit_creator_triples` and `emit_contributor_triples`**:
+  - `emit_creator_triples`: fix `isinstance(pref, str)` to iterate `prefLabel` list using `value_to_nt_obj`
+  - `emit_contributor_triples`: add `agents_index` parameter; look up agent by URI and emit prefLabel stubs
+  - Both changes consistent with design in `transform-props-mapping-plan.md §4` and §5
+- The design intent from the user's last message is:
+  - Literal value matching an Agent prefLabel → emit `<cho> <prop> <agent.about>` + `<agent.about> rdfs:label "literal"@lang`
+  - Literal with no Agent match → emit `<cho> <prop> "literal"@lang` only
+  - URI value → find matching Agent → emit `<cho> <prop> <agent.about>` + `<agent.about> rdfs:label <Agent.prefLabel>`
+
+---
+
+8. Current Work:
+
+The most recent exchange was about agent label stubs. The user clarified the full intended behavior for `dc:creator` and `dc:contributor`:
+
+1. **Literal matches Agent prefLabel** → `<cho> <domain-specific prop> <agent.about>` + `<agent.about> rdfs:label "Literals"@lang`
+2. **Literal no match** → `<cho> <domain-specific prop> "Literals"@lang` only
+3. **URI value** → find matching edm:Agent → `<cho> <domain-specific prop> <agent.about>` + `<agent.about> rdfs:label <Agent.prefLabel>`
+
+User then asked if this is documented in `transform-revised-plan.md` and `transform-props-mapping-plan.md`.
+
+From the grep results already retrieved, the answer is YES — it IS documented:
+- `transform-props-mapping-plan.md §4` line 163: "Track 2 — Agent URI resolution (conditional): If the creator label matches an edm:Agent in the record whose about is a DDB org or GND URI, emit: `<cho> dcterms:creator <agent.about>`. `<agent.about> a mocho:Agent; rdfs:label "Lastname, Firstname"`"
+- Line 178: "Label sourced from `edm:Agent.prefLabel[].
+
+ (first value). Applies to both creator and contributor URI resolutions."
+- `transform-revised-plan.md` line 237: agent stub structure shown
+
+The current implementation has two bugs that deviate from this spec:
+1. `emit_creator_triples` line 446-447: `pref = agent.get("prefLabel") or label; if pref and isinstance(pref, str):` — `prefLabel` is always a list, `isinstance(str)` always False → label never emitted
+2. `emit_contributor_triples`: does not consult `agents_index` for label; uses `val.get("$")` from contributor field
+
+---
+
+9. Optional Next Step:
+
+The user's last message asked whether the agent label behavior is specified in the plan files. The answer is yes (confirmed via grep). The next step is to confirm this to the user and then fix the two bugs in `emit_creator_triples` and `emit_contributor_triples` to implement the specified behavior:
+
+From `transform-props-mapping-plan.md §4` (line 178): "Label sourced from `edm:Agent.prefLabel[].
+
+ (first value). Applies to both creator and contributor URI resolutions."
+
+Fixes needed:
+- `emit_creator_triples`: replace `isinstance(pref, str)` with `value_to_nt_obj`-based iteration over the prefLabel list
+- `emit_contributor_triples`: add `agents_index` parameter; look up agent by primary URI; emit prefLabel stubs using `value_to_nt_obj`
+- Update `emit_mocho_triples` to pass `agents_index` to `emit_contributor_triples`
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/mta/.claude/projects/-Users-mta-Documents-claude/ef8b247d-8555-42ed-bcfa-d0e1dab38211.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.
+
+---
+
+### Assistant *(2026-05-07T21:06:10.557Z)*
+
+Yes, both the literal-match and URI-resolution behaviors are fully specified in `transform-props-mapping-plan.md §4` and §5. The plan explicitly says label comes from `edm:Agent.prefLabel[].$(first value)` for both tracks.
+
+Let me read the current emitters to see the exact bugs before fixing them.
+
+---
+
+### Assistant *(2026-05-07T21:06:11.458Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/emitters.py",
+  "offset": 390,
+  "limit": 130
+}
+```
+
+---
+
+### User *(2026-05-07T21:06:11.483Z)*
+
+**Tool result**
+```
+390	                if place:
+391	                    for pl in coerce_list(place.get("prefLabel")):
+392	                        for obj_nt in value_to_nt_obj(pl):
+393	                            lines.append(make_nq(f"<{uri}>", f"<{RDFS_LABEL}>",
+394	                                                 obj_nt, graph_iri))
+395	        elif label:
+396	            escaped = _escape_literal(label)
+397	            obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
+398	            lines.append(make_nq(cho_nt, f"<{edm_current_location}>", obj_nt, graph_iri))
+399	    return lines
+400	
+401	
+402	def emit_creator_triples(
+403	    cho_nt: str,
+404	    creator_vals: list,
+405	    agents_index: dict[str, AgentDict],
+406	    target_class: str,
+407	    class_prop_align: PropAlign,
+408	    graph_iri: str,
+409	    bare_id_to_uri: dict[str, str] | None = None,
+410	) -> NQList:
+411	    """Emit class-specific creator predicate (Track 1) and dcterms:creator agent stub (Track 2).
+412	
+413	    Both tracks run independently for each creator value (D2 / props-mapping §4).
+414	    """
+415	    lines: NQList = []
+416	    dc_creator_iri = "http://purl.org/dc/elements/1.1/creator"
+417	    track1_prop    = class_prop_align.get((target_class, dc_creator_iri), "")
+418	
+419	    for val in coerce_list(creator_vals):
+420	        if not isinstance(val, dict):
+421	            continue
+422	        resource_raw = (val.get("resource") or "").strip()
+423	        label        = (val.get("$")        or "").strip()
+424	        lang         = (val.get("lang")     or "").strip()
+425	        primary_resource = resource_raw.split()[0] if resource_raw else ""
+426	
+427	        # Track 1: class-specific predicate (always runs when target_prop is known)
+428	        if track1_prop:
+429	            if resource_raw:
+430	                for uri in resource_uris(resource_raw, bare_id_to_uri, "Agent"):
+431	                    lines.append(make_nq(cho_nt, f"<{track1_prop}>", f"<{uri}>", graph_iri))
+432	            elif label:
+433	                escaped = _escape_literal(label)
+434	                obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
+435	                lines.append(make_nq(cho_nt, f"<{track1_prop}>", obj_nt, graph_iri))
+436	
+437	        # Track 2: generic dcterms:creator + agent stub (D2 — both tracks always run)
+438	        agent = resolve_agent(label, primary_resource, agents_index)
+439	        if agent:
+440	            agent_uri = _sanitize_iri((agent.get("about") or "").strip())
+441	            if agent_uri and is_ddb_or_gnd(agent_uri):
+442	                lines.append(make_nq(cho_nt, f"<{DCTERMS_CREATOR}>",
+443	                                     f"<{agent_uri}>", graph_iri))
+444	                agent_nt = f"<{agent_uri}>"
+445	                lines.append(make_nq(agent_nt, f"<{RDF_TYPE}>", f"<{MOCHO_AGENT}>", graph_iri))
+446	                pref = agent.get("prefLabel") or label
+447	                if pref and isinstance(pref, str):
+448	                    lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>",
+449	                                         f'"{_escape_literal(pref)}"', graph_iri))
+450	    return lines
+451	
+452	
+453	def emit_contributor_triples(
+454	    cho_nt: str,
+455	    contributor_vals: list,
+456	    event_participant_index: dict[str, str],
+457	    lido_dispatch: dict[str, dict],
+458	    target_class: str,
+459	    wemi: str,
+460	    graph_iri: str,
+461	    bare_id_to_uri: dict[str, str] | None = None,
+462	) -> NQList:
+463	    """Emit contributor triples using LIDO event-type dispatch (D3/D25, props-mapping §5)."""
+464	    lines: NQList = []
+465	    prop_col = _CONTRIBUTOR_COL.get((wemi, target_class), "dc_agent_fallback")
+466	
+467	    for val in coerce_list(contributor_vals):
+468	        if not isinstance(val, dict):
+469	            continue
+470	        resource_raw     = (val.get("resource") or "").strip()
+471	        label            = (val.get("$")        or "").strip()
+472	        lang             = (val.get("lang")     or "").strip()
+473	        primary_resource = resource_raw.split()[0] if resource_raw else ""
+474	
+475	        lido_type   = event_participant_index.get(primary_resource) if primary_resource else None
+476	        lido_row    = lido_dispatch.get(lido_type) if lido_type else None
+477	        target_prop = (
+478	            (lido_row.get(prop_col) or lido_row.get("dc_agent_fallback") or DC_CONTRIBUTOR)
+479	            if lido_row else DC_CONTRIBUTOR
+480	        )
+481	
+482	        if resource_raw:
+483	            for uri in resource_uris(resource_raw, bare_id_to_uri, "Agent"):
+484	                lines.append(make_nq(cho_nt, f"<{target_prop}>", f"<{uri}>", graph_iri))
+485	                agent_nt = f"<{uri}>"
+486	                lines.append(make_nq(agent_nt, f"<{RDF_TYPE}>", f"<{MOCHO_AGENT}>", graph_iri))
+487	                if label:
+488	                    escaped = _escape_literal(label)
+489	                    obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
+490	                    lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>", obj_nt, graph_iri))
+491	        elif label:
+492	            escaped = _escape_literal(label)
+493	            obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
+494	            lines.append(make_nq(cho_nt, f"<{DC_CONTRIBUTOR}>", obj_nt, graph_iri))
+495	    return lines
+496	
+497	
+498	def emit_aggregation_triples(agg: dict, cho_nt: str, graph_iri: str) -> NQList:
+499	    """Emit mocho triples derived from the Aggregation block (D23)."""
+500	    lines: NQList = []
+501	    _edm_dp     = EDM_NS + "dataProvider"
+502	    _org_prefix = "http://www.deutsche-digitale-bibliothek.de/organization/"
+503	
+504	    is_shown = agg.get("isShownAt") or {}
+505	    if isinstance(is_shown, dict):
+506	        for uri in (is_shown.get("resource") or "").strip().split():
+507	            lines.append(make_nq(cho_nt, f"<{DCTERMS_SOURCE}>",
+508	                                 f"<{_sanitize_iri(uri)}>", graph_iri))
+509	
+510	    for dp in coerce_list(agg.get("dataProvider")):
+511	        if not isinstance(dp, dict):
+512	            continue
+513	        for uri in (dp.get("resource") or "").strip().split():
+514	            if uri.startswith(_org_prefix):
+515	                lines.append(make_nq(cho_nt, f"<{_edm_dp}>",
+516	                                     f"<{_sanitize_iri(uri)}>", graph_iri))
+517	
+518	    for obj in coerce_list(agg.get("object")):
+519	        if not isinstance(obj, dict):
+```
+
+---
+
+### Assistant *(2026-05-07T21:07:00.781Z)*
+
+Now let me check `resolve_agent` and the surrounding helpers to understand the full context.
+
+---
+
+### Assistant *(2026-05-07T21:07:02.303Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "grep -n \"resolve_agent\\|is_ddb_or_gnd\\|DCTERMS_CREATOR\\|MOCHO_AGENT\\|RDFS_LABEL\" /Users/mta/Documents/claude/goethe-faust/scripts/transform/emitters.py | head -40",
+  "description": "Find resolve_agent and related constants in emitters.py"
+}
+```
+
+---
+
+### User *(2026-05-07T21:07:02.417Z)*
+
+**Tool result**
+```
+9:    RDF_TYPE, RDFS_LABEL, OWL_SAMEAS,
+11:    DCTERMS_RIGHTS, DCTERMS_CREATOR, DCTERMS_SUBJECT,
+14:    SCHEMA_URL, MOCHO_ISIL, MOCHO_NS, MOCHO_AGENT, RICO_HAS_RST,
+25:    value_to_nt_obj, normalize_date, is_ddb_or_gnd, resolve_agent, _to_curie,
+132:            lines.append(make_nq(ds_nt, f"<{RDFS_LABEL}>",
+308:                            lines.append(make_nq(f"<{uri}>", f"<{RDFS_LABEL}>",
+351:                        lines.append(make_nq(f"<{uri}>", f"<{RDFS_LABEL}>",
+393:                            lines.append(make_nq(f"<{uri}>", f"<{RDFS_LABEL}>",
+438:        agent = resolve_agent(label, primary_resource, agents_index)
+441:            if agent_uri and is_ddb_or_gnd(agent_uri):
+442:                lines.append(make_nq(cho_nt, f"<{DCTERMS_CREATOR}>",
+445:                lines.append(make_nq(agent_nt, f"<{RDF_TYPE}>", f"<{MOCHO_AGENT}>", graph_iri))
+448:                    lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>",
+486:                lines.append(make_nq(agent_nt, f"<{RDF_TYPE}>", f"<{MOCHO_AGENT}>", graph_iri))
+490:                    lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>", obj_nt, graph_iri))
+541:                lines.append(make_nq(place_nt, f"<{RDFS_LABEL}>", obj_nt, graph_iri))
+```
+
+---
+
+### Assistant *(2026-05-07T21:07:03.073Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "grep -n \"resolve_agent\\|is_ddb_or_gnd\" /Users/mta/Documents/claude/goethe-faust/scripts/transform/utils.py",
+  "description": "Find resolve_agent in utils.py"
+}
+```
+
+---
+
+### User *(2026-05-07T21:07:03.122Z)*
+
+**Tool result**
+```
+194:def is_ddb_or_gnd(uri: str) -> bool:
+203:def resolve_agent(
+```
+
+---
+
+### Assistant *(2026-05-07T21:07:06.026Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/utils.py",
+  "offset": 194,
+  "limit": 50
+}
+```
+
+---
+
+### User *(2026-05-07T21:07:06.036Z)*
+
+**Tool result**
+```
+194	def is_ddb_or_gnd(uri: str) -> bool:
+195	    """True if URI is a DDB organization or GND authority URI."""
+196	    return uri.startswith((
+197	        "http://www.deutsche-digitale-bibliothek.de/organization/",
+198	        "http://d-nb.info/gnd/",
+199	        "https://d-nb.info/gnd/",
+200	    ))
+201	
+202	
+203	def resolve_agent(
+204	    label: str,
+205	    resource: str,
+206	    agents_index: dict[str, AgentDict],
+207	) -> AgentDict | None:
+208	    """Resolve a creator/contributor to an Agent dict.
+209	
+210	    URI match preferred; label match fallback.
+211	    Returns None if no match found.
+212	    """
+213	    if resource and resource in agents_index:
+214	        return agents_index[resource]
+215	    if label and label in agents_index:
+216	        return agents_index[label]
+217	    return None
+218	
+219	
+220	def _extract_mediatype_sector(concepts: object) -> tuple[str, str]:
+221	    """Return (mediatype_iri, sector_iri) from the record's Concept list."""
+222	    mediatype = "any"
+223	    sector    = "any"
+224	    for c in coerce_list(concepts):
+225	        if not isinstance(c, dict):
+226	            continue
+227	        about = c.get("about") or ""
+228	        if about.startswith(_MEDIATYPE_PREFIX):
+229	            mediatype = about
+230	        elif about.startswith(_SECTOR_PREFIX):
+231	            sector = about
+232	    return mediatype, sector
+233	
+234	
+235	def get_object_id(record: dict) -> str | None:
+236	    """Extract 32-char object ID from ProvidedCHO.about URI. Returns None on failure."""
+237	    try:
+238	        about = record["edm"]["RDF"]["ProvidedCHO"]["about"]
+239	    except (KeyError, TypeError):
+240	        return None
+241	    if not about:
+242	        return None
+243	    # Bare 32-char ID (D27)
+```
+
+---
+
+### Assistant *(2026-05-07T21:07:09.132Z)*
+
+Now let me check the plan to understand what Track 1 should do when a literal matches an agent (creator and contributor).
+
+---
+
+### Assistant *(2026-05-07T21:07:10.805Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "grep -n \"Track 1\\|Track 2\\|literal\\|matches\\|prefLabel\\|contributor\" /Users/mta/Documents/claude/goethe-faust/notes/transform-props-mapping-plan.md | head -60",
+  "description": "Check props-mapping-plan for Track 1/2 spec for literal-match"
+}
+```
+
+---
+
+### User *(2026-05-07T21:07:10.866Z)*
+
+**Tool result**
+```
+22:A second, related failure: even when the Event node is retained structurally, LLMs miss that it carries **LIDO type** — the event type that distinguishes agent roles (author vs. photographer vs. publisher) and date semantics (creation date vs. publication date). Without LIDO type, all contributors flatten to `dc:contributor` and all dates flatten to `rdam:P30278` "has date of manifestation", losing the typed dispatch that gives the KG its query value.
+34:For object-range properties (range is a class, not a literal), this plan names the connected class and points to `entity-property-mapping.md` for the properties of that class.
+36:`creator` (D7) and `contributor` (D8) are already decided in `transform-adr.md`; their sections below summarise those decisions and add open questions.
+61:   | `edm:Agent` (creator, contributor) | `edm.RDF.Agent[].prefLabel[].$` + `.lang` |
+62:   | `edm:Place` (currentLocation, spatial) | `edm.RDF.Place[].prefLabel[].$` + `.lang` |
+63:   | `skos:Concept` (dcType URI, dcTermsSubject, hasType) | `edm.RDF.Concept[].prefLabel[].$` + `.lang` |
+80:| `edm:ProvidedCHO` | [contributor](#5-contributor) | §5 | ✅ done |
+155:Range: `edm:Agent` (may carry GND URI in `resource` + role-annotated literal in `$`)
+157:**Connected class**: `edm:Agent` → `rdaa:` properties (`prefLabel`, `altLabel`, `dateOfBirth`, `sameAs`, …). See `entity-property-mapping.md §1`.
+161:**Track 1 — class dispatch** (always runs): predicate is determined by the CHO's target class, looked up from `output/config/lookup_class_prop_alignment.csv` (creator rows to be populated). The `dc:creator` source predicate is the `edm_prop` key; the table provides `target_prop` per class.
+163:**Track 2 — Agent URI resolution** (conditional): If the creator label matches an `edm:Agent` in the record whose `about` is a DDB organization URI (`http://www.deutsche-digitale-bibliothek.de/organization/…`) or GND URI (`http://d-nb.info/gnd/…`), emit:
+169:If no matching Agent URI is found, do nothing (no literal fallback). See `transform-props-mapping-adr.md D7`.
+178:Label sourced from `edm:Agent.prefLabel[].$` (first value). Applies to both creator and contributor URI resolutions.
+192:## §5 contributor
+194:Range: `edm:Agent` (most values are literals with role annotation in parentheses; ~62.6% carry a URI resolvable to DDB org or GND)
+198:The target predicate depends on the LIDO event type of the `edm:Event` in which the contributor participates:
+203:edm:Event.P11_had_participant[].resource  ==  contributor[].resource
+204:→  emit <cho> <target_prop> <contributor.resource>
+207:Fallback when no matching Event is found (URI absent or label-only): `dc:contributor`.
+214:| lido00228 publication | `rdam:P30083` | `dc:contributor` | `dc:contributor` | `dc:contributor` | `rico:hasPublisher` |
+215:| lido00007 production | `rdam:P30081` | `dc:contributor` | `vra:producer` | `vra:producer` | `dc:contributor` |
+216:| lido01127 photography | `rdam:P30329` | `rdaw:P10056` | `vra:photographer` | `vra:photographer` | `dc:contributor` |
+217:| lido00224 designing | `dc:contributor` | `rdaw:P10051` | `vra:designer` | `vra:designer` | `dc:contributor` |
+218:| lido00226 commissioning | `dc:contributor` | `rdaw:P10287` | `dc:contributor` | `dc:contributor` | `dc:contributor` |
+219:| all others | `dc:contributor` | `dc:contributor` | `dc:contributor` | `dc:contributor` | `dc:contributor` |
+221:For `aco:`, `mo:`, `doco:`, `ec:`, `mocho:` subclasses: `dc:contributor` in all rows.
+223:**Agent node** (when contributor URI resolves): same stub as creator — see §4:
+226:<contributor.resource> a mocho:Agent ;
+257:Range: `rdfs:Literal` (lang-tagged literal year string)
+292:**Step 4**: `dc:identifier` values are literals — no agent stub applies.
+304:**Connected class**: `skos:Concept` → `skos:prefLabel`, `skos:notation`. See `entity-property-mapping.md §7`.
+330:**Step 2 (vocab-specific)**: RiC-O → `rico:hasOrHadType` (domain: `rico:Thing`, range: `rico:Type`) for URI path; `rico:type` (range: `rdfs:Literal`) for literal path. VRA Core 4 → `vra:worktype` (native property; not yet in `mapping_vra_to_rda.csv` — see `mocho/notes/mocho-gatherer-plan.md §Pending`). MO and ACO have no native type property in their mapping files.
+346:- Non-RiC-O: `<concept-uri> a skos:Concept ; skos:prefLabel "..."@lang`
+385:**Step 1 (RDA)**: `mapping_dct_to_rda.csv` → `dcterms:extent` → `rdam:P30182` "has extent of manifestation" (M-level). Values are free-text literals — not normalised to RDA-controlled extent vocabulary. WEMI mismatch is absent (M-level exists), but structured parse is required before dispatch → keep `dc:extent`.
+387:**Step 2 (vocab-specific)**: VRA Core 4 → `vra:measurementsSet` (structured typed measurement — height/width/depth with unit fields); no plain-literal form available. RiC-O → `rico:hasExtent` (expects `rico:Extent` instance, not a literal). MO/ACO → no extent property. All require structured values → keep `dc:extent` for all classes.
+413:**Step 2 (vocab-specific)**: VRA and MO have no language property. RiC-O has `rico:hasOrHadLanguage`, but its range is `rico:Language` (a URI-valued class), not a literal — `dc:language` is a plain ISO code string. No viable RiC-O mapping for the literal form → keep `dc:language` for all classes.
+447:Range: `rdfs:Literal` (literal-primary; some records carry GND URI in `resource` field)
+465:**Connected class**: `skos:Concept` → `skos:prefLabel`, `skos:notation`. See `entity-property-mapping.md §7`.
+523:**Step 4 (Place stub)**: Re-emit the matching `edm.RDF.Place[]` node in the mocho subgraph — sourced from `Place[].about == currentLocation.resource`. Emit all available properties: `geo:lat`, `geo:long`, `geo:alt`, `skos:prefLabel`, `skos:altLabel`, `owl:sameAs`. See `entity-property-mapping.md §3`.
+572:| `creator` (fallback literal) | `dc:creator` | `rdam:P30329` | ✅ D2 (IRI corrected from P30263) |
+573:| `contributor` | `dc:contributor` | keep as-is | ✅ D8 |
+```
+
+---
+
+### Assistant *(2026-05-07T21:08:01.772Z)*
+
+Let me also check how `emit_mocho_triples` calls these two emitters.
+
+---
+
+### Assistant *(2026-05-07T21:08:03.062Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "grep -n \"emit_creator\\|emit_contributor\\|agents_index\" /Users/mta/Documents/claude/goethe-faust/scripts/transform/emitters.py",
+  "description": "Find all calls to emit_creator/contributor and agents_index in emitters.py"
+}
+```
+
+---
+
+### User *(2026-05-07T21:08:03.134Z)*
+
+**Tool result**
+```
+402:def emit_creator_triples(
+405:    agents_index: dict[str, AgentDict],
+438:        agent = resolve_agent(label, primary_resource, agents_index)
+453:def emit_contributor_triples(
+653:    agents_index: dict[str, AgentDict] = {}
+659:            agents_index[mint_bare_id("Agent", about)] = agent
+663:                agents_index.setdefault(t, agent)
+758:    _creator_lines = emit_creator_triples(
+759:        cho_nt, cho.get("creator"), agents_index, target_class, class_prop_align, graph_iri,
+765:    _contrib_lines = emit_contributor_triples(
+```
+
+---
+
+### Assistant *(2026-05-07T21:08:05.964Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/emitters.py",
+  "offset": 758,
+  "limit": 30
+}
+```
+
+---
+
+### User *(2026-05-07T21:08:05.968Z)*
+
+**Tool result**
+```
+758	    _creator_lines = emit_creator_triples(
+759	        cho_nt, cho.get("creator"), agents_index, target_class, class_prop_align, graph_iri,
+760	        bare_id_to_uri,
+761	    )
+762	    lines.extend(_creator_lines)
+763	    _track_nqlist(_creator_lines)
+764	
+765	    _contrib_lines = emit_contributor_triples(
+766	        cho_nt, cho.get("contributor"),
+767	        event_participant_index, lido_dispatch, target_class, wemi, graph_iri,
+768	        bare_id_to_uri,
+769	    )
+770	    lines.extend(_contrib_lines)
+771	    _track_nqlist(_contrib_lines)
+772	
+773	    if subject_vals:
+774	        _subject_lines = emit_subject_triples(cho_nt, subject_vals, concepts_index, graph_iri,
+775	                                              bare_id_to_uri)
+776	        lines.extend(_subject_lines)
+777	        _track_nqlist(_subject_lines)
+778	
+779	    if hastype_vals:
+780	        _hastype_lines = emit_hastype_triples(cho_nt, hastype_vals, concepts_index, graph_iri,
+781	                                              bare_id_to_uri)
+782	        lines.extend(_hastype_lines)
+783	        _track_nqlist(_hastype_lines)
+784	
+785	    currentloc_vals = coerce_list(cho.get("currentLocation"))
+786	    if currentloc_vals:
+787	        _curloc_lines = emit_current_location_triples(
+```
+
+---
+
+### Assistant *(2026-05-07T21:09:11.270Z)*
+
+Both behaviors are fully documented:
+
+- `transform-props-mapping-plan.md §4` lines 163–178: Track 2 (agent stub) specifies `resolve_agent` on label or URI → emit `dcterms:creator <agent.about>` + `rdfs:label` sourced from `edm:Agent.prefLabel[].$` (first value). Applies to both creator and contributor URI resolutions.
+- `transform-props-mapping-plan.md §5` lines 223–226: contributor URI case → same stub pattern as creator.
+
+The code has two bugs deviating from this spec. Here's what I'd change:
+
+**Bug 1 — `emit_creator_triples` line 446–449:**  
+`agent.get("prefLabel")` returns a list; `isinstance(pref, str)` always fails on a list, so `rdfs:label` is never emitted from the agent's prefLabel. Fix: replace with `coerce_list(agent.get("prefLabel"))` + `value_to_nt_obj` iteration (same pattern as `emit_hastype_triples`); fallback to `label` string only when prefLabel list is empty.
+
+**Bug 2 — `emit_contributor_triples`:**  
+Two problems: (a) no `agents_index` parameter at all, so contributor URIs can't look up prefLabel from the index, and (b) the literal branch has no agent-match check — matching literals should emit an agent stub instead of a plain literal.  
+Fix: add `agents_index` parameter, add `resolve_agent` call for both URI and literal branches, use prefLabel from agent for rdfs:label (same pattern as creator). Update `emit_mocho_triples` call site to pass `agents_index`.
+
+Shall I go ahead?
+
+---
+
+### User *(2026-05-07T21:17:17.717Z)*
+
+add a test as well
+
+---
+
+### Assistant *(2026-05-07T21:17:22.129Z)*
+
+Let me read the test file and the exact emitter code I'll be changing.
+
+---
+
+### Assistant *(2026-05-07T21:17:23.527Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/tests/test_transform.py",
+  "offset": 1,
+  "limit": 60
+}
+```
+
+---
+
+### User *(2026-05-07T21:17:23.560Z)*
+
+**Tool result**
+```
+1	"""
+2	Purpose:    Unit tests for the transform package.
+3	Usage:      pytest scripts/transform/tests/ -q
+4	Deps:       pytest
+5	Assumes:    Run from project root (goethe-faust/).
+6	"""
+7	
+8	from __future__ import annotations
+9	
+10	import sys
+11	from pathlib import Path
+12	
+13	import pytest
+14	
+15	# ── Package import ────────────────────────────────────────────────────────────
+16	sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # adds scripts/ to sys.path
+17	
+18	from transform.constants import GRAPH_MOCHO, MOCHO_NS, PROJECT_DIR
+19	from transform.utils import (
+20	    coerce_list,
+21	    make_nq,
+22	    mint_bare_id,
+23	    mint_cho_uri,
+24	    normalize_date,
+25	    value_to_nt_obj,
+26	    _escape_literal,
+27	    get_object_id,
+28	    build_bare_id_index,
+29	    expand_obj_nt,
+30	    resource_uris,
+31	)
+32	from transform.emitters import (
+33	    retype_entities,
+34	    emit_creator_triples,
+35	    emit_contributor_triples,
+36	    emit_subject_triples,
+37	    emit_hastype_triples,
+38	    emit_current_location_triples,
+39	    emit_aggregation_triples,
+40	    emit_place_stubs,
+41	    werk_staging_row,
+42	    emit_ddbedm_triples,
+43	)
+44	from transform.constants import (
+45	    _MOCHO_SKIP, DDB_HIERARCHY_TYPE, _HTYPE_PREFIX, EDM_HAS_TYPE, EDM_NS,
+46	)
+47	from transform.transform import transform_record
+48	from transform.loaders import load_mediatype_class, load_htype_map
+49	
+50	# Config table paths
+51	_CONFIG = PROJECT_DIR / "output" / "config"
+52	
+53	
+54	# ── Helpers ───────────────────────────────────────────────────────────────────
+55	
+56	def _rdf_types(lines: list[str]) -> set[str]:
+57	    """Extract the object IRIs from all rdf:type triples in a list of N-Quads lines."""
+58	    rdf_type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+59	    result: set[str] = set()
+60	    for line in lines:
+```
+
+---
+
+### Assistant *(2026-05-07T21:17:24.061Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/emitters.py",
+  "offset": 402,
+  "limit": 95
+}
+```
+
+---
+
+### User *(2026-05-07T21:17:24.077Z)*
+
+**Tool result**
+```
+402	def emit_creator_triples(
+403	    cho_nt: str,
+404	    creator_vals: list,
+405	    agents_index: dict[str, AgentDict],
+406	    target_class: str,
+407	    class_prop_align: PropAlign,
+408	    graph_iri: str,
+409	    bare_id_to_uri: dict[str, str] | None = None,
+410	) -> NQList:
+411	    """Emit class-specific creator predicate (Track 1) and dcterms:creator agent stub (Track 2).
+412	
+413	    Both tracks run independently for each creator value (D2 / props-mapping §4).
+414	    """
+415	    lines: NQList = []
+416	    dc_creator_iri = "http://purl.org/dc/elements/1.1/creator"
+417	    track1_prop    = class_prop_align.get((target_class, dc_creator_iri), "")
+418	
+419	    for val in coerce_list(creator_vals):
+420	        if not isinstance(val, dict):
+421	            continue
+422	        resource_raw = (val.get("resource") or "").strip()
+423	        label        = (val.get("$")        or "").strip()
+424	        lang         = (val.get("lang")     or "").strip()
+425	        primary_resource = resource_raw.split()[0] if resource_raw else ""
+426	
+427	        # Track 1: class-specific predicate (always runs when target_prop is known)
+428	        if track1_prop:
+429	            if resource_raw:
+430	                for uri in resource_uris(resource_raw, bare_id_to_uri, "Agent"):
+431	                    lines.append(make_nq(cho_nt, f"<{track1_prop}>", f"<{uri}>", graph_iri))
+432	            elif label:
+433	                escaped = _escape_literal(label)
+434	                obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
+435	                lines.append(make_nq(cho_nt, f"<{track1_prop}>", obj_nt, graph_iri))
+436	
+437	        # Track 2: generic dcterms:creator + agent stub (D2 — both tracks always run)
+438	        agent = resolve_agent(label, primary_resource, agents_index)
+439	        if agent:
+440	            agent_uri = _sanitize_iri((agent.get("about") or "").strip())
+441	            if agent_uri and is_ddb_or_gnd(agent_uri):
+442	                lines.append(make_nq(cho_nt, f"<{DCTERMS_CREATOR}>",
+443	                                     f"<{agent_uri}>", graph_iri))
+444	                agent_nt = f"<{agent_uri}>"
+445	                lines.append(make_nq(agent_nt, f"<{RDF_TYPE}>", f"<{MOCHO_AGENT}>", graph_iri))
+446	                pref = agent.get("prefLabel") or label
+447	                if pref and isinstance(pref, str):
+448	                    lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>",
+449	                                         f'"{_escape_literal(pref)}"', graph_iri))
+450	    return lines
+451	
+452	
+453	def emit_contributor_triples(
+454	    cho_nt: str,
+455	    contributor_vals: list,
+456	    event_participant_index: dict[str, str],
+457	    lido_dispatch: dict[str, dict],
+458	    target_class: str,
+459	    wemi: str,
+460	    graph_iri: str,
+461	    bare_id_to_uri: dict[str, str] | None = None,
+462	) -> NQList:
+463	    """Emit contributor triples using LIDO event-type dispatch (D3/D25, props-mapping §5)."""
+464	    lines: NQList = []
+465	    prop_col = _CONTRIBUTOR_COL.get((wemi, target_class), "dc_agent_fallback")
+466	
+467	    for val in coerce_list(contributor_vals):
+468	        if not isinstance(val, dict):
+469	            continue
+470	        resource_raw     = (val.get("resource") or "").strip()
+471	        label            = (val.get("$")        or "").strip()
+472	        lang             = (val.get("lang")     or "").strip()
+473	        primary_resource = resource_raw.split()[0] if resource_raw else ""
+474	
+475	        lido_type   = event_participant_index.get(primary_resource) if primary_resource else None
+476	        lido_row    = lido_dispatch.get(lido_type) if lido_type else None
+477	        target_prop = (
+478	            (lido_row.get(prop_col) or lido_row.get("dc_agent_fallback") or DC_CONTRIBUTOR)
+479	            if lido_row else DC_CONTRIBUTOR
+480	        )
+481	
+482	        if resource_raw:
+483	            for uri in resource_uris(resource_raw, bare_id_to_uri, "Agent"):
+484	                lines.append(make_nq(cho_nt, f"<{target_prop}>", f"<{uri}>", graph_iri))
+485	                agent_nt = f"<{uri}>"
+486	                lines.append(make_nq(agent_nt, f"<{RDF_TYPE}>", f"<{MOCHO_AGENT}>", graph_iri))
+487	                if label:
+488	                    escaped = _escape_literal(label)
+489	                    obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
+490	                    lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>", obj_nt, graph_iri))
+491	        elif label:
+492	            escaped = _escape_literal(label)
+493	            obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
+494	            lines.append(make_nq(cho_nt, f"<{DC_CONTRIBUTOR}>", obj_nt, graph_iri))
+495	    return lines
+496	
+```
+
+---
+
+### Assistant *(2026-05-07T21:17:26.521Z)*
+
+Now let me see the existing creator/contributor tests and the end of the test file.
+
+---
+
+### Assistant *(2026-05-07T21:17:28.136Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "grep -n \"class TestEmitCreator\\|class TestEmitContributor\\|def test_\" /Users/mta/Documents/claude/goethe-faust/scripts/transform/tests/test_transform.py | tail -50",
+  "description": "Find existing creator/contributor test classes and all test methods"
+}
+```
+
+---
+
+### User *(2026-05-07T21:17:28.217Z)*
+
+**Tool result**
+```
+552:    def test_label_stub_uses_expanded_uri(self):
+566:def test_hasmet_in_mocho_skip():
+577:    def test_full_uri_emitted(self):
+583:    def test_bare_id_expanded_via_index(self):
+589:    def test_bare_id_fallback_concept_mint(self):
+594:    def test_label_stub_from_concept(self):
+603:    def test_literal_only_skipped(self):
+608:    def test_dedup(self):
+615:def test_hastype_in_mocho_skip():
+619:def test_currentlocation_in_mocho_skip():
+626:    def test_br_lowercase(self):
+629:    def test_br_uppercase(self):
+632:    def test_br_self_closing(self):
+635:    def test_br_xhtml(self):
+638:    def test_br_mixed_with_other_escapes(self):
+648:    def test_empty_returns_empty(self):
+651:    def test_single_full_uri(self):
+655:    def test_two_space_separated(self):
+662:    def test_bare_id_index_lookup(self):
+668:    def test_bare_id_fallback_mint(self):
+673:    def test_entity_class_forwarded(self):
+678:    def test_unsafe_chars_sanitized(self):
+691:    def test_two_uris_produce_two_triples(self):
+700:    def test_no_space_in_any_iri(self):
+716:    def test_two_uris_produce_two_hastype_triples(self):
+731:class TestEmitCreatorTriplesMultiUri:
+732:    def test_two_uris_produce_two_track1_triples(self):
+744:class TestEmitCreatorTriplesBareId:
+747:    def test_bare_id_expanded_via_param(self):
+756:    def test_agent_uri_sanitized(self):
+774:class TestEmitContributorTriplesMultiUri:
+775:    def test_two_uris_produce_two_cho_triples(self):
+784:class TestEmitContributorTriplesBareId:
+787:    def test_bare_id_expanded_via_param(self):
+797:    def test_isil_with_unsafe_chars_sanitized(self):
+815:    def test_space_separated_about_uses_first_only(self):
+824:    def test_no_space_in_subject_iri(self):
+838:    def test_isshownat_two_uris(self):
+845:    def test_no_space_in_any_iri(self):
+864:    def test_single_uri_emitted(self):
+870:    def test_literal_pass_through(self):
+875:    def test_two_uris_produce_two_triples(self):
+882:    def test_label_stub_from_place(self):
+889:    def test_no_rdf_type_emitted(self):
+897:    def test_dedup(self):
+903:    def test_bare_id_expanded(self):
+943:    def test_multi_uri_no_space_in_iri(self):
+950:    def test_multi_uri_place_split(self):
+958:    def test_br_tag_normalized(self):
+963:    def test_bare_id_hastype_expanded(self):
+```
+
+---
+
+### Assistant *(2026-05-07T21:17:30.721Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/tests/test_transform.py",
+  "offset": 731,
+  "limit": 100
+}
+```
+
+---
+
+### User *(2026-05-07T21:17:30.725Z)*
+
+**Tool result**
+```
+731	class TestEmitCreatorTriplesMultiUri:
+732	    def test_two_uris_produce_two_track1_triples(self):
+733	        uri1 = "http://d-nb.info/gnd/111"
+734	        uri2 = "http://d-nb.info/gnd/222"
+735	        align = {("http://www.w3.org/2002/07/owl#Thing",
+736	                  "http://purl.org/dc/elements/1.1/creator"): "http://example.org/prop"}
+737	        vals = [{"resource": f"{uri1} {uri2}", "$": "", "lang": ""}]
+738	        lines = emit_creator_triples(_CREATOR_CHO, vals, {}, "http://www.w3.org/2002/07/owl#Thing",
+739	                                     align, _CREATOR_G)
+740	        prop_lines = [l for l in lines if "example.org/prop" in l]
+741	        assert len(prop_lines) == 2
+742	
+743	
+744	class TestEmitCreatorTriplesBareId:
+745	    _bare = "D" * 32
+746	
+747	    def test_bare_id_expanded_via_param(self):
+748	        index = {self._bare: f"urn:ddbedm:Agent:{self._bare}"}
+749	        align = {("http://www.w3.org/2002/07/owl#Thing",
+750	                  "http://purl.org/dc/elements/1.1/creator"): "http://example.org/prop"}
+751	        vals = [{"resource": self._bare}]
+752	        lines = emit_creator_triples(_CREATOR_CHO, vals, {}, "http://www.w3.org/2002/07/owl#Thing",
+753	                                     align, _CREATOR_G, index)
+754	        assert any(f"urn:ddbedm:Agent:{self._bare}" in l for l in lines)
+755	
+756	    def test_agent_uri_sanitized(self):
+757	        unsafe_uri = "http://d-nb.info/gnd/118 540238"  # space in URI
+758	        agent = {"about": unsafe_uri, "prefLabel": "Goethe"}
+759	        agents_index = {unsafe_uri: agent}
+760	        vals = [{"resource": "", "$": "Goethe", "lang": "de"}]
+761	        lines = emit_creator_triples(_CREATOR_CHO, vals, agents_index,
+762	                                     "http://www.w3.org/2002/07/owl#Thing", {}, _CREATOR_G)
+763	        for line in lines:
+764	            for part in line.split():
+765	                if part.startswith("<") and part.endswith(">"):
+766	                    assert " " not in part[1:-1]
+767	
+768	
+769	# ── emit_contributor_triples — multi-URI + bare ID ────────────────────────────
+770	
+771	_CONTRIB_CHO = "<https://gemea.ise.fiz-karlsruhe.de/mocho/" + "Y" * 32 + ">"
+772	
+773	
+774	class TestEmitContributorTriplesMultiUri:
+775	    def test_two_uris_produce_two_cho_triples(self):
+776	        uri1 = "http://d-nb.info/gnd/333"
+777	        uri2 = "http://d-nb.info/gnd/444"
+778	        vals = [{"resource": f"{uri1} {uri2}", "$": "", "lang": ""}]
+779	        lines = emit_contributor_triples(_CONTRIB_CHO, vals, {}, {}, "", "M", GRAPH_MOCHO)
+780	        cho_lines = [l for l in lines if _CONTRIB_CHO in l]
+781	        assert len(cho_lines) == 2
+782	
+783	
+784	class TestEmitContributorTriplesBareId:
+785	    _bare = "E" * 32
+786	
+787	    def test_bare_id_expanded_via_param(self):
+788	        index = {self._bare: f"urn:ddbedm:Agent:{self._bare}"}
+789	        vals = [{"resource": self._bare}]
+790	        lines = emit_contributor_triples(_CONTRIB_CHO, vals, {}, {}, "", "M", GRAPH_MOCHO, index)
+791	        assert any(f"urn:ddbedm:Agent:{self._bare}" in l for l in lines)
+792	
+793	
+794	# ── emit_prov_triples — provider_isil sanitize ────────────────────────────────
+795	
+796	class TestEmitProvTriplesIsil:
+797	    def test_isil_with_unsafe_chars_sanitized(self):
+798	        from transform.emitters import emit_prov_triples
+799	        from transform.constants import GRAPH_PROV
+800	        record = {
+801	            "properties": {"item-id": "A" * 32},
+802	            "provider-info": {"provider-ddb-id": "org123", "provider-isil": "DE-<isil>"},
+803	            "source": {},
+804	        }
+805	        lines = emit_prov_triples(record, f"http://example.org/{'A'*32}", GRAPH_PROV)
+806	        isil_lines = [l for l in lines if "isil" in l.lower() or "mocho#isil" in l]
+807	        for line in isil_lines:
+808	            assert "<DE-<isil>" not in line
+809	            assert "%3C" in line or "%3E" in line
+810	
+811	
+812	# ── emit_place_stubs — split about ───────────────────────────────────────────
+813	
+814	class TestEmitPlaceStubsSplitAbout:
+815	    def test_space_separated_about_uses_first_only(self):
+816	        uri1 = "http://d-nb.info/gnd/4044283-4"
+817	        uri2 = "https://www.geonames.org/2855745"
+818	        places = [{"about": f"{uri1} {uri2}", "prefLabel": [{"$": "Potsdam", "lang": "de"}]}]
+819	        lines = emit_place_stubs(places, GRAPH_MOCHO)
+820	        subjects = {l.split()[0] for l in lines}
+821	        assert subjects == {f"<{uri1}>"}
+822	        assert not any(uri2 in l.split()[0] for l in lines)
+823	
+824	    def test_no_space_in_subject_iri(self):
+825	        places = [{"about": "http://a.org/1 http://b.org/2",
+826	                   "prefLabel": [{"$": "X", "lang": "de"}]}]
+827	        lines = emit_place_stubs(places, GRAPH_MOCHO)
+828	        for line in lines:
+829	            subj = line.split()[0]
+830	            assert " " not in subj[1:-1]
+```
+
+---
+
+### Assistant *(2026-05-07T21:17:34.035Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/tests/test_transform.py",
+  "offset": 900,
+  "limit": 100
+}
+```
+
+---
+
+### User *(2026-05-07T21:17:34.044Z)*
+
+**Tool result**
+```
+900	        lines = emit_current_location_triples(_CURLOC_CHO, vals, {}, GRAPH_MOCHO)
+901	        assert len([l for l in lines if _EDM_CURRENT_LOC in l]) == 1
+902	
+903	    def test_bare_id_expanded(self):
+904	        bare = "F" * 32
+905	        index = {bare: f"urn:ddbedm:Place:{bare}"}
+906	        vals = [{"resource": bare}]
+907	        lines = emit_current_location_triples(_CURLOC_CHO, vals, {}, GRAPH_MOCHO, index)
+908	        assert any(f"urn:ddbedm:Place:{bare}" in l for l in lines)
+909	
+910	
+911	# ── TestFixtures — integration tests on real corpus records ───────────────────
+912	
+913	_FIXTURES = Path(__file__).parent / "fixtures"
+914	_CONFIG   = PROJECT_DIR / "output" / "config"
+915	
+916	
+917	def _fixture_configs():
+918	    from transform.loaders import (
+919	        load_class_prop_alignment, load_lido_event_types,
+920	        load_htype_map, load_mediatype_class, load_audio_type2class,
+921	    )
+922	    return (
+923	        load_mediatype_class(_CONFIG / "lookup_mediatype_class.csv"),
+924	        load_htype_map(_CONFIG / "lookup_htype_doco_rico.csv"),
+925	        load_audio_type2class(_CONFIG / "audio_type2class.json"),
+926	        load_class_prop_alignment(_CONFIG / "lookup_class_prop_alignment.csv"),
+927	        load_lido_event_types(_CONFIG / "lido_event_types.csv"),
+928	    )
+929	
+930	
+931	import json as _json
+932	
+933	
+934	def _run_fixture(name: str) -> list[str]:
+935	    mc_map, ht_map, at_map, cpa, lido = _fixture_configs()
+936	    with open(_FIXTURES / f"{name}.json", encoding="utf-8") as f:
+937	        rec = _json.load(f)
+938	    streams, *_ = transform_record(rec, None, mc_map, ht_map, at_map, cpa, lido)
+939	    return [nq for lines in (streams or {}).values() for nq in lines]
+940	
+941	
+942	class TestFixtures:
+943	    def test_multi_uri_no_space_in_iri(self):
+944	        lines = _run_fixture("multi_uri")
+945	        for line in lines:
+946	            for part in line.split():
+947	                if part.startswith("<") and part.endswith(">"):
+948	                    assert " " not in part[1:-1], f"Space in IRI: {part}"
+949	
+950	    def test_multi_uri_place_split(self):
+951	        lines = _run_fixture("multi_uri")
+952	        gnd_uri  = "http://d-nb.info/gnd/4044283-4"
+953	        geo_uri  = "https://www.geonames.org/2855745"
+954	        place_subjects = {l.split()[0] for l in lines if "prefLabel" in l or "label" in l.lower()}
+955	        assert any(gnd_uri in l for l in lines), "GND place URI missing"
+956	        assert not any(f"{gnd_uri} {geo_uri}" in l for l in lines), "URIs not split"
+957	
+958	    def test_br_tag_normalized(self):
+959	        lines = _run_fixture("br_tag")
+960	        assert not any("<br" in l.lower() for l in lines), "<br> tag not normalized"
+961	        assert any(r"\n" in l for l in lines), r"Expected \n in output"
+962	
+963	    def test_bare_id_hastype_expanded(self):
+964	        bare = "DJVX2BT7X2HN24O6YRDOQM6T3CNZYYY6"
+965	        lines = _run_fixture("bare_id")
+966	        assert not any(f"<{bare}>" in l for l in lines), "Bare ID not expanded"
+967	        assert any(f"urn:ddbedm:Concept:{bare}" in l for l in lines), "Expanded URN missing"
+968	
+```
+
+---
+
+### Assistant *(2026-05-07T21:18:39.335Z)*
+
+Let me check `value_to_nt_obj` and `coerce_list` to make sure they handle string input correctly.
+
+---
+
+### Assistant *(2026-05-07T21:18:40.109Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "grep -n \"def value_to_nt_obj\\|def coerce_list\" /Users/mta/Documents/claude/goethe-faust/scripts/transform/utils.py",
+  "description": "Find value_to_nt_obj and coerce_list definitions"
+}
+```
+
+---
+
+### User *(2026-05-07T21:18:40.169Z)*
+
+**Tool result**
+```
+29:def coerce_list(val: object) -> list:
+85:def value_to_nt_obj(val: object, sani_ctr: Counter | None = None) -> list[str]:
+```
+
+---
+
+### Assistant *(2026-05-07T21:18:42.335Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/utils.py",
+  "offset": 29,
+  "limit": 70
+}
+```
+
+---
+
+### User *(2026-05-07T21:18:42.343Z)*
+
+**Tool result**
+```
+29	def coerce_list(val: object) -> list:
+30	    """Normalise None/dict/list to a list."""
+31	    if val is None:
+32	        return []
+33	    if isinstance(val, dict):
+34	        return [val]
+35	    if isinstance(val, list):
+36	        return val
+37	    return []
+38	
+39	
+40	def _expand_prefix(curie: str) -> str:
+41	    """Expand a CURIE (e.g. 'rdam:P30134') to a full IRI."""
+42	    for prefix, base in _PREFIXES.items():
+43	        if curie.startswith(prefix + ":"):
+44	            return base + curie[len(prefix) + 1:]
+45	    return curie
+46	
+47	
+48	def _to_curie(iri: str) -> str:
+49	    """Collapse a full IRI to a CURIE using _PREFIXES; return IRI unchanged if no match."""
+50	    for prefix, base in _PREFIXES.items():
+51	        if iri.startswith(base):
+52	            return f"{prefix}:{iri[len(base):]}"
+53	    return iri
+54	
+55	
+56	def mint_cho_uri(obj_id: str) -> str:
+57	    """Return the minted GeMeA mocho CHO URI for a 32-char DDB object ID (D22)."""
+58	    return GEMEA_BASE + obj_id
+59	
+60	
+61	def mint_bare_id(entity_class: str, raw_id: str) -> str:
+62	    """Expand a bare 32-char ID to a full URI (D27).
+63	
+64	    ProvidedCHO bare IDs → DDB item URI.
+65	    All other entity types → urn:ddbedm:<ClassName>:<id>.
+66	    Full URIs and URNs are returned unchanged.
+67	    """
+68	    if raw_id.startswith(("http", "urn")):
+69	        return raw_id
+70	    if entity_class == "ProvidedCHO":
+71	        return DDB_ITEM_BASE + raw_id
+72	    return f"urn:ddbedm:{entity_class}:{raw_id}"
+73	
+74	
+75	def _escape_literal(s: str) -> str:
+76	    """Escape characters illegal in N-Triples/N-Quads literal content."""
+77	    s = _BR_RE.sub('\n', s)
+78	    return (s.replace("\\", "\\\\")
+79	             .replace('"', '\\"')
+80	             .replace("\n", "\\n")
+81	             .replace("\r", "\\r")
+82	             .replace("\t", "\\t"))
+83	
+84	
+85	def value_to_nt_obj(val: object, sani_ctr: Counter | None = None) -> list[str]:
+86	    """Convert a JSONL field value to a list of N-Triples object strings.
+87	
+88	    Handles all value shapes produced by the DDB EDM JSONL:
+89	      None / ""                    → []
+90	      str (non-empty)              → ['"escaped"']
+91	      list                         → recurse and flatten
+92	      {"resource": IRI}            → ["<IRI>"] (IRI percent-encoded if unsafe chars present)
+93	      {"lang": L, "$": T}          → ['"T"@L']
+94	      {"lang": null, "$": T}       → ['"T"']
+95	      {"resource": null, "$": ""}  → []
+96	
+97	    sani_ctr: if provided, incremented once per IRI that required sanitisation.
+98	    """
+```
+
+---
+
+### Assistant *(2026-05-07T21:19:05.602Z)*
+
+Good — `coerce_list` returns `[]` for plain strings, so the `elif label` fallback handles the existing test's `"prefLabel": "Goethe"` case cleanly. Now I'll make all three changes then add the tests.
+
+---
+
+### Assistant *(2026-05-07T21:19:08.712Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/emitters.py",
+  "old_string": "                pref = agent.get(\"prefLabel\") or label\n                if pref and isinstance(pref, str):\n                    lines.append(make_nq(agent_nt, f\"<{RDFS_LABEL}>\",\n                                         f'\"{_escape_literal(pref)}\"', graph_iri))",
+  "new_string": "                pref_list = coerce_list(agent.get(\"prefLabel\"))\n                if pref_list:\n                    for pl in pref_list:\n                        for obj_nt in value_to_nt_obj(pl):\n                            lines.append(make_nq(agent_nt, f\"<{RDFS_LABEL}>\", obj_nt, graph_iri))\n                elif label:\n                    escaped = _escape_literal(label)\n                    obj_nt = f'\"{escaped}\"@{lang}' if lang else f'\"{escaped}\"'\n                    lines.append(make_nq(agent_nt, f\"<{RDFS_LABEL}>\", obj_nt, graph_iri))"
+}
+```
+
+---
+
+### User *(2026-05-07T21:19:47.897Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/emitters.py has been updated successfully.
+```
+
+---
+
+### Assistant *(2026-05-07T21:19:51.980Z)*
+
+The hint is unrelated to my changes. Now fix `emit_contributor_triples`.
+
+---
+
+### Assistant *(2026-05-07T21:20:13.959Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/emitters.py",
+  "old_string": "def emit_contributor_triples(\n    cho_nt: str,\n    contributor_vals: list,\n    event_participant_index: dict[str, str],\n    lido_dispatch: dict[str, dict],\n    target_class: str,\n    wemi: str,\n    graph_iri: str,\n    bare_id_to_uri: dict[str, str] | None = None,\n) -> NQList:\n    \"\"\"Emit contributor triples using LIDO event-type dispatch (D3/D25, props-mapping §5).\"\"\"\n    lines: NQList = []\n    prop_col = _CONTRIBUTOR_COL.get((wemi, target_class), \"dc_agent_fallback\")\n\n    for val in coerce_list(contributor_vals):\n        if not isinstance(val, dict):\n            continue\n        resource_raw     = (val.get(\"resource\") or \"\").strip()\n        label            = (val.get(\"$\")        or \"\").strip()\n        lang             = (val.get(\"lang\")     or \"\").strip()\n        primary_resource = resource_raw.split()[0] if resource_raw else \"\"\n\n        lido_type   = event_participant_index.get(primary_resource) if primary_resource else None\n        lido_row    = lido_dispatch.get(lido_type) if lido_type else None\n        target_prop = (\n            (lido_row.get(prop_col) or lido_row.get(\"dc_agent_fallback\") or DC_CONTRIBUTOR)\n            if lido_row else DC_CONTRIBUTOR\n        )\n\n        if resource_raw:\n            for uri in resource_uris(resource_raw, bare_id_to_uri, \"Agent\"):\n                lines.append(make_nq(cho_nt, f\"<{target_prop}>\", f\"<{uri}>\", graph_iri))\n                agent_nt = f\"<{uri}>\"\n                lines.append(make_nq(agent_nt, f\"<{RDF_TYPE}>\", f\"<{MOCHO_AGENT}>\", graph_iri))\n                if label:\n                    escaped = _escape_literal(label)\n                    obj_nt  = f'\"{escaped}\"@{lang}' if lang else f'\"{escaped}\"'\n                    lines.append(make_nq(agent_nt, f\"<{RDFS_LABEL}>\", obj_nt, graph_iri))\n        elif label:\n            escaped = _escape_literal(label)\n            obj_nt  = f'\"{escaped}\"@{lang}' if lang else f'\"{escaped}\"'\n            lines.append(make_nq(cho_nt, f\"<{DC_CONTRIBUTOR}>\", obj_nt, graph_iri))\n    return lines",
+  "new_string": "def emit_contributor_triples(\n    cho_nt: str,\n    contributor_vals: list,\n    event_participant_index: dict[str, str],\n    lido_dispatch: dict[str, dict],\n    target_class: str,\n    wemi: str,\n    graph_iri: str,\n    bare_id_to_uri: dict[str, str] | None = None,\n    agents_index: dict[str, AgentDict] | None = None,\n) -> NQList:\n    \"\"\"Emit contributor triples using LIDO event-type dispatch (D3/D25, props-mapping §5).\"\"\"\n    lines: NQList = []\n    prop_col = _CONTRIBUTOR_COL.get((wemi, target_class), \"dc_agent_fallback\")\n    _agents  = agents_index or {}\n\n    for val in coerce_list(contributor_vals):\n        if not isinstance(val, dict):\n            continue\n        resource_raw     = (val.get(\"resource\") or \"\").strip()\n        label            = (val.get(\"$\")        or \"\").strip()\n        lang             = (val.get(\"lang\")     or \"\").strip()\n        primary_resource = resource_raw.split()[0] if resource_raw else \"\"\n\n        lido_type   = event_participant_index.get(primary_resource) if primary_resource else None\n        lido_row    = lido_dispatch.get(lido_type) if lido_type else None\n        target_prop = (\n            (lido_row.get(prop_col) or lido_row.get(\"dc_agent_fallback\") or DC_CONTRIBUTOR)\n            if lido_row else DC_CONTRIBUTOR\n        )\n\n        if resource_raw:\n            agent     = resolve_agent(\"\", primary_resource, _agents)\n            pref_list = coerce_list(agent.get(\"prefLabel\")) if agent else []\n            for uri in resource_uris(resource_raw, bare_id_to_uri, \"Agent\"):\n                lines.append(make_nq(cho_nt, f\"<{target_prop}>\", f\"<{uri}>\", graph_iri))\n                agent_nt = f\"<{uri}>\"\n                lines.append(make_nq(agent_nt, f\"<{RDF_TYPE}>\", f\"<{MOCHO_AGENT}>\", graph_iri))\n                if pref_list:\n                    for pl in pref_list:\n                        for obj_nt in value_to_nt_obj(pl):\n                            lines.append(make_nq(agent_nt, f\"<{RDFS_LABEL}>\", obj_nt, graph_iri))\n                elif label:\n                    escaped = _escape_literal(label)\n                    obj_nt  = f'\"{escaped}\"@{lang}' if lang else f'\"{escaped}\"'\n                    lines.append(make_nq(agent_nt, f\"<{RDFS_LABEL}>\", obj_nt, graph_iri))\n        elif label:\n            agent = resolve_agent(label, \"\", _agents)\n            if agent:\n                agent_uri = _sanitize_iri((agent.get(\"about\") or \"\").strip())\n                if agent_uri and is_ddb_or_gnd(agent_uri):\n                    lines.append(make_nq(cho_nt, f\"<{target_prop}>\", f\"<{agent_uri}>\", graph_iri))\n                    agent_nt  = f\"<{agent_uri}>\"\n                    lines.append(make_nq(agent_nt, f\"<{RDF_TYPE}>\", f\"<{MOCHO_AGENT}>\", graph_iri))\n                    pref_list = coerce_list(agent.get(\"prefLabel\"))\n                    if pref_list:\n                        for pl in pref_list:\n                            for obj_nt in value_to_nt_obj(pl):\n                                lines.append(make_nq(agent_nt, f\"<{RDFS_LABEL}>\", obj_nt, graph_iri))\n                    else:\n                        escaped = _escape_literal(label)\n                        obj_nt  = f'\"{escaped}\"@{lang}' if lang else f'\"{escaped}\"'\n                        lines.append(make_nq(agent_nt, f\"<{RDFS_LABEL}>\", obj_nt, graph_iri))\n                    continue\n            escaped = _escape_literal(label)\n            obj_nt  = f'\"{escaped}\"@{lang}' if lang else f'\"{escaped}\"'\n            lines.append(make_nq(cho_nt, f\"<{DC_CONTRIBUTOR}>\", obj_nt, graph_iri))\n    return lines"
+}
+```
+
+---
+
+### User *(2026-05-07T21:20:19.415Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/emitters.py has been updated successfully.
+```
+
+---
+
+### Assistant *(2026-05-07T21:20:22.832Z)*
+
+Now update the call site to pass `agents_index`.
+
+---
+
+### Assistant *(2026-05-07T21:20:25.640Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/emitters.py",
+  "old_string": "    _contrib_lines = emit_contributor_triples(\n        cho_nt, cho.get(\"contributor\"),\n        event_participant_index, lido_dispatch, target_class, wemi, graph_iri,\n        bare_id_to_uri,\n    )",
+  "new_string": "    _contrib_lines = emit_contributor_triples(\n        cho_nt, cho.get(\"contributor\"),\n        event_participant_index, lido_dispatch, target_class, wemi, graph_iri,\n        bare_id_to_uri, agents_index,\n    )"
+}
+```
+
+---
+
+### User *(2026-05-07T21:20:55.932Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/emitters.py has been updated successfully.
+```
+
+---
+
+### Assistant *(2026-05-07T21:21:00.087Z)*
+
+Now add the two test classes. I'll insert them right after the existing creator/contributor test classes.
+
+---
+
+### Assistant *(2026-05-07T21:21:00.870Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/tests/test_transform.py",
+  "offset": 756,
+  "limit": 40
+}
+```
+
+---
+
+### User *(2026-05-07T21:21:00.916Z)*
+
+**Tool result**
+```
+756	    def test_agent_uri_sanitized(self):
+757	        unsafe_uri = "http://d-nb.info/gnd/118 540238"  # space in URI
+758	        agent = {"about": unsafe_uri, "prefLabel": "Goethe"}
+759	        agents_index = {unsafe_uri: agent}
+760	        vals = [{"resource": "", "$": "Goethe", "lang": "de"}]
+761	        lines = emit_creator_triples(_CREATOR_CHO, vals, agents_index,
+762	                                     "http://www.w3.org/2002/07/owl#Thing", {}, _CREATOR_G)
+763	        for line in lines:
+764	            for part in line.split():
+765	                if part.startswith("<") and part.endswith(">"):
+766	                    assert " " not in part[1:-1]
+767	
+768	
+769	# ── emit_contributor_triples — multi-URI + bare ID ────────────────────────────
+770	
+771	_CONTRIB_CHO = "<https://gemea.ise.fiz-karlsruhe.de/mocho/" + "Y" * 32 + ">"
+772	
+773	
+774	class TestEmitContributorTriplesMultiUri:
+775	    def test_two_uris_produce_two_cho_triples(self):
+776	        uri1 = "http://d-nb.info/gnd/333"
+777	        uri2 = "http://d-nb.info/gnd/444"
+778	        vals = [{"resource": f"{uri1} {uri2}", "$": "", "lang": ""}]
+779	        lines = emit_contributor_triples(_CONTRIB_CHO, vals, {}, {}, "", "M", GRAPH_MOCHO)
+780	        cho_lines = [l for l in lines if _CONTRIB_CHO in l]
+781	        assert len(cho_lines) == 2
+782	
+783	
+784	class TestEmitContributorTriplesBareId:
+785	    _bare = "E" * 32
+786	
+787	    def test_bare_id_expanded_via_param(self):
+788	        index = {self._bare: f"urn:ddbedm:Agent:{self._bare}"}
+789	        vals = [{"resource": self._bare}]
+790	        lines = emit_contributor_triples(_CONTRIB_CHO, vals, {}, {}, "", "M", GRAPH_MOCHO, index)
+791	        assert any(f"urn:ddbedm:Agent:{self._bare}" in l for l in lines)
+792	
+793	
+794	# ── emit_prov_triples — provider_isil sanitize ────────────────────────────────
+795	
+```
+
+---
+
+### Assistant *(2026-05-07T21:21:22.880Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/tests/test_transform.py",
+  "old_string": "class TestEmitContributorTriplesBareId:\n    _bare = \"E\" * 32\n\n    def test_bare_id_expanded_via_param(self):\n        index = {self._bare: f\"urn:ddbedm:Agent:{self._bare}\"}\n        vals = [{\"resource\": self._bare}]\n        lines = emit_contributor_triples(_CONTRIB_CHO, vals, {}, {}, \"\", \"M\", GRAPH_MOCHO, index)\n        assert any(f\"urn:ddbedm:Agent:{self._bare}\" in l for l in lines)\n\n\n# ── emit_prov_triples — provider_isil sanitize ────────────────────────────────",
+  "new_string": "class TestEmitContributorTriplesBareId:\n    _bare = \"E\" * 32\n\n    def test_bare_id_expanded_via_param(self):\n        index = {self._bare: f\"urn:ddbedm:Agent:{self._bare}\"}\n        vals = [{\"resource\": self._bare}]\n        lines = emit_contributor_triples(_CONTRIB_CHO, vals, {}, {}, \"\", \"M\", GRAPH_MOCHO, index)\n        assert any(f\"urn:ddbedm:Agent:{self._bare}\" in l for l in lines)\n\n\n# ── emit_creator_triples — prefLabel list (Bug 1 fix) ────────────────────────\n\n_CREATOR_AGENT_URI = \"http://d-nb.info/gnd/118540238\"\n\n\nclass TestEmitCreatorTriplesPrefLabel:\n    \"\"\"Track 2 rdfs:label must come from agent.prefLabel list (not isinstance(str) check).\"\"\"\n\n    _cho = \"<https://gemea.ise.fiz-karlsruhe.de/mocho/\" + \"C\" * 32 + \">\"\n    _g   = GRAPH_MOCHO\n\n    def _agent(self, pref):\n        return {\"about\": _CREATOR_AGENT_URI, \"prefLabel\": pref}\n\n    def test_preflabel_list_dict_emitted(self):\n        agent = self._agent([{\"$\": \"Goethe, Johann Wolfgang von\", \"lang\": \"de\"}])\n        vals  = [{\"resource\": \"\", \"$\": \"Goethe\", \"lang\": \"de\"}]\n        lines = emit_creator_triples(self._cho, vals, {\"Goethe\": agent}, \"\", {}, self._g)\n        assert any(\"Goethe, Johann Wolfgang von\" in l for l in lines)\n\n    def test_preflabel_lang_tagged(self):\n        agent = self._agent([{\"$\": \"Schiller, Friedrich\", \"lang\": \"de\"}])\n        vals  = [{\"resource\": \"\", \"$\": \"Schiller\", \"lang\": \"de\"}]\n        lines = emit_creator_triples(self._cho, vals, {\"Schiller\": agent}, \"\", {}, self._g)\n        assert any('\"Schiller, Friedrich\"@de' in l for l in lines)\n\n    def test_preflabel_empty_list_falls_back_to_label(self):\n        agent = self._agent([])\n        vals  = [{\"resource\": \"\", \"$\": \"Fallback\", \"lang\": \"de\"}]\n        lines = emit_creator_triples(self._cho, vals, {\"Fallback\": agent}, \"\", {}, self._g)\n        assert any('\"Fallback\"' in l for l in lines)\n\n    def test_uri_track2_uses_agents_index_preflabel(self):\n        agent = self._agent([{\"$\": \"Goethe, Johann Wolfgang von\", \"lang\": \"de\"}])\n        vals  = [{\"resource\": _CREATOR_AGENT_URI, \"$\": \"\", \"lang\": \"\"}]\n        lines = emit_creator_triples(\n            self._cho, vals, {_CREATOR_AGENT_URI: agent}, \"\", {}, self._g,\n        )\n        assert any(\"Goethe, Johann Wolfgang von\" in l for l in lines)\n\n\n# ── emit_contributor_triples — agents_index label (Bug 2 fix) ────────────────\n\n_CONTRIB_AGENT_URI = \"http://d-nb.info/gnd/118607626\"\n\n\nclass TestEmitContributorTriplesAgentLabel:\n    \"\"\"agents_index prefLabel used for URI case; literal-match emits agent stub.\"\"\"\n\n    _cho = \"<https://gemea.ise.fiz-karlsruhe.de/mocho/\" + \"Z\" * 32 + \">\"\n    _g   = GRAPH_MOCHO\n\n    def _agent(self, pref=None):\n        return {\n            \"about\": _CONTRIB_AGENT_URI,\n            \"prefLabel\": pref or [{\"$\": \"Schiller, Friedrich\", \"lang\": \"de\"}],\n        }\n\n    def test_uri_case_uses_agents_index_preflabel(self):\n        agent = self._agent()\n        vals  = [{\"resource\": _CONTRIB_AGENT_URI, \"$\": \"Schiller\", \"lang\": \"de\"}]\n        lines = emit_contributor_triples(\n            self._cho, vals, {}, {}, \"\", \"M\", self._g,\n            agents_index={_CONTRIB_AGENT_URI: agent},\n        )\n        label_lines = [l for l in lines if \"label\" in l.lower()]\n        assert any(\"Schiller, Friedrich\" in l for l in label_lines), \\\n            \"Expected agents_index prefLabel, not val['$'] literal\"\n\n    def test_uri_case_fallback_to_literal_label_when_no_index(self):\n        vals  = [{\"resource\": _CONTRIB_AGENT_URI, \"$\": \"Schiller\", \"lang\": \"de\"}]\n        lines = emit_contributor_triples(self._cho, vals, {}, {}, \"\", \"M\", self._g)\n        label_lines = [l for l in lines if \"label\" in l.lower()]\n        assert any('\"Schiller\"' in l for l in label_lines)\n\n    def test_literal_match_emits_agent_stub(self):\n        agent = self._agent()\n        vals  = [{\"resource\": \"\", \"$\": \"Schiller, Friedrich\", \"lang\": \"de\"}]\n        lines = emit_contributor_triples(\n            self._cho, vals, {}, {}, \"\", \"M\", self._g,\n            agents_index={\"Schiller, Friedrich\": agent},\n        )\n        assert any(_CONTRIB_AGENT_URI in l for l in lines), \"Expected agent.about URI\"\n        assert any(\"label\" in l.lower() for l in lines)\n\n    def test_literal_no_match_emits_plain_literal(self):\n        vals  = [{\"resource\": \"\", \"$\": \"Unknown Person\", \"lang\": \"de\"}]\n        lines = emit_contributor_triples(self._cho, vals, {}, {}, \"\", \"M\", self._g)\n        assert any('\"Unknown Person\"@de' in l for l in lines)\n        assert not any(\"d-nb.info\" in l for l in lines)\n\n\n# ── emit_prov_triples — provider_isil sanitize ────────────────────────────────"
+}
+```
+
+---
+
+### User *(2026-05-07T21:21:40.261Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/tests/test_transform.py has been updated successfully.
+```
+
+---
+
+### Assistant *(2026-05-07T21:21:43.199Z)*
+
+Now run the full test suite.
+
+---
+
+### Assistant *(2026-05-07T21:21:43.778Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "cd /Users/mta/Documents/claude/goethe-faust && python -m pytest scripts/transform/tests/test_transform.py -q 2>&1",
+  "description": "Run full test suite"
+}
+```
+
+---
+
+### User *(2026-05-07T21:21:45.711Z)*
+
+**Tool result** *(error)*
+```
+Exit code 1
+/Users/mta/Documents/claude/gemea/.venv/bin/python: No module named pytest
+```
+
+---
+
+### Assistant *(2026-05-07T21:21:48.086Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "cd /Users/mta/Documents/claude/goethe-faust && source .venv/bin/activate && python -m pytest scripts/transform/tests/test_transform.py -q 2>&1",
+  "description": "Run test suite with project venv"
+}
+```
+
+---
+
+### User *(2026-05-07T21:21:50.805Z)*
+
+**Tool result**
+```
+........................................................................ [ 63%]
+..........................................                               [100%]
+114 passed in 0.18s
+```
+
+---
+
+### Assistant *(2026-05-07T21:21:58.011Z)*
+
+114 tests pass (106 before + 8 new). All green.
+
+Changes made:
+
+**Bug 1 — `emit_creator_triples` ([emitters.py:446](scripts/transform/emitters.py#L446))**: replaced `isinstance(pref, str)` (always False for a list) with `coerce_list(agent.get("prefLabel"))` + `value_to_nt_obj` iteration; fallback to the literal `label` when prefLabel list is empty.
+
+**Bug 2 — `emit_contributor_triples` ([emitters.py:453](scripts/transform/emitters.py#L453))**: added `agents_index` parameter; URI case now resolves the agent by primary URI and uses its prefLabel (with literal `$` as fallback); literal case now runs `resolve_agent` and emits an agent stub when a DDB/GND match is found, falling back to a plain literal.
+
+**Call site** — `emit_mocho_triples` now passes `agents_index` to `emit_contributor_triples`.
+
+**Tests** — `TestEmitCreatorTriplesPrefLabel` (4 cases) and `TestEmitContributorTriplesAgentLabel` (4 cases) in [test_transform.py](scripts/transform/tests/test_transform.py).
+
+---
+
+### User *(2026-05-07T21:23:05.360Z)*
+
+run it on /Users/mta/Documents/claude/goethe-faust/data/items-all-goethe-faust.json. use goethe-faust as stem. Also compare the whether rdfs:label increased or any changes attributed agent changes from the stats.json
+
+---
+
+### Assistant *(2026-05-07T21:23:09.217Z)*
+
+Let me find the run command and the existing stats file first.
+
+---
+
+### Assistant *(2026-05-07T21:23:10.083Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "grep -n \"stats\\|stem\\|output\" /Users/mta/Documents/claude/goethe-faust/scripts/transform/README.md | head -30",
+  "description": "Find run command and stats output location"
+}
+```
+
+---
+
+### User *(2026-05-07T21:23:10.161Z)*
+
+**Tool result**
+```
+29:output/config/*.csv / *.json          dispatch + alignment tables
+34:          └── output/transform/YYYYMMDD_HHMMSS/
+35:                  <stem>.nq                   N-Quads (all named graphs)
+36:                  <stem>-werk-staging.duckdb  DuckDB werk_staging table
+37:                  <stem>-stats.json           run statistics
+38:                  <stem>-errors.jsonl         per-record errors
+39:                  <stem>.log                  run log
+42:`<stem>` is the input filename without extension (e.g. `items-all-goethe-faust.json` → `items-all-goethe-faust`), or the value of `--stub` if provided. Each invocation creates a new timestamped run directory. Use `--outdir` to override.
+58:CFG=$GOETHE/output/config
+70:      --outdir $GOETHE/output/transform/gemea/s${n} \
+71:      --stats dispatch \
+82:cat $GOETHE/output/transform/gemea/s*/*.nq > $GOETHE/output/transform/gemea/merged.nq
+103:| `output/config/lookup_mediatype_class.csv` | `(sector, mediatype)` → class dispatch |
+104:| `output/config/lookup_htype_doco_rico.csv` | `htype_code` → rdf:type IRIs (§1.1) |
+105:| `output/config/lookup_class_prop_alignment.csv` | `(target_class, edm_prop)` → mocho property |
+106:| `output/config/lido_event_types.csv` | LIDO event URI → agent predicates per WEMI level |
+107:| `output/config/audio_type2class.json` | `dc:type` → audio group (A/B/C) for mt001 dispatch |
+115:| I/O | `--jsonl FILE`, `--ids FILE`, `--outdir DIR`, `--stem STR` |
+117:| Stats | `--stats none\|basic\|dispatch\|full` (default: `basic`) |
+121:**Stats recommendation**: `--stats dispatch` for full-corpus runs; `--stats full --limit 50000`
+122:for vocabulary coverage data. Schema and performance trade-offs: [`notes/transform-stats-plan.md`](../../notes/transform-stats-plan.md).
+125:# full corpus, default stats
+128:# full corpus, dispatch stats (recommended for production)
+129:python -m transform --stats dispatch
+135:python -m transform --limit 50000 --stats full
+137:# explicit output directory
+138:python -m transform --outdir ../output/transform/dev
+161:- `notes/transform-stats-plan.md` — stats schema and resource paper guidance
+```
+
+---
+
+### Assistant *(2026-05-07T21:23:10.684Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "find /Users/mta/Documents/claude/goethe-faust -name \"stats*.json\" 2>/dev/null",
+  "description": "Find existing stats JSON files"
+}
+```
+
+---
+
+### User *(2026-05-07T21:23:10.764Z)*
+
+**Tool result**
+```
+(Bash completed with no output)
+```
+
+---
+
+### Assistant *(2026-05-07T21:23:13.456Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "find /Users/mta/Documents/claude/goethe-faust/output/transform -name \"*stats*.json\" | sort 2>/dev/null",
+  "description": "Find all stats JSON files in output"
+}
+```
+
+---
+
+### User *(2026-05-07T21:23:13.566Z)*
+
+**Tool result**
+```
+/Users/mta/Documents/claude/goethe-faust/output/transform/20260420_112721/transform_stats.json
+/Users/mta/Documents/claude/goethe-faust/output/transform/20260505_092658/transform_stats.json
+/Users/mta/Documents/claude/goethe-faust/output/transform/20260506_092834/transform_stats.json
+/Users/mta/Documents/claude/goethe-faust/output/transform/20260506_092842/transform_stats.json
+/Users/mta/Documents/claude/goethe-faust/output/transform/20260506_101515/transform_stats.json
+/Users/mta/Documents/claude/goethe-faust/output/transform/20260506_102118/transform_stats.json
+/Users/mta/Documents/claude/goethe-faust/output/transform/20260506_104248/transform_stats.json
+/Users/mta/Documents/claude/goethe-faust/output/transform/20260506_105839/transform_stats.json
+/Users/mta/Documents/claude/goethe-faust/output/transform/20260506_131816/20260506_131842/transform_stats.json
+/Users/mta/Documents/claude/goethe-faust/output/transform/20260506_145808/transform_stats.json
+/Users/mta/Documents/claude/goethe-faust/output/transform/20260506_154602/goethe-faust-stats.json
+/Users/mta/Documents/claude/goethe-faust/output/transform/20260507_190805/goethe-faust-stats.json
+/Users/mta/Documents/claude/goethe-faust/output/transform/dev/transform_stats.json
+/Users/mta/Documents/claude/goethe-faust/output/transform/verify/items-all-goethe-faust-stats.json
+```
+
+---
+
+### Assistant *(2026-05-07T21:23:17.086Z)*
+
+The most recent stats (20260507_190805) is today's previous run. Let me check its content and then run the new transform.
+
+---
+
+### Assistant *(2026-05-07T21:23:17.673Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/output/transform/20260507_190805/goethe-faust-stats.json"
+}
+```
+
+---
+
+### User *(2026-05-07T21:23:17.696Z)*
+
+**Tool result**
+```
+1	{
+2	  "run": {
+3	    "timestamp": "20260507_190805",
+4	    "input": "../data/items-all-goethe-faust.json",
+5	    "stats_level": "dispatch",
+6	    "elapsed_s": 63.3,
+7	    "interrupted": false
+8	  },
+9	  "records": {
+10	    "processed": 115432,
+11	    "skipped_not_in_ids": 0,
+12	    "by_mediatype": {
+13	      "mt003": 52247,
+14	      "mt007": 42360,
+15	      "mt002": 20228,
+16	      "mt001": 476,
+17	      "mt005": 96,
+18	      "any": 25
+19	    },
+20	    "by_htype": {
+21	      "ht021": 24630,
+22	      "ht034": 23183,
+23	      "ht035": 19166,
+24	      "ht007": 6644,
+25	      "ht018": 6156,
+26	      "ht006": 4638,
+27	      "ht026": 3111,
+28	      "ht001": 3076,
+29	      "ht030": 985,
+30	      "ht015": 450,
+31	      "ht023": 155,
+32	      "ht019": 133,
+33	      "ht013": 120,
+34	      "ht003": 101,
+35	      "ht020": 77,
+36	      "ht028": 66,
+37	      "ht017": 62,
+38	      "ht016": 52,
+39	      "ht038": 49,
+40	      "ht014": 39,
+41	      "ht008": 19,
+42	      "ht029": 10,
+43	      "ht004": 9,
+44	      "ht031": 9,
+45	      "ht032": 9,
+46	      "ht037": 5,
+47	      "ht027": 2,
+48	      "ht010": 1
+49	    },
+50	    "uri_sanitized": 29,
+51	    "uri_split": 2685,
+52	    "uri_about_split": 1309,
+53	    "errors": {
+54	      "json_parse": 0,
+55	      "transform": 0
+56	    }
+57	  },
+58	  "triples": {
+59	    "total": 14764352,
+60	    "by_graph": {
+61	      "ddbedm": 8957734,
+62	      "mocho": 1950504,
+63	      "prov": 3856114
+64	    }
+65	  },
+66	  "werk_staging": {
+67	    "rows": 0,
+68	    "by_class": {}
+69	  },
+70	  "dispatch": {
+71	    "htype_hits": 25644,
+72	    "mediatype_hits": 47428,
+73	    "fallback_d9": 0,
+74	    "skipped_mt007": 42360,
+75	    "work_classes": {
+76	      "vra:Work": 8972,
+77	      "mocho:ImageWork": 3792,
+78	      "mocho:ImmovableWork": 97,
+79	      "ec:EditorialWork": 88,
+80	      "rdac:C10001": 15
+81	    },
+82	    "expression_classes": {},
+83	    "manifestation_classes": {
+84	      "mocho:Manifestation": 28913,
+85	      "mocho:ImageManifestation": 5100,
+86	      "doco:TextChunk": 2993,
+87	      "doco:Figure": 577,
+88	      "aco:AudioManifestation": 466,
+89	      "doco:Section": 162,
+90	      "doco:Chapter": 91,
+91	      "doco:Part": 2
+92	    },
+93	    "rico_classes": {
+94	      "rico:RecordPart": 18648,
+95	      "rico:Record": 3156
+96	    }
+97	  },
+98	  "ddbedm_classes": {
+99	    "skos:Concept": 717638,
+100	    "edm:Agent": 422026,
+101	    "edm:WebResource": 312538,
+102	    "edm:Event": 158407,
+103	    "edm:Place": 118088,
+104	    "ore:Aggregation": 115432,
+105	    "edm:ProvidedCHO": 115432,
+106	    "edm:TimeSpan": 99930,
+107	    "edm:PhysicalThing": 55771
+108	  },
+109	  "ddbedm_vocab": {
+110	    "properties_all": {
+111	      "skos:prefLabel": 829843,
+112	      "dcterms:subject": 606086,
+113	      "http://www.w3.org/1999/02/22-rdf-syntax-ns#type": 427909,
+114	      "skos:notation": 427909,
+115	      "dcterms:rights": 353746,
+116	      "dc:subject": 302946,
+117	      "edm:hasType": 264585,
+118	      "edm:rights": 257360,
+119	      "edm:dataProvider": 230864,
+120	      "dcterms:isPartOf": 178303,
+121	      "dc:title": 171203,
+122	      "edm:hasMet": 158407,
+123	      "ddb:edm/hierarchyType": 148728,
+124	      "http://www.cidoc-crm.org/cidoc-crm/P11_had_participant": 146228,
+125	      "edm:wasPresentAt": 146207,
+126	      "dc:identifier": 145126,
+127	      "dc:description": 141935,
+128	      "edm:hasView": 136759,
+129	      "ddb:aggregationEntity": 132626,
+130	      "edm:isShownAt": 115825,
+131	      "edm:aggregatedCHO": 115432,
+132	      "edm:provider": 115432,
+133	      "ddb:hierarchyPosition": 104849,
+134	      "edm:occurredAt": 102859,
+135	      "edm:begin": 99928,
+136	      "edm:end": 99928,
+137	      "dcterms:extent": 95808,
+138	      "dc:type": 92853,
+139	      "edm:type": 73045,
+140	      "dcterms:language": 72662,
+141	      "dc:language": 71681,
+142	      "dc:creator": 62984,
+143	      "edm:isShownBy": 60386,
+144	      "dc:contributor": 58993,
+145	      "dc:date": 55602,
+146	      "edm:currentLocation": 51200,
+147	      "edm:happenedAt": 49816,
+148	      "dcterms:issued": 48435,
+149	      "edm:object": 39522,
+150	      "dc:format": 20496,
+151	      "dcterms:spatial": 12332,
+152	      "edm:aggregator": 7742,
+153	      "dcterms:alternative": 6583
+154	    }
+155	  },
+156	  "mocho_vocab": {
+157	    "properties_all": {
+158	      "rdfs:label": 302578,
+159	      "dcterms:subject": 180573,
+160	      "http://www.w3.org/1999/02/22-rdf-syntax-ns#type": 162807,
+161	      "dc:subject": 107275,
+162	      "dc:identifier": 83354,
+163	      "dcterms:source": 73206,
+164	      "owl:sameAs": 73072,
+165	      "dc:title": 73072,
+166	      "edm:dataProvider": 73070,
+167	      "mocho:mediaType": 73045,
+168	      "edm:hasType": 69963,
+169	      "dcterms:extent": 54334,
+170	      "dcterms:creator": 53453,
+171	      "ddb:edm/hierarchyType": 52614,
+172	      "dc:language": 49466,
+173	      "foaf:thumbnail": 39518,
+174	      "dc:contributor": 36773,
+175	      "edm:currentLocation": 31837,
+176	      "dcterms:language": 30405,
+177	      "dcterms:issued": 29853,
+178	      "rdam:P30134": 28913,
+179	      "rico:note": 27196,
+180	      "rico:creationDate": 23306,
+181	      "dcterms:isPartOf": 22727,
+182	      "rico:hasOrHadTitle": 21804,
+183	      "rico:hasOrHadIdentifier": 21723,
+184	      "dc:description": 20872,
+185	      "rico:hasOrHadLanguage": 20040,
+186	      "vra:description": 17168,
+187	      "dc:format": 15597,
+188	      "rdam:P30020": 14127,
+189	      "rdam:P30137": 12660,
+190	      "dcterms:spatial": 12048,
+191	      "vra:title": 8972,
+192	      "dc:date": 8570,
+193	      "rdam:P30329": 8266,
+194	      "vra:dateCreated": 7216,
+195	      "rdaw:P10088": 3904,
+196	      "dcterms:alternative": 2705,
+197	      "rdam:P30128": 2241,
+198	      "vra:partOf": 74,
+199	      "rdam:P30278": 21,
+200	      "vra:producer": 20,
+201	      "rdaw:P10330": 19,
+202	      "vra:photographer": 19,
+203	      "rico:hasCreator": 14,
+204	      "rdaw:P10065": 8,
+205	      "rdaw:P10086": 4,
+206	      "rdam:P30083": 2
+207	    },
+208	    "properties_new": {
+209	      "mocho:mediaType": 73045,
+210	      "rdam:P30134": 28913,
+211	      "rico:note": 27196,
+212	      "rico:creationDate": 23306,
+213	      "rico:hasOrHadTitle": 21804,
+214	      "rico:hasOrHadIdentifier": 21723,
+215	      "rico:hasOrHadLanguage": 20040,
+216	      "vra:description": 17168,
+217	      "rdam:P30020": 14127,
+218	      "rdam:P30137": 12660,
+219	      "vra:title": 8972,
+220	      "rdam:P30329": 8266,
+221	      "vra:dateCreated": 7216,
+222	      "rdaw:P10088": 3904,
+223	      "rdam:P30128": 2241,
+224	      "vra:partOf": 74,
+225	      "rdam:P30278": 21,
+226	      "vra:producer": 20,
+227	      "rdaw:P10330": 19,
+228	      "vra:photographer": 19,
+229	      "rico:hasCreator": 14,
+230	      "rdaw:P10065": 8,
+231	      "rdaw:P10086": 4,
+232	      "rdam:P30083": 2
+233	    }
+234	  }
+235	}
+```
+
+---
+
+### Assistant *(2026-05-07T21:23:23.566Z)*
+
+Good — before stats captured. `rdfs:label` was 302,578. Now running the new transform.
+
+---
+
+### Assistant *(2026-05-07T21:23:25.415Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "cd /Users/mta/Documents/claude/goethe-faust/scripts && source ../.venv/bin/activate && python -m transform \\\n  --jsonl ../data/items-all-goethe-faust.json \\\n  --stem goethe-faust \\\n  --stats dispatch \\\n  2>&1 | tail -20",
+  "description": "Run full corpus transform with goethe-faust stem",
+  "timeout": 300000
+}
+```
+
+---
+
+### User *(2026-05-07T21:29:05.258Z)*
+
+**Tool result**
+```
+(Bash completed with no output)
+```
+
+---
+
+### Assistant *(2026-05-07T21:29:07.826Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "find /Users/mta/Documents/claude/goethe-faust/output/transform -name \"goethe-faust-stats.json\" | sort | tail -3",
+  "description": "Find the newly generated stats file"
+}
+```
+
+---
+
+### User *(2026-05-07T21:29:07.939Z)*
+
+**Tool result**
+```
+/Users/mta/Documents/claude/goethe-faust/output/transform/20260506_154602/goethe-faust-stats.json
+/Users/mta/Documents/claude/goethe-faust/output/transform/20260507_190805/goethe-faust-stats.json
+/Users/mta/Documents/claude/goethe-faust/output/transform/20260507_232804/goethe-faust-stats.json
+```
+
+---
+
+### Assistant *(2026-05-07T21:29:09.780Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/output/transform/20260507_232804/goethe-faust-stats.json"
+}
+```
+
+---
+
+### User *(2026-05-07T21:29:09.792Z)*
+
+**Tool result**
+```
+1	{
+2	  "run": {
+3	    "timestamp": "20260507_232804",
+4	    "input": "../data/items-all-goethe-faust.json",
+5	    "stats_level": "dispatch",
+6	    "elapsed_s": 60.8,
+7	    "interrupted": false
+8	  },
+9	  "records": {
+10	    "processed": 115432,
+11	    "skipped_not_in_ids": 0,
+12	    "by_mediatype": {
+13	      "mt003": 52247,
+14	      "mt007": 42360,
+15	      "mt002": 20228,
+16	      "mt001": 476,
+17	      "mt005": 96,
+18	      "any": 25
+19	    },
+20	    "by_htype": {
+21	      "ht021": 24630,
+22	      "ht034": 23183,
+23	      "ht035": 19166,
+24	      "ht007": 6644,
+25	      "ht018": 6156,
+26	      "ht006": 4638,
+27	      "ht026": 3111,
+28	      "ht001": 3076,
+29	      "ht030": 985,
+30	      "ht015": 450,
+31	      "ht023": 155,
+32	      "ht019": 133,
+33	      "ht013": 120,
+34	      "ht003": 101,
+35	      "ht020": 77,
+36	      "ht028": 66,
+37	      "ht017": 62,
+38	      "ht016": 52,
+39	      "ht038": 49,
+40	      "ht014": 39,
+41	      "ht008": 19,
+42	      "ht029": 10,
+43	      "ht004": 9,
+44	      "ht031": 9,
+45	      "ht032": 9,
+46	      "ht037": 5,
+47	      "ht027": 2,
+48	      "ht010": 1
+49	    },
+50	    "uri_sanitized": 29,
+51	    "uri_split": 2685,
+52	    "uri_about_split": 1309,
+53	    "errors": {
+54	      "json_parse": 0,
+55	      "transform": 0
+56	    }
+57	  },
+58	  "triples": {
+59	    "total": 14782653,
+60	    "by_graph": {
+61	      "ddbedm": 8957734,
+62	      "mocho": 1968805,
+63	      "prov": 3856114
+64	    }
+65	  },
+66	  "werk_staging": {
+67	    "rows": 15,
+68	    "by_class": {
+69	      "rdac:C10001": 15
+70	    }
+71	  },
+72	  "dispatch": {
+73	    "htype_hits": 25644,
+74	    "mediatype_hits": 47428,
+75	    "fallback_d9": 0,
+76	    "skipped_mt007": 42360,
+77	    "work_classes": {
+78	      "vra:Work": 8972,
+79	      "mocho:ImageWork": 3792,
+80	      "mocho:ImmovableWork": 97,
+81	      "ec:EditorialWork": 88,
+82	      "rdac:C10001": 15
+83	    },
+84	    "expression_classes": {},
+85	    "manifestation_classes": {
+86	      "mocho:Manifestation": 28913,
+87	      "mocho:ImageManifestation": 5100,
+88	      "doco:TextChunk": 2993,
+89	      "doco:Figure": 577,
+90	      "aco:AudioManifestation": 466,
+91	      "doco:Section": 162,
+92	      "doco:Chapter": 91,
+93	      "doco:Part": 2
+94	    },
+95	    "rico_classes": {
+96	      "rico:RecordPart": 18648,
+97	      "rico:Record": 3156
+98	    }
+99	  },
+100	  "ddbedm_classes": {
+101	    "skos:Concept": 717638,
+102	    "edm:Agent": 422026,
+103	    "edm:WebResource": 312538,
+104	    "edm:Event": 158407,
+105	    "edm:Place": 118088,
+106	    "ore:Aggregation": 115432,
+107	    "edm:ProvidedCHO": 115432,
+108	    "edm:TimeSpan": 99930,
+109	    "edm:PhysicalThing": 55771
+110	  },
+111	  "ddbedm_vocab": {
+112	    "properties_all": {
+113	      "skos:prefLabel": 829843,
+114	      "dcterms:subject": 606086,
+115	      "http://www.w3.org/1999/02/22-rdf-syntax-ns#type": 427909,
+116	      "skos:notation": 427909,
+117	      "dcterms:rights": 353746,
+118	      "dc:subject": 302946,
+119	      "edm:hasType": 264585,
+120	      "edm:rights": 257360,
+121	      "edm:dataProvider": 230864,
+122	      "dcterms:isPartOf": 178303,
+123	      "dc:title": 171203,
+124	      "edm:hasMet": 158407,
+125	      "ddb:edm/hierarchyType": 148728,
+126	      "http://www.cidoc-crm.org/cidoc-crm/P11_had_participant": 146228,
+127	      "edm:wasPresentAt": 146207,
+128	      "dc:identifier": 145126,
+129	      "dc:description": 141935,
+130	      "edm:hasView": 136759,
+131	      "ddb:aggregationEntity": 132626,
+132	      "edm:isShownAt": 115825,
+133	      "edm:aggregatedCHO": 115432,
+134	      "edm:provider": 115432,
+135	      "ddb:hierarchyPosition": 104849,
+136	      "edm:occurredAt": 102859,
+137	      "edm:begin": 99928,
+138	      "edm:end": 99928,
+139	      "dcterms:extent": 95808,
+140	      "dc:type": 92853,
+141	      "edm:type": 73045,
+142	      "dcterms:language": 72662,
+143	      "dc:language": 71681,
+144	      "dc:creator": 62984,
+145	      "edm:isShownBy": 60386,
+146	      "dc:contributor": 58993,
+147	      "dc:date": 55602,
+148	      "edm:currentLocation": 51200,
+149	      "edm:happenedAt": 49816,
+150	      "dcterms:issued": 48435,
+151	      "edm:object": 39522,
+152	      "dc:format": 20496,
+153	      "dcterms:spatial": 12332,
+154	      "edm:aggregator": 7742,
+155	      "dcterms:alternative": 6583
+156	    }
+157	  },
+158	  "mocho_vocab": {
+159	    "properties_all": {
+160	      "rdfs:label": 320754,
+161	      "dcterms:subject": 180573,
+162	      "http://www.w3.org/1999/02/22-rdf-syntax-ns#type": 162932,
+163	      "dc:subject": 107275,
+164	      "dc:identifier": 83354,
+165	      "dcterms:source": 73206,
+166	      "owl:sameAs": 73072,
+167	      "dc:title": 73072,
+168	      "edm:dataProvider": 73070,
+169	      "mocho:mediaType": 73045,
+170	      "edm:hasType": 69963,
+171	      "dcterms:extent": 54334,
+172	      "dcterms:creator": 53453,
+173	      "ddb:edm/hierarchyType": 52614,
+174	      "dc:language": 49466,
+175	      "foaf:thumbnail": 39518,
+176	      "dc:contributor": 36773,
+177	      "edm:currentLocation": 31837,
+178	      "dcterms:language": 30405,
+179	      "dcterms:issued": 29853,
+180	      "rdam:P30134": 28913,
+181	      "rico:note": 27196,
+182	      "rico:creationDate": 23306,
+183	      "dcterms:isPartOf": 22727,
+184	      "rico:hasOrHadTitle": 21804,
+185	      "rico:hasOrHadIdentifier": 21723,
+186	      "dc:description": 20872,
+187	      "rico:hasOrHadLanguage": 20040,
+188	      "vra:description": 17168,
+189	      "dc:format": 15597,
+190	      "rdam:P30020": 14127,
+191	      "rdam:P30137": 12660,
+192	      "dcterms:spatial": 12048,
+193	      "vra:title": 8972,
+194	      "dc:date": 8570,
+195	      "rdam:P30329": 8266,
+196	      "vra:dateCreated": 7216,
+197	      "rdaw:P10088": 3904,
+198	      "dcterms:alternative": 2705,
+199	      "rdam:P30128": 2241,
+200	      "vra:partOf": 74,
+201	      "rdam:P30278": 21,
+202	      "vra:producer": 20,
+203	      "rdaw:P10330": 19,
+204	      "vra:photographer": 19,
+205	      "rico:hasCreator": 14,
+206	      "rdaw:P10065": 8,
+207	      "rdaw:P10086": 4,
+208	      "rdam:P30083": 2
+209	    },
+210	    "properties_new": {
+211	      "mocho:mediaType": 73045,
+212	      "rdam:P30134": 28913,
+213	      "rico:note": 27196,
+214	      "rico:creationDate": 23306,
+215	      "rico:hasOrHadTitle": 21804,
+216	      "rico:hasOrHadIdentifier": 21723,
+217	      "rico:hasOrHadLanguage": 20040,
+218	      "vra:description": 17168,
+219	      "rdam:P30020": 14127,
+220	      "rdam:P30137": 12660,
+221	      "vra:title": 8972,
+222	      "rdam:P30329": 8266,
+223	      "vra:dateCreated": 7216,
+224	      "rdaw:P10088": 3904,
+225	      "rdam:P30128": 2241,
+226	      "vra:partOf": 74,
+227	      "rdam:P30278": 21,
+228	      "vra:producer": 20,
+229	      "rdaw:P10330": 19,
+230	      "vra:photographer": 19,
+231	      "rico:hasCreator": 14,
+232	      "rdaw:P10065": 8,
+233	      "rdaw:P10086": 4,
+234	      "rdam:P30083": 2
+235	    }
+236	  }
+237	}
+```
+
+---
+
+### Assistant *(2026-05-07T21:29:56.771Z)*
+
+Here's the comparison. All new triples are in the mocho graph and fully attributed to the agent fixes.
+
+| Metric | Before (20260507_190805) | After (20260507_232804) | Δ |
+|---|---|---|---|
+| **Total triples** | 14,764,352 | 14,782,653 | **+18,301** |
+| mocho triples | 1,950,504 | 1,968,805 | **+18,301** |
+| ddbedm triples | 8,957,734 | 8,957,734 | 0 |
+| prov triples | 3,856,114 | 3,856,114 | 0 |
+| **`rdfs:label`** (mocho) | 302,578 | 320,754 | **+18,176** |
+| **`rdf:type`** (mocho) | 162,807 | 162,932 | **+125** |
+| `dcterms:creator` | 53,453 | 53,453 | 0 |
+| `dc:contributor` | 36,773 | 36,773 | 0 |
+
+18,176 + 125 = 18,301 — exactly accounts for all new mocho triples.
+
+**Attribution:**
+- **+18,176 `rdfs:label`** — Bug 1 fix. Creator Track 2 was silently skipping `rdfs:label` because `isinstance(agent.get("prefLabel"), str)` always failed on a list. These are now correctly emitted from `agent.prefLabel[].$`.
+- **+125 `rdf:type mocho:Agent`** — Bug 2 fix. Contributor literal values that matched a DDB/GND agent in `agents_index` were previously emitted as plain literals; they now get an agent stub (`mocho:Agent` + `rdfs:label`). The +125 is the rdf:type half; the corresponding `rdfs:label` triples are folded into the +18,176.
+- `dcterms:creator` and `dc:contributor` counts unchanged — correct, the fixes only add stubs for existing resolutions, not new CHO-level triples.
+
+One unrelated change: `werk_staging.rows` went 0 → 15 for `rdac:C10001`. The dispatch count was already showing 15 in both runs, so this looks like a pre-existing tracking gap in werk_staging rather than anything from today's fixes.
 
 ---

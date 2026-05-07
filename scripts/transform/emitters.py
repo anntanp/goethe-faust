@@ -443,10 +443,15 @@ def emit_creator_triples(
                                      f"<{agent_uri}>", graph_iri))
                 agent_nt = f"<{agent_uri}>"
                 lines.append(make_nq(agent_nt, f"<{RDF_TYPE}>", f"<{MOCHO_AGENT}>", graph_iri))
-                pref = agent.get("prefLabel") or label
-                if pref and isinstance(pref, str):
-                    lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>",
-                                         f'"{_escape_literal(pref)}"', graph_iri))
+                pref_list = coerce_list(agent.get("prefLabel"))
+                if pref_list:
+                    for pl in pref_list:
+                        for obj_nt in value_to_nt_obj(pl):
+                            lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>", obj_nt, graph_iri))
+                elif label:
+                    escaped = _escape_literal(label)
+                    obj_nt = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
+                    lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>", obj_nt, graph_iri))
     return lines
 
 
@@ -459,10 +464,12 @@ def emit_contributor_triples(
     wemi: str,
     graph_iri: str,
     bare_id_to_uri: dict[str, str] | None = None,
+    agents_index: dict[str, AgentDict] | None = None,
 ) -> NQList:
     """Emit contributor triples using LIDO event-type dispatch (D3/D25, props-mapping §5)."""
     lines: NQList = []
     prop_col = _CONTRIBUTOR_COL.get((wemi, target_class), "dc_agent_fallback")
+    _agents  = agents_index or {}
 
     for val in coerce_list(contributor_vals):
         if not isinstance(val, dict):
@@ -480,15 +487,38 @@ def emit_contributor_triples(
         )
 
         if resource_raw:
+            agent     = resolve_agent("", primary_resource, _agents)
+            pref_list = coerce_list(agent.get("prefLabel")) if agent else []
             for uri in resource_uris(resource_raw, bare_id_to_uri, "Agent"):
                 lines.append(make_nq(cho_nt, f"<{target_prop}>", f"<{uri}>", graph_iri))
                 agent_nt = f"<{uri}>"
                 lines.append(make_nq(agent_nt, f"<{RDF_TYPE}>", f"<{MOCHO_AGENT}>", graph_iri))
-                if label:
+                if pref_list:
+                    for pl in pref_list:
+                        for obj_nt in value_to_nt_obj(pl):
+                            lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>", obj_nt, graph_iri))
+                elif label:
                     escaped = _escape_literal(label)
                     obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
                     lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>", obj_nt, graph_iri))
         elif label:
+            agent = resolve_agent(label, "", _agents)
+            if agent:
+                agent_uri = _sanitize_iri((agent.get("about") or "").strip())
+                if agent_uri and is_ddb_or_gnd(agent_uri):
+                    lines.append(make_nq(cho_nt, f"<{target_prop}>", f"<{agent_uri}>", graph_iri))
+                    agent_nt  = f"<{agent_uri}>"
+                    lines.append(make_nq(agent_nt, f"<{RDF_TYPE}>", f"<{MOCHO_AGENT}>", graph_iri))
+                    pref_list = coerce_list(agent.get("prefLabel"))
+                    if pref_list:
+                        for pl in pref_list:
+                            for obj_nt in value_to_nt_obj(pl):
+                                lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>", obj_nt, graph_iri))
+                    else:
+                        escaped = _escape_literal(label)
+                        obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
+                        lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>", obj_nt, graph_iri))
+                    continue
             escaped = _escape_literal(label)
             obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
             lines.append(make_nq(cho_nt, f"<{DC_CONTRIBUTOR}>", obj_nt, graph_iri))
@@ -765,7 +795,7 @@ def emit_mocho_triples(
     _contrib_lines = emit_contributor_triples(
         cho_nt, cho.get("contributor"),
         event_participant_index, lido_dispatch, target_class, wemi, graph_iri,
-        bare_id_to_uri,
+        bare_id_to_uri, agents_index,
     )
     lines.extend(_contrib_lines)
     _track_nqlist(_contrib_lines)

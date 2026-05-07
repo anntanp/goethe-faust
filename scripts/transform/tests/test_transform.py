@@ -791,6 +791,98 @@ class TestEmitContributorTriplesBareId:
         assert any(f"urn:ddbedm:Agent:{self._bare}" in l for l in lines)
 
 
+# ── emit_creator_triples — prefLabel list (Bug 1 fix) ────────────────────────
+
+_CREATOR_AGENT_URI = "http://d-nb.info/gnd/118540238"
+
+
+class TestEmitCreatorTriplesPrefLabel:
+    """Track 2 rdfs:label must come from agent.prefLabel list (not isinstance(str) check)."""
+
+    _cho = "<https://gemea.ise.fiz-karlsruhe.de/mocho/" + "C" * 32 + ">"
+    _g   = GRAPH_MOCHO
+
+    def _agent(self, pref):
+        return {"about": _CREATOR_AGENT_URI, "prefLabel": pref}
+
+    def test_preflabel_list_dict_emitted(self):
+        agent = self._agent([{"$": "Goethe, Johann Wolfgang von", "lang": "de"}])
+        vals  = [{"resource": "", "$": "Goethe", "lang": "de"}]
+        lines = emit_creator_triples(self._cho, vals, {"Goethe": agent}, "", {}, self._g)
+        assert any("Goethe, Johann Wolfgang von" in l for l in lines)
+
+    def test_preflabel_lang_tagged(self):
+        agent = self._agent([{"$": "Schiller, Friedrich", "lang": "de"}])
+        vals  = [{"resource": "", "$": "Schiller", "lang": "de"}]
+        lines = emit_creator_triples(self._cho, vals, {"Schiller": agent}, "", {}, self._g)
+        assert any('"Schiller, Friedrich"@de' in l for l in lines)
+
+    def test_preflabel_empty_list_falls_back_to_label(self):
+        agent = self._agent([])
+        vals  = [{"resource": "", "$": "Fallback", "lang": "de"}]
+        lines = emit_creator_triples(self._cho, vals, {"Fallback": agent}, "", {}, self._g)
+        assert any('"Fallback"' in l for l in lines)
+
+    def test_uri_track2_uses_agents_index_preflabel(self):
+        agent = self._agent([{"$": "Goethe, Johann Wolfgang von", "lang": "de"}])
+        vals  = [{"resource": _CREATOR_AGENT_URI, "$": "", "lang": ""}]
+        lines = emit_creator_triples(
+            self._cho, vals, {_CREATOR_AGENT_URI: agent}, "", {}, self._g,
+        )
+        assert any("Goethe, Johann Wolfgang von" in l for l in lines)
+
+
+# ── emit_contributor_triples — agents_index label (Bug 2 fix) ────────────────
+
+_CONTRIB_AGENT_URI = "http://d-nb.info/gnd/118607626"
+
+
+class TestEmitContributorTriplesAgentLabel:
+    """agents_index prefLabel used for URI case; literal-match emits agent stub."""
+
+    _cho = "<https://gemea.ise.fiz-karlsruhe.de/mocho/" + "Z" * 32 + ">"
+    _g   = GRAPH_MOCHO
+
+    def _agent(self, pref=None):
+        return {
+            "about": _CONTRIB_AGENT_URI,
+            "prefLabel": pref or [{"$": "Schiller, Friedrich", "lang": "de"}],
+        }
+
+    def test_uri_case_uses_agents_index_preflabel(self):
+        agent = self._agent()
+        vals  = [{"resource": _CONTRIB_AGENT_URI, "$": "Schiller", "lang": "de"}]
+        lines = emit_contributor_triples(
+            self._cho, vals, {}, {}, "", "M", self._g,
+            agents_index={_CONTRIB_AGENT_URI: agent},
+        )
+        label_lines = [l for l in lines if "label" in l.lower()]
+        assert any("Schiller, Friedrich" in l for l in label_lines), \
+            "Expected agents_index prefLabel, not val['$'] literal"
+
+    def test_uri_case_fallback_to_literal_label_when_no_index(self):
+        vals  = [{"resource": _CONTRIB_AGENT_URI, "$": "Schiller", "lang": "de"}]
+        lines = emit_contributor_triples(self._cho, vals, {}, {}, "", "M", self._g)
+        label_lines = [l for l in lines if "label" in l.lower()]
+        assert any('"Schiller"' in l for l in label_lines)
+
+    def test_literal_match_emits_agent_stub(self):
+        agent = self._agent()
+        vals  = [{"resource": "", "$": "Schiller, Friedrich", "lang": "de"}]
+        lines = emit_contributor_triples(
+            self._cho, vals, {}, {}, "", "M", self._g,
+            agents_index={"Schiller, Friedrich": agent},
+        )
+        assert any(_CONTRIB_AGENT_URI in l for l in lines), "Expected agent.about URI"
+        assert any("label" in l.lower() for l in lines)
+
+    def test_literal_no_match_emits_plain_literal(self):
+        vals  = [{"resource": "", "$": "Unknown Person", "lang": "de"}]
+        lines = emit_contributor_triples(self._cho, vals, {}, {}, "", "M", self._g)
+        assert any('"Unknown Person"@de' in l for l in lines)
+        assert not any("d-nb.info" in l for l in lines)
+
+
 # ── emit_prov_triples — provider_isil sanitize ────────────────────────────────
 
 class TestEmitProvTriplesIsil:
