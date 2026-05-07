@@ -36,13 +36,16 @@ GRAPH_PROV   = "https://gemea.ise.fiz-karlsruhe.de/graph/prov"
 
 GEMEA_BASE    = "https://gemea.ise.fiz-karlsruhe.de/mocho/"
 DDB_ITEM_BASE = "http://www.deutsche-digitale-bibliothek.de/item/"
-DDB_BASE      = "http://www.deutsche-digitale-bibliothek.de"
-DDB_API_BASE  = "https://api.deutsche-digitale-bibliothek.de/2/"
+DDB_BASE           = "http://www.deutsche-digitale-bibliothek.de"
+DDB_API_BASE       = "https://api.deutsche-digitale-bibliothek.de/2/"
+DDBEDM_NS          = "http://www.deutsche-digitale-bibliothek.de/edm/"
+DDB_HIERARCHY_TYPE = DDBEDM_NS + "hierarchyType"
 
 # ─── Vocab prefixes ───────────────────────────────────────────────────────────
 
 _MEDIATYPE_PREFIX = "http://ddb.vocnet.org/medientyp/"
 _SECTOR_PREFIX    = "http://ddb.vocnet.org/sparte/"
+_HTYPE_PREFIX     = "http://ddb.vocnet.org/hierarchietyp/"
 MT007_IRI         = "http://ddb.vocnet.org/medientyp/mt007"
 
 # ─── Ontology namespaces ──────────────────────────────────────────────────────
@@ -64,6 +67,7 @@ FOAF_THUMBNAIL  = "http://xmlns.com/foaf/0.1/thumbnail"
 FOAF_ORG        = "http://xmlns.com/foaf/0.1/Organization"
 FOAF_NAME       = "http://xmlns.com/foaf/0.1/name"
 EDM_DATA_PROVIDER = EDM_NS + "dataProvider"
+EDM_HAS_TYPE      = EDM_NS + "hasType"
 SCHEMA_URL      = "https://schema.org/url"
 MOCHO_ISIL      = "https://ise-fizkarlsruhe.github.io/ddbkg/mocho#isil"
 MOCHO_AGENT     = MOCHO_NS + "Agent"
@@ -102,6 +106,9 @@ _MOCHO_SKIP = frozenset({
     "dcSubject", "dcTermsSubject", "dcTermSubject",
     "dcType",
     "aggregationEntity", "hierarchyPosition",
+    "hasMet",          # edm:hasMet is an EDM Event property; no mocho alignment, skip in mocho graph
+    "hasType",         # handled by emit_hastype_triples(); IRI-with-label-stub (D16/D17)
+    "currentLocation", # handled by emit_current_location_triples(); IRI-with-label-stub (D16/D17)
 })
 
 # ─── Prefix expansion table ───────────────────────────────────────────────────
@@ -128,8 +135,10 @@ _PREFIXES = {
     "doco":    "http://purl.org/spar/doco/",
     "mocho":   MOCHO_NS,
     "gndo":    GNDO_NS,
-    "ddb":     "http://www.deutsche-digitale-bibliothek.de/",
-    "ore":     "http://www.openarchives.org/ore/terms/",
+    "ddb":         "http://www.deutsche-digitale-bibliothek.de/",
+    "ddbedm":      DDBEDM_NS,
+    "vocnet-htype": _HTYPE_PREFIX,
+    "ore":         "http://www.openarchives.org/ore/terms/",
 }
 
 # ─── EDM entity type map ──────────────────────────────────────────────────────
@@ -291,7 +300,7 @@ _DDBEDM_PROP: dict[str, str] = {
     # CIDOC-CRM (LIDO events)
     "P11_had_participant": CIDOC_NS + "P11_had_participant",
     # DDB-internal structural fields (preserved in ddbedm, skipped in mocho)
-    "hierarchyType":      "http://www.deutsche-digitale-bibliothek.de/hierarchyType",
+    "hierarchyType":      DDBEDM_NS + "hierarchyType",
     "hierarchyPosition":  "http://www.deutsche-digitale-bibliothek.de/hierarchyPosition",
     "aggregationEntity":  "http://www.deutsche-digitale-bibliothek.de/aggregationEntity",
 }

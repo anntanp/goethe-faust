@@ -461,3 +461,64 @@ WARNING s2.sqlite uid=OOVCU2TVJBPFVRDCBPCSLNYVTCDJV637 error: Expecting value: l
 
 Not a pipeline bug — data quality issue in the upstream SQLite. The db filename was
 added to the warning message (2026-05-06) to identify which sector is affected.
+
+## 8. Per-sector command pattern (direct SQLite, no intermediate JSONL)
+
+```bash
+GOETHE=/home/ann/goethe-faust/
+SQLITE_DIR=/data/ddb/data
+SCRIPTS=$GOETHE/scripts
+CFG=$GOETHE/output/config
+OUT_SN=/home/ann/gemea/output/sN        # replace N with sector number
+
+TOTAL=$(sqlite3 $SQLITE_DIR/sN.sqlite "SELECT COUNT(*) FROM objs")
+WORKERS=80
+CHUNK=$(( (TOTAL + WORKERS - 1) / WORKERS ))
+
+mkdir -p $OUT_SN
+for i in $(seq 0 $((WORKERS - 1))); do
+  OFFSET=$(( i * CHUNK ))
+  (cd $SCRIPTS && python3 -m transform \
+    --db        $SQLITE_DIR/sN.sqlite \
+    --offset    $OFFSET \
+    --limit     $CHUNK \
+    --outdir    $OUT_SN \
+    --stats     dispatch \
+    --total     $CHUNK \
+    --alignment $CFG/lookup_class_prop_alignment.csv \
+    --lido      $CFG/lido_event_types.csv \
+    --htype     $CFG/lookup_htype_doco_rico.csv \
+    --mediatype $CFG/lookup_mediatype_class.csv \
+    --audio     $CFG/audio_type2class.json) &
+done
+wait
+echo "sN done"
+```
+
+### Combine
+
+```bash
+for nq in $OUT_SN/*.nq; do
+  python3 $SCRIPTS/split_nq.py $nq &
+done
+wait
+
+mkdir -p /home/ann/gemea/output/nt
+declare -A seen
+for f in $OUT_SN/*-*.nt; do
+  s="${f##*-}"; s="${s%.nt}"; seen["$s"]=1
+done
+for slug in "${!seen[@]}"; do
+  cat $OUT_SN/*-${slug}.nt > /home/ann/gemea/output/nt/sN_${slug}.nt
+  echo "→ /home/ann/gemea/output/nt/sN_${slug}.nt"
+done
+
+rm $OUT_SN/*-*.nt
+rm $OUT_SN/*.nq
+python3 $SCRIPTS/merge_stats.py $OUT_SN
+```
+
+- Replace `N` with sector number (1–7)
+- `WORKERS=80` assumes teach03 (256 cores, 50% usage cap, sector running alone)
+- Output `.nt` files: `/home/ann/gemea/output/nt/sN_{ddbedm,mocho,prov}.nt`
+- Stats summary: `$OUT_SN/sN-stats.json`

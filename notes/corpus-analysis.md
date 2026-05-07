@@ -466,3 +466,70 @@ VRA Core 4 `vra:measurementsSet` supports typed structured measurements (height,
 - 31.7% carry only the bare 32-char UUID — requires prefixing with `http://www.deutsche-digitale-bibliothek.de/item/` at transform time to produce a valid IRI.
 - 6.0% are label-only with no resource URI — emit as `dcterms:isPartOf "label"^^xsd:string` or skip if IRI-valued triples are required.
 - Transform: normalise bare UUIDs to full URLs; emit `<cho> dcterms:isPartOf <ddb-item-uri>`.
+
+---
+
+## 7. dc:title Encoding — ISBD Punctuation Coverage
+
+**Corpus**: goethe-faust (115,432 records), local QLever port 7030, default graph.
+**Query**: `notes/mcp-server-qlever/sparql-exploration.md` § "dc:title encoding variation"
+**Date**: 2026-05-07
+
+### 7.1 Aggregate counts
+
+| Pattern | Count | % |
+|---|---|---|
+| Contains ` / ` (ISBD responsibility separator) | 2,449 | 2.1% |
+| Contains ` : ` (ISBD subtitle separator) | 20,764 | 18.0% |
+| Neither (bare title) | ~92,219 | ~79.9% |
+| **Total** | **115,432** | — |
+
+Note: ` / ` and ` : ` counts may overlap (a title can contain both).
+
+### 7.2 Sample titles
+
+**ISBD-punctuated (` / ` present)**
+- `"Schroedels Lesewerk für mittlere Schulen, Oberstufe.. Geprägte Form / Goethe"`
+- `"Brief von Johann Baptist Stiglmaier an Friedrich John (?) / Comité für Errichtung des Goetheschen Denkmals vom 02.07.1843"`
+- `"Gesammelte Werke, Bd. 14.. Dichtung u. Wahrheit : Tl 4 / Eingel. von Curt Noch [u. a.]"`
+
+**Bare (no ISBD punctuation)**
+- `"Brief von Rochlitz, Johann Friedrich an Goethe, Johann Wolfgang von"`
+- `"Goethe und die bildende Kunst"`
+- `"Noten - Faust, I. und II. Teil von Goethe, Johann Wolfgang von; Musik: Lassen, Eduard"`
+
+---
+
+## 8. Geographic and Temporal Field Coverage
+
+**Corpus**: goethe-faust (115,432 records), local QLever port 7030, default graph.
+**Query**: see below.
+**Date**: 2026-05-07
+
+| Field | Properties checked | Records with value | Coverage |
+|---|---|---|---|
+| Date | dc:date, dcterms:date, dcterms:created | 51,936 | 45.0% |
+| Place | dc:coverage, dcterms:spatial | 8,194 | 7.1% |
+
+```sparql
+PREFIX dc: <http://purl.org/dc/elements/1.1/>
+PREFIX dct: <http://purl.org/dc/terms/>
+PREFIX edm: <http://www.europeana.eu/schemas/edm/>
+SELECT (COUNT(DISTINCT ?cho) AS ?has_date) WHERE {
+  ?cho a edm:ProvidedCHO .
+  { ?cho dc:date ?d } UNION { ?cho dct:date ?d } UNION { ?cho dct:created ?d }
+}
+
+SELECT (COUNT(DISTINCT ?cho) AS ?has_place) WHERE {
+  ?cho a edm:ProvidedCHO .
+  { ?cho dc:coverage ?p } UNION { ?cho dct:spatial ?p }
+}
+```
+
+---
+
+### 7.3 Implications for GND Werk linking
+
+~80% of titles carry no ISBD punctuation, making authority title extraction ambiguous without
+parsing heuristics. Future work: ISBD punctuation rule-based heuristics + NER model fine-tuned
+on DDB subset.

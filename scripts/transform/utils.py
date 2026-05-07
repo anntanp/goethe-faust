@@ -13,6 +13,7 @@ from .constants import (
 
 # Characters forbidden inside N-Triples IRI references (RFC 3987 + NT spec)
 _IRI_UNSAFE_RE = re.compile(r'[\x00-\x20<>"{}|\\^`\x7f]')
+_BR_RE         = re.compile(r'<br\s*/?\s*>', re.IGNORECASE)
 
 
 def _sanitize_iri(iri: str) -> str:
@@ -73,6 +74,7 @@ def mint_bare_id(entity_class: str, raw_id: str) -> str:
 
 def _escape_literal(s: str) -> str:
     """Escape characters illegal in N-Triples/N-Quads literal content."""
+    s = _BR_RE.sub('\n', s)
     return (s.replace("\\", "\\\\")
              .replace('"', '\\"')
              .replace("\n", "\\n")
@@ -141,6 +143,52 @@ def normalize_date(s: str) -> list[str]:
     if len(s) == 8 and s.isdigit():
         return [f"{s[:4]}-{s[4:6]}-{s[6:]}"]
     return [s]
+
+
+def build_bare_id_index(rdf: dict) -> dict[str, str]:
+    """Map bare about IDs → expanded URIs for every entity in the record (D27)."""
+    index: dict[str, str] = {}
+    for entity_type, entities in rdf.items():
+        for entity in coerce_list(entities):
+            if not isinstance(entity, dict):
+                continue
+            raw_about = (entity.get("about") or "").strip()
+            for part in raw_about.split():
+                if part and not part.startswith(("http", "urn")):
+                    index[part] = mint_bare_id(entity_type, _sanitize_iri(part))
+    return index
+
+
+def resource_uris(
+    resource_raw: str,
+    bare_id_to_uri: dict[str, str] | None = None,
+    entity_class: str = "Agent",
+) -> list[str]:
+    """Expand, sanitize, and split all URIs from a (possibly multi-value) resource string.
+
+    Steps: (1) split on whitespace; (2) expand bare IDs via index or mint_bare_id fallback;
+    (3) percent-encode unsafe characters. Returns [] for empty input.
+    """
+    if not resource_raw:
+        return []
+    _bare = bare_id_to_uri or {}
+    result = []
+    for uri in resource_raw.split():
+        if not uri.startswith(("http", "urn")):
+            uri = _bare.get(uri) or mint_bare_id(entity_class, uri)
+        result.append(_sanitize_iri(uri))
+    return result
+
+
+def expand_obj_nt(obj_nt: str, bare_id_to_uri: dict[str, str]) -> str:
+    """Resolve a bare-ID IRI object <ID> via the index; return unchanged otherwise."""
+    if obj_nt.startswith("<") and obj_nt.endswith(">"):
+        inner = obj_nt[1:-1]
+        if not inner.startswith(("http", "urn")):
+            resolved = bare_id_to_uri.get(inner)
+            if resolved:
+                return f"<{resolved}>"
+    return obj_nt
 
 
 def is_ddb_or_gnd(uri: str) -> bool:

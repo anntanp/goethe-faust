@@ -327,3 +327,71 @@ For all non-RiC-O classes, `dcterms:language <LOC-URI>` is kept as-is (range `dc
 **Decision**: `ddb:aggregationEntity` (boolean string `"true"`/`"false"`) and `ddb:hierarchyPosition` (zero-padded sort key, e.g. `"000000000014848"`) are not emitted as triples.
 
 **Rationale**: Both are DDB-internal fields with no mocho/RDA equivalent. `aggregationEntity` is a grouping flag used by the DDB portal UI. `hierarchyPosition` is a sort key for the display hierarchy. Neither carries semantic content useful to downstream graph consumers.
+
+---
+
+## Decision 14: edm:hasMet on ProvidedCHO — skip in mocho graph, passthrough in ddbedm
+
+**Decision**: The `hasMet` JSON key on `ProvidedCHO` is excluded from the mocho graph via `_MOCHO_SKIP`. It is retained verbatim in the ddbedm passthrough graph as `ddbedm:hasMet` (`http://www.deutsche-digitale-bibliothek.de/edm/hasMet`).
+
+**Background**: `edm:hasMet` on a ProvidedCHO links the object to related events, places, or concepts encountered by the object (or its creator). In the mocho graph there is no RDA/mocho alignment for this relationship at the CHO level. The property also appears in the LIDO contributor resolution chain (D3), where `ProvidedCHO.hasMet[].resource` is used to navigate to the `edm:Event` node — but the `hasMet` triple itself is not emitted on the mocho CHO.
+
+**Note**: `edm:hasMet` on `edm:Agent` stubs is passthrough per D13 — the skip applies only to ProvidedCHO in the mocho graph.
+
+**Implementation**: `"hasMet"` added to `_MOCHO_SKIP` in `constants.py`. `emit_ddbedm_triples` continues to emit it unchanged on the ddbedm graph subject.
+
+---
+
+## Decision 15: ddbedm:hierarchyType — emit as vocnet-htype: IRI in mocho graph
+
+**Decision**: When `ProvidedCHO.hierarchyType` is present, `retype_entities()` emits one additional triple in the mocho graph:
+
+```turtle
+<cho> ddbedm:hierarchyType vocnet-htype:htype_021 .
+```
+
+where:
+- `ddbedm:hierarchyType` = `http://www.deutsche-digitale-bibliothek.de/edm/hierarchyType`
+- `vocnet-htype:` = `http://ddb.vocnet.org/hierarchietyp/`
+
+The htype code (e.g. `"htype_021"`) is the local name of the vocnet-htype individual. This triple is emitted for every record with a non-empty `hierarchyType` value, regardless of whether the code drove the rdf:type dispatch (i.e. whether `use_htype=True` for the record's sector/mediatype row). The rdf:type dispatch outcome is independent — a record may receive a htype-derived class (layer 1 in `retype_entities`) and still always receive the `ddbedm:hierarchyType` triple.
+
+**Rationale**: The htype code identifies the DDB document hierarchy position type (e.g. volume, chapter, article) and is the primary facet for hierarchical navigation in GeMeA. Emitting it as an IRI (not a literal) enables direct join to the vocnet-htype individuals in QLever without string normalization. The property IRI `ddbedm:hierarchyType` (in the DDB EDM extension namespace) is also used in the ddbedm passthrough graph, ensuring the predicate is consistent across both graphs.
+
+**IRI correction**: The earlier `_DDBEDM_PROP` entry used `http://www.deutsche-digitale-bibliothek.de/hierarchyType` (no `/edm/`). This was corrected to `http://www.deutsche-digitale-bibliothek.de/edm/hierarchyType` as part of this decision. `DDBEDM_NS = "http://www.deutsche-digitale-bibliothek.de/edm/"` is defined as a named constant and `ddbedm:` added to `_PREFIXES`.
+
+**Scope**: `hierarchyType` is in `_MOCHO_SKIP` — the generic property loop does not emit it. The triple is emitted exclusively by `retype_entities`. `hierarchyPosition` and `aggregationEntity` remain skipped per D6.
+
+---
+
+## Decision 16: Stub label predicate — `rdfs:label` over `skos:prefLabel`
+
+**Decision**: Label stubs emitted in the mocho graph for referenced context entities (Agent, Place, Concept) use `rdfs:label`, not `skos:prefLabel`, even when the source JSON field is named `prefLabel`.
+
+**Affected emitters**: `emit_subject_triples`, `emit_hastype_triples`, `emit_current_location_triples`, `emit_creator_triples`, `emit_contributor_triples`, `emit_place_stubs`.
+
+**Rationale**:
+- The JSON `prefLabel` field name is a DDB EDM convention, not a SKOS assertion. The mocho graph does not copy the SKOS semantics implied by that field name.
+- These are convenience stubs for display and search — not full SKOS concept descriptions. Full `skos:prefLabel` triples will come from the GND enrichment graph (Phase 1b).
+- QLever text-indexes against `rdfs:label` by default. Using it directly ensures stubs are full-text-searchable without configuration changes.
+- QLever does not materialise RDFS/OWL entailments (`skos:prefLabel rdfs:subPropertyOf rdfs:label`), so asserting `skos:prefLabel` would not automatically make stubs retrievable via `rdfs:label` queries. Asserting `rdfs:label` is the pragmatic approach.
+
+**Harm of not using `skos:prefLabel`**: SPARQL queries filtering specifically on `skos:prefLabel` will not find mocho stub labels. This is acceptable: once the GND enrichment graph is loaded, proper `skos:prefLabel` triples from GND will be available there; the mocho stub is intentionally a weaker, provisional label.
+
+---
+
+## Decision 17: Context entity stubs — no `rdf:type` in mocho for Place, Concept, Timespan
+
+**Decision**: When the mocho graph emits stub triples for context entities referenced by a CHO (a label or property triple whose subject is not the CHO itself), the following typing policy applies:
+
+| Context entity | Type asserted in mocho | Reason |
+|---|---|---|
+| Agent (creator, contributor) | `mocho:Agent` | mocho-specific alignment type; uniform query handle across WEMI levels; distinct from `edm:Agent` / `foaf:Agent` in ddbedm |
+| Place (`edm:currentLocation`) | none | `edm:Place` already asserted in ddbedm; no mocho-specific Place type |
+| Concept (`dcterms:subject`, `edm:hasType`) | none | `skos:Concept` already asserted in ddbedm; no mocho-specific Concept type |
+| Timespan | none | not yet emitted as stubs; same policy will apply when introduced |
+
+**Rationale**:
+- QLever's default graph is the union of all named graphs. A query without a `GRAPH` filter will find `edm:Place` from ddbedm, `mocho:Agent` from mocho, and `skos:Concept` from ddbedm — cross-graph typing is transparent to consumers.
+- Agent stubs are an exception because `mocho:Agent` is a mocho-internal type with no counterpart in EDM or any source vocabulary. It is needed for uniform federated querying (`?x a mocho:Agent`) across records that use different Agent superclasses (`foaf:Agent`, GND entity classes). Re-asserting it from the ddbedm graph is not possible since ddbedm uses `edm:Agent`, not `mocho:Agent`.
+- Adding `edm:Place` or `skos:Concept` in mocho would be redundant cross-graph re-assertions with no query benefit. It would also inflate the mocho graph with triples whose authority belongs in ddbedm.

@@ -95,6 +95,9 @@ def main() -> None:
     io.add_argument("--outdir", type=Path, default=None,
                     help="Output directory; auto-timestamped if omitted "
                          "(default: output/transform/YYYYMMDD_HHMMSS)")
+    io.add_argument("--stem", type=str, default=None,
+                    help="Output filename stem (overrides the input filename); "
+                         "e.g. --stem items-all-goethe-faust → items-all-goethe-faust.nq, etc.")
 
     cfg = parser.add_argument_group("Config")
     cfg.add_argument("--alignment", type=Path, default=DEFAULT_ALIGNMENT,
@@ -147,7 +150,9 @@ def main() -> None:
     outdir = args.outdir or (DEFAULT_OUTPUT_BASE / ts)
     outdir.mkdir(parents=True, exist_ok=True)
 
-    if args.db:
+    if args.stem:
+        stem = args.stem
+    elif args.db:
         stem = args.db.stem + (f"-{args.offset}" if args.offset else "")
     else:
         stem = Path(args.jsonl).stem

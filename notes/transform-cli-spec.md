@@ -12,9 +12,10 @@
 | `--jsonl FILE` | `data/items-all-goethe-faust.json` | JSONL input file — one DDB-EDM JSON object per line |
 | `--ids FILE` | _(none — all records)_ | ID allowlist file (one 32-char DDB ID per line), or `-` to read from stdin; omit to process all records |
 | `--outdir DIR` | `output/transform/YYYYMMDD_HHMMSS` | Output directory; auto-timestamped if omitted |
+| `--stem STR` | _(input filename stem)_ | Override the output filename stem (e.g. `--stem items-all-goethe-faust` → `items-all-goethe-faust.nq`, etc.) |
 
 Each invocation writes a self-contained run directory. Output filenames are derived
-from the input filename stem (e.g. `s2.jsonl` → `s2.nq`, `s2-stats.json`, …):
+from the input filename stem (or `--stem` if given, e.g. `--stem items-all-goethe-faust` → `items-all-goethe-faust.nq`, …):
 
 ```
 output/transform/YYYYMMDD_HHMMSS/

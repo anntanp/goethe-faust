@@ -15,13 +15,15 @@ from .constants import (
     PROV_ENTITY, PROV_AGENT, PROV_SW_AGENT,
     PROV_DERIVED, PROV_ATTRIBUTED, PROV_GEN_TIME, PROV_ON_BEHALF,
     DCAT_DATASET, XSD_DATETIME,
-    DDB_BASE, DDB_ITEM_BASE, DDB_API_BASE, EDM_NS,
+    DDB_BASE, DDB_ITEM_BASE, DDB_API_BASE, DDB_HIERARCHY_TYPE, EDM_NS, EDM_HAS_TYPE,
+    _HTYPE_PREFIX,
     _EDM_ENTITY_TYPES, _DDBEDM_PROP, _MOCHO_SKIP, _NEW_NS,
     _CLASS_WEMI, _CONTRIBUTOR_COL, _W_SLOT_CLASSES, SUBJECT_KEYS,
 )
 from .utils import (
     make_nq, coerce_list, mint_bare_id, _escape_literal, _sanitize_iri,
     value_to_nt_obj, normalize_date, is_ddb_or_gnd, resolve_agent, _to_curie,
+    build_bare_id_index, expand_obj_nt, resource_uris,
 )
 
 
@@ -38,6 +40,7 @@ def emit_ddbedm_triples(rdf: dict, graph_iri: str) -> tuple[NQList, Counter, Cou
     pred_ctr:  Counter = Counter()
     sani_ctr:  Counter = Counter()
     _skip = frozenset({"about"})
+    bare_id_to_uri = build_bare_id_index(rdf)
     for entity_type, entities in rdf.items():
         edm_class = _EDM_ENTITY_TYPES.get(entity_type)
         for entity in coerce_list(entities):
@@ -66,7 +69,8 @@ def emit_ddbedm_triples(rdf: dict, graph_iri: str) -> tuple[NQList, Counter, Cou
                 pred_nt = f"<{pred_iri}>"
                 curie   = _to_curie(pred_iri)
                 for obj_nt in value_to_nt_obj(val, sani_ctr):
-                    lines.append(make_nq(subj_nt, pred_nt, obj_nt, graph_iri))
+                    lines.append(make_nq(subj_nt, pred_nt,
+                                         expand_obj_nt(obj_nt, bare_id_to_uri), graph_iri))
                     pred_ctr[curie] += 1
     return lines, class_ctr, pred_ctr, sani_ctr
 
@@ -162,7 +166,8 @@ def emit_prov_triples(record: dict, ddb_cho_uri: str, graph_iri: str) -> NQList:
             lines.append(make_nq(prov_nt, f"<{DCTERMS_ID}>",
                                  f'"{_escape_literal(provider_id)}"', graph_iri))
         if provider_isil:
-            lines.append(make_nq(prov_nt, f"<{MOCHO_ISIL}>", f"<{provider_isil}>", graph_iri))
+            lines.append(make_nq(prov_nt, f"<{MOCHO_ISIL}>",
+                                 f"<{_sanitize_iri(provider_isil)}>", graph_iri))
 
     # ── SourceRecord node (one per binary entry under same URI) ───────────────
     if src_href:
@@ -265,6 +270,10 @@ def retype_entities(
         lines.append(make_nq(cho_nt, f"<{RDF_TYPE}>", f"<{fallback}>", graph_iri))
         primary_class = fallback
 
+    if htype_code:
+        lines.append(make_nq(cho_nt, f"<{DDB_HIERARCHY_TYPE}>",
+                             f"<{_HTYPE_PREFIX}{htype_code}>", graph_iri))
+
     wemi = _CLASS_WEMI.get(primary_class, "M")
     return lines, primary_class, wemi, {"htype_used": htype_used, "fallback": is_fallback}
 
@@ -274,27 +283,30 @@ def emit_subject_triples(
     subject_vals: list,
     concepts_index: dict[str, dict],
     graph_iri: str,
+    bare_id_to_uri: dict[str, str] | None = None,
 ) -> NQList:
     """Emit dcterms:subject (IRI path) or dc:subject (literal path) per value (D1 amended)."""
     lines: NQList = []
     seen: set[str] = set()
+    _bare = bare_id_to_uri or {}
     for val in subject_vals:
         if not isinstance(val, dict):
             continue
-        resource = (val.get("resource") or "").strip()
-        label    = (val.get("$")        or "").strip()
-        lang     = (val.get("lang")     or "").strip()
-        if resource:
-            if resource in seen:
-                continue
-            seen.add(resource)
-            lines.append(make_nq(cho_nt, f"<{DCTERMS_SUBJECT}>", f"<{_sanitize_iri(resource)}>", graph_iri))
-            concept = concepts_index.get(resource)
-            if concept:
-                for pl in coerce_list(concept.get("prefLabel")):
-                    for obj_nt in value_to_nt_obj(pl):
-                        lines.append(make_nq(f"<{_sanitize_iri(resource)}>", f"<{RDFS_LABEL}>",
-                                             obj_nt, graph_iri))
+        resource_raw = (val.get("resource") or "").strip()
+        label        = (val.get("$")        or "").strip()
+        lang         = (val.get("lang")     or "").strip()
+        if resource_raw:
+            for uri in resource_uris(resource_raw, _bare, "Concept"):
+                if uri in seen:
+                    continue
+                seen.add(uri)
+                lines.append(make_nq(cho_nt, f"<{DCTERMS_SUBJECT}>", f"<{uri}>", graph_iri))
+                concept = concepts_index.get(resource_raw) or concepts_index.get(uri)
+                if concept:
+                    for pl in coerce_list(concept.get("prefLabel")):
+                        for obj_nt in value_to_nt_obj(pl):
+                            lines.append(make_nq(f"<{uri}>", f"<{RDFS_LABEL}>",
+                                                 obj_nt, graph_iri))
         elif label:
             key = f"lit:{label}"
             if key in seen:
@@ -306,6 +318,87 @@ def emit_subject_triples(
     return lines
 
 
+def emit_hastype_triples(
+    cho_nt: str,
+    hastype_vals: list,
+    concepts_index: dict[str, dict],
+    graph_iri: str,
+    bare_id_to_uri: dict[str, str] | None = None,
+) -> NQList:
+    """Emit edm:hasType + rdfs:label stub for each IRI-valued hasType entry.
+
+    Bare 32-char IDs are expanded via the per-record index (fallback: mint as Concept URN).
+    Literal-only values (no resource) are silently skipped — edm:hasType range is skos:Concept.
+    """
+    lines: NQList = []
+    seen: set[str] = set()
+    _bare = bare_id_to_uri or {}
+    for val in coerce_list(hastype_vals):
+        if not isinstance(val, dict):
+            continue
+        resource_raw = (val.get("resource") or "").strip()
+        if not resource_raw:
+            continue
+        for uri in resource_uris(resource_raw, _bare, "Concept"):
+            if uri in seen:
+                continue
+            seen.add(uri)
+            lines.append(make_nq(cho_nt, f"<{EDM_HAS_TYPE}>", f"<{uri}>", graph_iri))
+            concept = concepts_index.get(resource_raw) or concepts_index.get(uri)
+            if concept:
+                for pl in coerce_list(concept.get("prefLabel")):
+                    for obj_nt in value_to_nt_obj(pl):
+                        lines.append(make_nq(f"<{uri}>", f"<{RDFS_LABEL}>",
+                                             obj_nt, graph_iri))
+    return lines
+
+
+def emit_current_location_triples(
+    cho_nt: str,
+    currentloc_vals: object,
+    places_index: dict[str, dict],
+    graph_iri: str,
+    bare_id_to_uri: dict[str, str] | None = None,
+) -> NQList:
+    """Emit edm:currentLocation triples with optional rdfs:label stub from matching edm:Place.
+
+    URI values: emit <cho> edm:currentLocation <uri> + <uri> rdfs:label <prefLabel> if found.
+    Literal values: emit <cho> edm:currentLocation "literal" (pass-through, no stub).
+    Multi-URI resource fields are split; bare IDs are expanded. Deduplicates URIs per record.
+    No rdf:type emitted for Place stubs in mocho graph (D17).
+    """
+    edm_current_location = EDM_NS + "currentLocation"
+    lines: NQList = []
+    seen: set[str] = set()
+    _bare = bare_id_to_uri or {}
+
+    for val in coerce_list(currentloc_vals):
+        if not isinstance(val, dict):
+            continue
+        resource_raw = (val.get("resource") or "").strip()
+        label        = (val.get("$")        or "").strip()
+        lang         = (val.get("lang")     or "").strip()
+
+        if resource_raw:
+            for uri in resource_uris(resource_raw, _bare, "Place"):
+                if uri in seen:
+                    continue
+                seen.add(uri)
+                lines.append(make_nq(cho_nt, f"<{edm_current_location}>",
+                                     f"<{uri}>", graph_iri))
+                place = places_index.get(resource_raw) or places_index.get(uri)
+                if place:
+                    for pl in coerce_list(place.get("prefLabel")):
+                        for obj_nt in value_to_nt_obj(pl):
+                            lines.append(make_nq(f"<{uri}>", f"<{RDFS_LABEL}>",
+                                                 obj_nt, graph_iri))
+        elif label:
+            escaped = _escape_literal(label)
+            obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
+            lines.append(make_nq(cho_nt, f"<{edm_current_location}>", obj_nt, graph_iri))
+    return lines
+
+
 def emit_creator_triples(
     cho_nt: str,
     creator_vals: list,
@@ -313,6 +406,7 @@ def emit_creator_triples(
     target_class: str,
     class_prop_align: PropAlign,
     graph_iri: str,
+    bare_id_to_uri: dict[str, str] | None = None,
 ) -> NQList:
     """Emit class-specific creator predicate (Track 1) and dcterms:creator agent stub (Track 2).
 
@@ -325,23 +419,25 @@ def emit_creator_triples(
     for val in coerce_list(creator_vals):
         if not isinstance(val, dict):
             continue
-        resource = (val.get("resource") or "").strip()
-        label    = (val.get("$")        or "").strip()
-        lang     = (val.get("lang")     or "").strip()
+        resource_raw = (val.get("resource") or "").strip()
+        label        = (val.get("$")        or "").strip()
+        lang         = (val.get("lang")     or "").strip()
+        primary_resource = resource_raw.split()[0] if resource_raw else ""
 
         # Track 1: class-specific predicate (always runs when target_prop is known)
         if track1_prop:
-            if resource:
-                lines.append(make_nq(cho_nt, f"<{track1_prop}>", f"<{_sanitize_iri(resource)}>", graph_iri))
+            if resource_raw:
+                for uri in resource_uris(resource_raw, bare_id_to_uri, "Agent"):
+                    lines.append(make_nq(cho_nt, f"<{track1_prop}>", f"<{uri}>", graph_iri))
             elif label:
                 escaped = _escape_literal(label)
                 obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
                 lines.append(make_nq(cho_nt, f"<{track1_prop}>", obj_nt, graph_iri))
 
         # Track 2: generic dcterms:creator + agent stub (D2 — both tracks always run)
-        agent = resolve_agent(label, resource, agents_index)
+        agent = resolve_agent(label, primary_resource, agents_index)
         if agent:
-            agent_uri = (agent.get("about") or "").strip()
+            agent_uri = _sanitize_iri((agent.get("about") or "").strip())
             if agent_uri and is_ddb_or_gnd(agent_uri):
                 lines.append(make_nq(cho_nt, f"<{DCTERMS_CREATOR}>",
                                      f"<{agent_uri}>", graph_iri))
@@ -362,6 +458,7 @@ def emit_contributor_triples(
     target_class: str,
     wemi: str,
     graph_iri: str,
+    bare_id_to_uri: dict[str, str] | None = None,
 ) -> NQList:
     """Emit contributor triples using LIDO event-type dispatch (D3/D25, props-mapping §5)."""
     lines: NQList = []
@@ -370,25 +467,27 @@ def emit_contributor_triples(
     for val in coerce_list(contributor_vals):
         if not isinstance(val, dict):
             continue
-        resource = (val.get("resource") or "").strip()
-        label    = (val.get("$")        or "").strip()
-        lang     = (val.get("lang")     or "").strip()
+        resource_raw     = (val.get("resource") or "").strip()
+        label            = (val.get("$")        or "").strip()
+        lang             = (val.get("lang")     or "").strip()
+        primary_resource = resource_raw.split()[0] if resource_raw else ""
 
-        lido_type   = event_participant_index.get(resource) if resource else None
+        lido_type   = event_participant_index.get(primary_resource) if primary_resource else None
         lido_row    = lido_dispatch.get(lido_type) if lido_type else None
         target_prop = (
             (lido_row.get(prop_col) or lido_row.get("dc_agent_fallback") or DC_CONTRIBUTOR)
             if lido_row else DC_CONTRIBUTOR
         )
 
-        if resource:
-            lines.append(make_nq(cho_nt, f"<{target_prop}>", f"<{_sanitize_iri(resource)}>", graph_iri))
-            agent_nt = f"<{_sanitize_iri(resource)}>"
-            lines.append(make_nq(agent_nt, f"<{RDF_TYPE}>", f"<{MOCHO_AGENT}>", graph_iri))
-            if label:
-                escaped = _escape_literal(label)
-                obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
-                lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>", obj_nt, graph_iri))
+        if resource_raw:
+            for uri in resource_uris(resource_raw, bare_id_to_uri, "Agent"):
+                lines.append(make_nq(cho_nt, f"<{target_prop}>", f"<{uri}>", graph_iri))
+                agent_nt = f"<{uri}>"
+                lines.append(make_nq(agent_nt, f"<{RDF_TYPE}>", f"<{MOCHO_AGENT}>", graph_iri))
+                if label:
+                    escaped = _escape_literal(label)
+                    obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
+                    lines.append(make_nq(agent_nt, f"<{RDFS_LABEL}>", obj_nt, graph_iri))
         elif label:
             escaped = _escape_literal(label)
             obj_nt  = f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
@@ -404,23 +503,24 @@ def emit_aggregation_triples(agg: dict, cho_nt: str, graph_iri: str) -> NQList:
 
     is_shown = agg.get("isShownAt") or {}
     if isinstance(is_shown, dict):
-        uri = (is_shown.get("resource") or "").strip()
-        if uri:
-            lines.append(make_nq(cho_nt, f"<{DCTERMS_SOURCE}>", f"<{_sanitize_iri(uri)}>", graph_iri))
+        for uri in (is_shown.get("resource") or "").strip().split():
+            lines.append(make_nq(cho_nt, f"<{DCTERMS_SOURCE}>",
+                                 f"<{_sanitize_iri(uri)}>", graph_iri))
 
     for dp in coerce_list(agg.get("dataProvider")):
         if not isinstance(dp, dict):
             continue
-        uri = (dp.get("resource") or "").strip()
-        if uri and uri.startswith(_org_prefix):
-            lines.append(make_nq(cho_nt, f"<{_edm_dp}>", f"<{_sanitize_iri(uri)}>", graph_iri))
+        for uri in (dp.get("resource") or "").strip().split():
+            if uri.startswith(_org_prefix):
+                lines.append(make_nq(cho_nt, f"<{_edm_dp}>",
+                                     f"<{_sanitize_iri(uri)}>", graph_iri))
 
     for obj in coerce_list(agg.get("object")):
         if not isinstance(obj, dict):
             continue
-        uri = (obj.get("resource") or "").strip()
-        if uri:
-            lines.append(make_nq(cho_nt, f"<{FOAF_THUMBNAIL}>", f"<{_sanitize_iri(uri)}>", graph_iri))
+        for uri in (obj.get("resource") or "").strip().split():
+            lines.append(make_nq(cho_nt, f"<{FOAF_THUMBNAIL}>",
+                                 f"<{_sanitize_iri(uri)}>", graph_iri))
 
     return lines
 
@@ -434,7 +534,7 @@ def emit_place_stubs(places: object, graph_iri: str) -> NQList:
         raw_about = (place.get("about") or "").strip()
         if not raw_about:
             continue
-        place_uri = mint_bare_id("Place", raw_about)
+        place_uri = mint_bare_id("Place", _sanitize_iri(raw_about.split()[0]))
         place_nt  = f"<{place_uri}>"
         for lbl in coerce_list(place.get("prefLabel")):
             for obj_nt in value_to_nt_obj(lbl):
@@ -514,6 +614,7 @@ def emit_mocho_triples(
     preds_all: Counter = Counter()
     preds_new: Counter = Counter()
     sani_ctr:  Counter = Counter()
+    bare_id_to_uri = build_bare_id_index(rdf)
 
     def _track(pred_iri: str) -> None:
         curie = _to_curie(pred_iri)
@@ -582,6 +683,14 @@ def emit_mocho_triples(
         if about:
             concepts_index[about] = concept
 
+    places_index: dict[str, dict] = {}
+    for place in coerce_list(rdf.get("Place")):
+        if not isinstance(place, dict):
+            continue
+        about = (place.get("about") or "").strip()
+        if about:
+            places_index[about.split()[0]] = place
+
     # ── dc:title — dual-emit (props-mapping D4) ───────────────────────────────
     dc_title_iri = "http://purl.org/dc/elements/1.1/title"
     title_prop   = class_prop_align.get((target_class, dc_title_iri), "")
@@ -601,6 +710,7 @@ def emit_mocho_triples(
     subject_vals: list = []
     for skey in SUBJECT_KEYS:
         subject_vals.extend(coerce_list(cho.get(skey)))
+    hastype_vals: list = coerce_list(cho.get("hasType"))
 
     for prop, val in cho.items():
         if prop in _special_keys:
@@ -640,12 +750,14 @@ def emit_mocho_triples(
             continue
 
         for obj_nt in value_to_nt_obj(val, sani_ctr):
-            lines.append(make_nq(cho_nt, f"<{target_prop}>", obj_nt, graph_iri))
+            lines.append(make_nq(cho_nt, f"<{target_prop}>",
+                                 expand_obj_nt(obj_nt, bare_id_to_uri), graph_iri))
             _track(target_prop)
 
     # ── Special handlers ──────────────────────────────────────────────────────
     _creator_lines = emit_creator_triples(
         cho_nt, cho.get("creator"), agents_index, target_class, class_prop_align, graph_iri,
+        bare_id_to_uri,
     )
     lines.extend(_creator_lines)
     _track_nqlist(_creator_lines)
@@ -653,14 +765,30 @@ def emit_mocho_triples(
     _contrib_lines = emit_contributor_triples(
         cho_nt, cho.get("contributor"),
         event_participant_index, lido_dispatch, target_class, wemi, graph_iri,
+        bare_id_to_uri,
     )
     lines.extend(_contrib_lines)
     _track_nqlist(_contrib_lines)
 
     if subject_vals:
-        _subject_lines = emit_subject_triples(cho_nt, subject_vals, concepts_index, graph_iri)
+        _subject_lines = emit_subject_triples(cho_nt, subject_vals, concepts_index, graph_iri,
+                                              bare_id_to_uri)
         lines.extend(_subject_lines)
         _track_nqlist(_subject_lines)
+
+    if hastype_vals:
+        _hastype_lines = emit_hastype_triples(cho_nt, hastype_vals, concepts_index, graph_iri,
+                                              bare_id_to_uri)
+        lines.extend(_hastype_lines)
+        _track_nqlist(_hastype_lines)
+
+    currentloc_vals = coerce_list(cho.get("currentLocation"))
+    if currentloc_vals:
+        _curloc_lines = emit_current_location_triples(
+            cho_nt, currentloc_vals, places_index, graph_iri, bare_id_to_uri,
+        )
+        lines.extend(_curloc_lines)
+        _track_nqlist(_curloc_lines)
 
     # ── Aggregation & Place ───────────────────────────────────────────────────
     agg = rdf.get("Aggregation") or {}

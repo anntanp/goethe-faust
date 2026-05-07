@@ -515,3 +515,46 @@ Adding a new special case = one entry in the registry + one new function. The ge
 ### §13.3 Pipeline
 
 `transform_record()` calls independent stream emitters in sequence — `emit_ddbedm_triples`, `emit_mocho_triples`, `emit_prov_triples` — each returning a list of N-Quad lines. The four output streams are fully decoupled: mt007 guard applies only to mocho and werk_staging; ddbedm and prov always run. See `§7.1`.
+
+---
+
+## §15 Future work
+
+### §15.1 In-process parallelisation (raised 2026-05-07)
+
+The current implementation is single-threaded. The planned approach (§2.1 of `transform-implementation-actual.md`) is to run one OS process per sector JSONL file externally. The downside is a manual merge step after all workers finish.
+
+Two options for moving parallelisation into the script itself:
+
+**Option A — `ProcessPoolExecutor` inside `__main__.py`**
+
+`transform_record()` is already a pure function with no shared state, which makes this the natural fit.
+
+- Load all config tables once in the main process (already done).
+- Pass them to workers via the pool `initializer` — copied once per worker at fork, not per record.
+- Replace the `for line_no, raw in enumerate(...)` loop with batch submission to the pool.
+- Workers return `(streams, werk_row, dispatch_info, pred_info)` tuples; the main process handles all file I/O and counter updates.
+- DuckDB connection and stats `Counter` stay in the main process.
+- SIGINT teardown: `executor.shutdown(cancel_futures=True)`.
+
+**Estimated effort**: ~120 lines changed/added in `__main__.py` only. No changes to `transform.py`, `emitters.py`, or any other module.
+
+**Option B — `python -m transform merge` subcommand**
+
+The transform script stays single-threaded. A separate `merge.py` (~60 lines, new file) handles post-run collection:
+- Concatenates all `.nq` shards into one file.
+- Merges DuckDB staging tables (`INSERT INTO … SELECT * FROM …`).
+- Sums stats JSON files into a combined report.
+
+**Estimated effort**: ~60 lines, new file only. Zero changes to existing code.
+
+**Trade-off**:
+
+| | Option A | Option B |
+|---|---|---|
+| Single invocation | yes | no (still two steps) |
+| Code change | moderate (`__main__.py`) | minimal (new file only) |
+| Risk to existing code | low but nonzero | zero |
+| Scales to 18.5M records | yes, native | yes, same as current |
+
+For a pipeline run on a known corpus, Option B is faster to add and harder to break. Option A makes sense if single-command operation matters for reproducibility or handoff.

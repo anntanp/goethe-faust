@@ -39,7 +39,7 @@ output/config/*.csv / *.json          dispatch + alignment tables
                   <stem>.log                  run log
 ```
 
-`<stem>` is the input filename without extension (e.g. `items-all-goethe-faust.json` → `items-all-goethe-faust`). Each invocation creates a new timestamped run directory. Use `--outdir` to override.
+`<stem>` is the input filename without extension (e.g. `items-all-goethe-faust.json` → `items-all-goethe-faust`), or the value of `--stub` if provided. Each invocation creates a new timestamped run directory. Use `--outdir` to override.
 
 ### Full GeMeA corpus (Option C parallel)
 
@@ -112,7 +112,7 @@ Run from the `scripts/` directory. Full argument list: `python -m transform --he
 
 | Group | Arguments |
 |---|---|
-| I/O | `--jsonl FILE`, `--ids FILE`, `--outdir DIR` |
+| I/O | `--jsonl FILE`, `--ids FILE`, `--outdir DIR`, `--stem STR` |
 | Config | `--alignment`, `--lido`, `--htype`, `--mediatype`, `--audio` |
 | Stats | `--stats none\|basic\|dispatch\|full` (default: `basic`) |
 | Logging | `--log-level DEBUG\|INFO\|WARNING\|ERROR`, `--debug` |

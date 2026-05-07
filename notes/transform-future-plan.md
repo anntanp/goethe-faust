@@ -238,3 +238,35 @@ See `transform-props-mapping-plan.md §13–14` and `transform-props-mapping-adr
 - ArtKB API / SPARQL endpoint availability and query interface
 - Wikidata: use `wikidata:P180` (depicts) or direct work Q-item match?
 - Confidence threshold for string-match vs. exact-match linking
+
+---
+
+## §13 QLever text-entity link files for `ql:contains-word` support
+
+**Prerequisite**: N-Quads output from the transform pipeline (any run).
+
+QLever's `ql:contains-word` / `ql:has-word` predicates require the text index to be built with entity-to-text-record links. The `-W` flag (`--text-words-from-literals`) builds a word vocabulary from literals but does NOT create these links. The result: `ql:contains-word "word"` finds text records but their internal IDs cannot be joined back to KG entities via triple patterns or `ql:contains-entity`.
+
+To enable `ql:contains-word` queries against the KG, the index must be rebuilt with a docstrings file (`-d`) that maps entity IRIs to their associated text. Two files are required by `qlever-index`:
+
+| File | Format | Content |
+|---|---|---|
+| words file (`-w`) | `word\tentity_IRI\tdoc_id\tscore\n` (one row per word) | tokenised literal values per entity |
+| docs file (`-d`) | `doc_id\tentity_IRI\tfull_text\n` | full literal text per entity |
+
+**Generation approach**: post-process the N-Quads output. For each triple `<subject> <predicate> <literal>` where `<predicate>` is a text-searchable property (at minimum `dc:title`, `dc:description`, `dc:subject`):
+
+1. Emit one docs-file row: `doc_id → subject IRI → concatenated literal values`
+2. Emit one words-file row per token (whitespace-tokenised, lowercased) in the literal
+
+**Script location**: `scripts/transform/gen_qlever_text_files.py`
+
+**Affected properties** (initial set):
+- `dc:title`, `dcterms:title`, `rdam:P30156`
+- `dc:description`
+- `dc:subject` (literal values only)
+- `dc:creator`, `dc:contributor` (literal values only — GND-linked values are entity IRIs)
+
+**Re-indexing**: rebuild `docker-compose.qlever.yml` to pass `-d` and `-w` alongside (or instead of) `-W`.
+
+**Why it matters**: once these files exist, `FILTER(CONTAINS(...))` in Query 3 of the ISWC paper can be replaced with `ql:contains-word`, giving an order-of-magnitude speedup on large corpora and enabling ranked retrieval via BM25 (`--bm25-k`/`--bm25-b` flags). Also unblocks the "KG-grounded retrieval" use case in Section 5.3 of the paper.

@@ -180,7 +180,137 @@ Adding `ec:EditorialWork` would produce 88 additional staging rows (mt005 Video)
 
 ---
 
-## 7. Full-corpus run plan
+## 7. Emitter safety audit (2026-05-07)
+
+### 7.1 Issue categories
+
+Three systemic gaps (A–C) and one feature addition (D):
+
+| # | Category | Root cause / motivation | Emitters affected |
+|---|---|---|---|
+| A | `<br>` in literals | `_escape_literal` does not normalize HTML line-break tags; the unescaped tag appears verbatim in the N-Quad literal | Any emitter that calls `_escape_literal` on a field containing `<br …>` |
+| B | Multi-URI `resource` not split | Emitters that manually extract `val.get("resource")` treat space-separated URIs as one string, producing a malformed IRI | `emit_subject_triples`, `emit_hastype_triples`, `emit_creator_triples`, `emit_contributor_triples`, `emit_aggregation_triples`, `emit_place_stubs` |
+| C | Bare IDs not expanded in special emitters | Same emitters bypass `expand_obj_nt`; also `emit_prov_triples` passes `provider_isil` without `_sanitize_iri` | `emit_creator_triples`, `emit_contributor_triples`, `emit_place_stubs`, `emit_prov_triples` |
+| D | `edm:currentLocation` — IRI-with-label-stub | Currently emitted via generic loop (no label stub). Should follow the same "IRI-with-label-stub" pattern as `edm:hasType`: URI values get a `rdfs:label` stub from the matching `edm:Place`; literal values pass through unchanged | New `emit_current_location_triples`; `"currentLocation"` added to `_MOCHO_SKIP` |
+
+Note: `value_to_nt_obj` (used by the generic loops in `emit_ddbedm_triples` and `emit_mocho_triples`) already handles B and C correctly via `.split()` and `_sanitize_iri`. The gaps are exclusively in special-case emitters that extract `resource` manually.
+
+Corpus evidence (from `data/items-all-goethe-faust.json`):
+- **B/D** — `23MBRVVDUHBFZNDCTK4SQM7KROKGVGNF`: `ProvidedCHO.currentLocation.resource = "http://d-nb.info/gnd/4044283-4 https://www.geonames.org/2855745"` and matching `Place.about`
+- **A** — `223GMAWUHPGI76OQUKSL54XVOCHHXDWD`: description field contains `"...1749, +22. März 1832<br />Eduard Lassen..."` 
+- **C** — `222NZKK63TNRLC2VETRV722VKBDSUVGL`: `ProvidedCHO.hasType[0].resource = "DJVX2BT7X2HN24O6YRDOQM6T3CNZYYY6"` (bare 32-char ID)
+
+### 7.2 Design — `resource_uris()` utility
+
+Rather than patching each emitter individually, one utility in `utils.py` encapsulates the three sub-steps every manual `resource` extraction must perform:
+
+```python
+def resource_uris(
+    resource_raw: str,
+    bare_id_to_uri: dict[str, str] | None = None,
+    entity_class: str = "Agent",
+) -> list[str]:
+    """Expand, sanitize, and split all URIs from a (possibly multi-value) resource string.
+
+    Steps: (1) split on whitespace; (2) expand bare IDs via index or mint_bare_id fallback;
+    (3) percent-encode unsafe characters. Returns [] for empty input.
+    """
+```
+
+Callers pass `(val.get("resource") or "").strip()`, the per-record `bare_id_to_uri` index, and the entity class for bare-ID minting. Returns a list of safe, full URI strings ready for `f"<{uri}>"` wrapping.
+
+**Primary-URI rule**: emitters that need the raw first URI before expansion (e.g. `event_participant_index` lookup in `emit_contributor_triples`, `resolve_agent` in `emit_creator_triples`) extract `resource_raw.split()[0]` before calling `resource_uris()`.
+
+### 7.3 Change inventory
+
+**`utils.py`**
+
+| Change | Detail |
+|---|---|
+| Add `_BR_RE` | `re.compile(r'<br\s*/?\s*>', re.IGNORECASE)` |
+| Update `_escape_literal` | Prepend `s = _BR_RE.sub('\n', s)` before the escape chain |
+| Add `resource_uris()` | New utility; imported by `emitters.py` |
+
+**`emitters.py`**
+
+| Emitter | Change |
+|---|---|
+| `emit_subject_triples` | Replace single-URI `resource` branch with `resource_uris(resource_raw, _bare, "Concept")` loop |
+| `emit_hastype_triples` | Same pattern |
+| `emit_creator_triples` | Add `bare_id_to_uri=None` param; Track 1: `resource_uris()` loop; Track 2: `resource_raw.split()[0]` for `resolve_agent`; apply `_sanitize_iri(agent_uri)` |
+| `emit_contributor_triples` | Add `bare_id_to_uri=None` param; `resource_raw.split()[0]` for `event_participant_index` lookup; `resource_uris()` loop for triples |
+| `emit_prov_triples` | Apply `_sanitize_iri(provider_isil)` |
+| `emit_place_stubs` | Split `raw_about`; pass only first part to `mint_bare_id` with `_sanitize_iri` |
+| `emit_aggregation_triples` | Inline split+sanitize loop for `isShownAt.resource`, `dataProvider.resource`, `object.resource` (no bare ID expansion — aggregation URIs are always full) |
+| `emit_mocho_triples` | Pass `bare_id_to_uri` to `emit_creator_triples` and `emit_contributor_triples` |
+
+**`emitters.py` — imports**: add `resource_uris` to `from .utils import`.
+
+### 7.4 Fixture-based integration tests
+
+Three real corpus records are saved to `scripts/transform/tests/fixtures/` as minimal inspection targets. Each record is stored as `<id>.json` (single-record JSON, not JSONL).
+
+| File | Record ID | Pattern |
+|---|---|---|
+| `fixtures/multi_uri.json` | `23MBRVVDUHBFZNDCTK4SQM7KROKGVGNF` | Multi-URI in `Place.about` and `currentLocation.resource` |
+| `fixtures/br_tag.json` | `223GMAWUHPGI76OQUKSL54XVOCHHXDWD` | `<br />` in description literal |
+| `fixtures/bare_id.json` | `222NZKK63TNRLC2VETRV722VKBDSUVGL` | Bare 32-char ID in `hasType.resource` |
+
+After fixes are applied, a fixture script `tests/make_fixtures.py` runs the full transform on all three records and writes `fixtures/<id>.nq` — the complete N-Quads output for human inspection.
+
+Integration tests in `test_transform.py` (new `TestFixtures` class) load each `.json`, call `transform_record()`, and make targeted assertions:
+
+| Test | Assertion |
+|---|---|
+| `test_multi_uri_place_splits` | Two separate `Place` subject IRIs emitted; no IRI containing a space |
+| `test_multi_uri_current_location_splits` | Two separate triples for `currentLocation` |
+| `test_br_tag_normalized` | `\\n` appears in the relevant literal; no `<br` substring in any triple |
+| `test_bare_id_hastype_expanded` | `urn:ddbedm:Concept:DJVX…` IRI in `edm:hasType` triple; no raw bare ID as IRI |
+
+### 7.5 Unit test additions
+
+| Class / function | Covers |
+|---|---|
+| `TestEscapeLiteral` (extend) | `<br>`, `<BR />`, `<br/>` all produce `\\n` |
+| `TestResourceUris` | empty → `[]`; single full URI → `[sanitized]`; two space-separated → two entries; bare ID → index lookup; bare ID fallback → `mint_bare_id`; entity_class forwarded |
+| `TestEmitSubjectTriplesMultiUri` | `"URI1 URI2"` → two `dcterms:subject` triples |
+| `TestEmitHastypeTriplesMultiUri` | Same for `edm:hasType` |
+| `TestEmitCreatorTriplesMultiUri` | Two URIs → two Track-1 triples |
+| `TestEmitCreatorTriplesBareId` | Bare ID expanded; `agent_uri` sanitized |
+| `TestEmitContributorTriplesMultiUri` | Two URIs → two `(cho, prop, uri)` triples |
+| `TestEmitContributorTriplesBareId` | Bare ID expanded via param |
+| `TestEmitProvTriplesIsil` | `provider_isil` with unsafe chars → sanitized in `MOCHO_ISIL` triple |
+| `TestEmitPlaceStubsSplitAbout` | Space-separated `about` → only first part used as subject |
+| `TestEmitAggregationSplitUri` | `isShownAt.resource = "URI1 URI2"` → two `dcterms:source` triples |
+
+### 7.6 Validation run — goethe-faust corpus (2026-05-07)
+
+Full run on `data/items-all-goethe-faust.json` (115,432 records) after all audit fixes. Output: `output/transform/20260507_190805/`.
+
+| Metric | POC (2026-05-06) | Post-audit (2026-05-07) | Delta |
+|---|---|---|---|
+| Records processed | 115,432 | 115,432 | — |
+| Triples total | 14,713,376 | 14,764,352 | +50,976 |
+| ddbedm | 8,957,262 | 8,957,734 | +472 |
+| **mocho** | **1,898,754** | **1,950,504** | **+51,750** |
+| prov | 3,857,360 | 3,856,114 | −1,246 |
+| Errors | 0 | 0 | — |
+| fallback_d9 | 0 | 0 | — |
+| uri_sanitized | 29 | 29 | — |
+| uri_split | 4,188 | 2,685 | −1,503 |
+| uri_about_split | 1,309 | 1,309 | — |
+
+**mocho +51,750** breaks down as:
+- `edm:currentLocation` — 31,837 new triples (property moved from generic loop to `emit_current_location_triples`; IRI-with-label-stub pattern)
+- Creator/contributor bare-ID expansions, multi-URI splits, and subject/hasType label stubs now handled correctly in special emitters account for the remainder
+
+**uri_split −1,503**: some multi-URI splits previously counted via the generic loop (`value_to_nt_obj`) are now handled in special emitters via `resource_uris()` and tracked separately; the net split count is lower because `currentLocation` URIs (many multi-value) are no longer double-counted.
+
+**prov −1,246**: minor change due to PROV provider node deduplication; no logic change — variance from record ordering in input.
+
+---
+
+## 8. Full-corpus run plan
 
 See `notes/transform-dryrun-plan.md §6` for the full pipeline:
 
