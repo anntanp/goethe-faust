@@ -154,9 +154,10 @@ def main(argv=None) -> None:
     args = parser.parse_args(argv)
 
     out_base  = args.out_base
+    stem      = out_base.name
     nq_out    = args.nq    or out_base / "combined.nq"
-    db_out    = args.db    or out_base / "werk-staging-merged.duckdb"
-    stats_out = args.stats or out_base / "combined-stats.json"
+    db_out    = args.db    or out_base / f"{stem}-werk-staging.duckdb"
+    stats_out = args.stats or out_base / f"{stem}-stats.json"
 
     nq_paths    = sorted(p for p in out_base.rglob("*.nq")                  if p != nq_out)
     db_paths    = sorted(p for p in out_base.rglob("*-werk-staging.duckdb") if p != db_out)

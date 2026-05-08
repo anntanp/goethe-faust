@@ -395,3 +395,18 @@ The htype code (e.g. `"htype_021"`) is the local name of the vocnet-htype indivi
 - QLever's default graph is the union of all named graphs. A query without a `GRAPH` filter will find `edm:Place` from ddbedm, `mocho:Agent` from mocho, and `skos:Concept` from ddbedm — cross-graph typing is transparent to consumers.
 - Agent stubs are an exception because `mocho:Agent` is a mocho-internal type with no counterpart in EDM or any source vocabulary. It is needed for uniform federated querying (`?x a mocho:Agent`) across records that use different Agent superclasses (`foaf:Agent`, GND entity classes). Re-asserting it from the ddbedm graph is not possible since ddbedm uses `edm:Agent`, not `mocho:Agent`.
 - Adding `edm:Place` or `skos:Concept` in mocho would be redundant cross-graph re-assertions with no query benefit. It would also inflate the mocho graph with triples whose authority belongs in ddbedm.
+
+---
+
+## Decision 18: Drop `dcTermSubject` — redundant corpus typo variant of `dcTermsSubject`
+
+**Decision** (2026-05-08): Remove `dcTermSubject` from `_DDBEDM_PROP`, `SUBJECT_KEYS`, and `_MOCHO_SKIP` in `constants.py`. It is not emitted in either the ddbedm or mocho graph.
+
+**Evidence**: Corpus analysis of `items-all-goethe-faust.json` (115,432 records):
+- 69,588 records contain `dcTermSubject`
+- All 69,588 also contain `dcTermsSubject`
+- In all 69,588 cases the resource URIs are **identical** — zero records where `dcTermSubject` carries a value not already present in `dcTermsSubject`
+
+Without this decision, `emit_ddbedm_triples` emits duplicate `dcterms:subject` triples for those 69,588 records (once per aliased key, no cross-field deduplication in the passthrough loop).
+
+**Rationale**: `dcTermSubject` is a typo variant that appears only as a redundant copy of `dcTermsSubject`. Dropping it removes ~69,588 duplicate triples from the ddbedm graph with no information loss.

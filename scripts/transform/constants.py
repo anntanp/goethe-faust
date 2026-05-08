@@ -98,12 +98,12 @@ XSD_DATETIME    = "http://www.w3.org/2001/XMLSchema#dateTime"
 
 # ─── Property skip sets ───────────────────────────────────────────────────────
 
-SUBJECT_KEYS = frozenset({"dcSubject", "dcTermsSubject", "dcTermSubject"})
+SUBJECT_KEYS = frozenset({"dcSubject", "dcTermsSubject"})
 
 _MOCHO_SKIP = frozenset({
     "about", "hierarchyType",
     "creator", "contributor",
-    "dcSubject", "dcTermsSubject", "dcTermSubject",
+    "dcSubject", "dcTermsSubject",
     "dcType",
     "aggregationEntity", "hierarchyPosition",
     "hasMet",          # edm:hasMet is an EDM Event property; no mocho alignment, skip in mocho graph
@@ -245,7 +245,6 @@ _DDBEDM_PROP: dict[str, str] = {
     # DC terms
     "alternative":         "http://purl.org/dc/terms/alternative",
     "dcTermsSubject":      "http://purl.org/dc/terms/subject",
-    "dcTermSubject":       "http://purl.org/dc/terms/subject",  # corpus typo variant
     "dcTermsLanguage":     "http://purl.org/dc/terms/language",
     "isPartOf":            "http://purl.org/dc/terms/isPartOf",
     "issued":              "http://purl.org/dc/terms/issued",
