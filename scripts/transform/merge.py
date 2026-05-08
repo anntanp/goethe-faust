@@ -143,12 +143,14 @@ def main(argv=None) -> None:
     )
     parser.add_argument("out_base", type=Path,
                         help="Run directory containing shard subdirectories")
-    parser.add_argument("--nq",    type=Path, default=None,
+    parser.add_argument("--nq",      type=Path, default=None,
                         help="Output .nq path (default: <out_base>/combined.nq)")
-    parser.add_argument("--db",    type=Path, default=None,
+    parser.add_argument("--db",      type=Path, default=None,
                         help="Output DuckDB path (default: <out_base>/werk-staging-merged.duckdb)")
-    parser.add_argument("--stats", type=Path, default=None,
+    parser.add_argument("--stats",   type=Path, default=None,
                         help="Output stats path (default: <out_base>/combined-stats.json)")
+    parser.add_argument("--skip-nq", action="store_true",
+                        help="Skip .nq concatenation; merge only stats and werk_staging")
     args = parser.parse_args(argv)
 
     out_base  = args.out_base
@@ -160,16 +162,19 @@ def main(argv=None) -> None:
     db_paths    = sorted(p for p in out_base.rglob("*-werk-staging.duckdb") if p != db_out)
     stats_paths = sorted(p for p in out_base.rglob("*-stats.json")          if p != stats_out)
 
-    if not nq_paths:
+    if not args.skip_nq and not nq_paths:
         print(f"No *.nq shard files found under {out_base}", file=sys.stderr)
         sys.exit(1)
 
     to_delete: list[Path] = []
     try:
-        _merge_nq(nq_paths, nq_out)
-        to_delete.extend(nq_paths)
-        sz = nq_out.stat().st_size
-        print(f"  .nq:    {len(nq_paths)} shards → {nq_out} ({sz / 1_000_000:.1f} MB)")
+        if args.skip_nq:
+            print(f"  .nq:    skipped (--skip-nq)")
+        else:
+            _merge_nq(nq_paths, nq_out)
+            to_delete.extend(nq_paths)
+            sz = nq_out.stat().st_size
+            print(f"  .nq:    {len(nq_paths)} shards → {nq_out} ({sz / 1_000_000:.1f} MB)")
 
         if db_paths:
             try:
