@@ -40,6 +40,7 @@ from transform.emitters import (
     emit_place_stubs,
     werk_staging_row,
     emit_ddbedm_triples,
+    emit_mocho_triples,
 )
 from transform.constants import (
     _MOCHO_SKIP, DDB_HIERARCHY_TYPE, _HTYPE_PREFIX, EDM_HAS_TYPE, EDM_NS,
@@ -1057,3 +1058,47 @@ class TestFixtures:
         lines = _run_fixture("bare_id")
         assert not any(f"<{bare}>" in l for l in lines), "Bare ID not expanded"
         assert any(f"urn:ddbedm:Concept:{bare}" in l for l in lines), "Expanded URN missing"
+
+
+# ── mocho:mediaType and mocho:sector as vocnet IRIs ───────────────────────────
+
+_MT002 = "http://ddb.vocnet.org/medientyp/mt002"
+_SPARTE006 = "http://ddb.vocnet.org/sparte/sparte006"
+_MOCHO_MEDIATYPE = MOCHO_NS + "mediaType"
+_MOCHO_SECTOR    = MOCHO_NS + "sector"
+_CHO_ID = "A" * 32
+
+
+class TestEmitMochoMediaTypeSector:
+
+    @staticmethod
+    def _run(sector: str, mediatype: str, cho_fields: dict | None = None) -> list[str]:
+        mc_map, ht_map, at_map, cpa, lido = _fixture_configs()
+        rdf = {"ProvidedCHO": {"about": f"http://example.org/{_CHO_ID}", **(cho_fields or {})}}
+        cho_uri = f"https://gemea.ise.fiz-karlsruhe.de/mocho/{_CHO_ID}"
+        ddb_uri = f"http://www.deutsche-digitale-bibliothek.de/item/{_CHO_ID}"
+        lines, *_ = emit_mocho_triples(
+            rdf, cho_uri, ddb_uri, sector, mediatype,
+            mc_map, ht_map, at_map, cpa, lido, GRAPH_MOCHO,
+        )
+        return lines
+
+    def test_mediatype_iri_emitted(self):
+        lines = self._run(_SPARTE006, _MT002)
+        assert any(f"<{_MOCHO_MEDIATYPE}>" in l and f"<{_MT002}>" in l for l in lines)
+
+    def test_mediatype_any_not_emitted(self):
+        lines = self._run("any", "any")
+        assert not any(f"<{_MOCHO_MEDIATYPE}>" in l for l in lines)
+
+    def test_mediatype_no_literal(self):
+        lines = self._run(_SPARTE006, _MT002, cho_fields={"edmType": "IMAGE"})
+        assert not any(f"<{_MOCHO_MEDIATYPE}>" in l and '"IMAGE"' in l for l in lines)
+
+    def test_sector_iri_emitted(self):
+        lines = self._run(_SPARTE006, _MT002)
+        assert any(f"<{_MOCHO_SECTOR}>" in l and f"<{_SPARTE006}>" in l for l in lines)
+
+    def test_sector_any_not_emitted(self):
+        lines = self._run("any", _MT002)
+        assert not any(f"<{_MOCHO_SECTOR}>" in l for l in lines)

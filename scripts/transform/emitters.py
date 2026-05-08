@@ -679,6 +679,14 @@ def emit_mocho_triples(
     lines.append(make_nq(cho_nt, f"<{OWL_SAMEAS}>", f"<{ddb_uri}>", graph_iri))
     _track(OWL_SAMEAS)
 
+    # mocho:mediaType and mocho:sector as vocnet IRIs
+    if mediatype != "any":
+        lines.append(make_nq(cho_nt, f"<{MOCHO_NS}mediaType>", f"<{mediatype}>", graph_iri))
+        _track(MOCHO_NS + "mediaType")
+    if sector != "any":
+        lines.append(make_nq(cho_nt, f"<{MOCHO_NS}sector>", f"<{sector}>", graph_iri))
+        _track(MOCHO_NS + "sector")
+
     # ── Build per-record indexes ───────────────────────────────────────────────
     agents_index: dict[str, AgentDict] = {}
     for agent in coerce_list(rdf.get("Agent")):

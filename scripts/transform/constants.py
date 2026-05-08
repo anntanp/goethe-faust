@@ -105,6 +105,7 @@ _MOCHO_SKIP = frozenset({
     "creator", "contributor",
     "dcSubject", "dcTermsSubject",
     "dcType",
+    "edmType",         # edm:type literal ("IMAGE" etc.); replaced by mocho:mediaType vocnet IRI
     "aggregationEntity", "hierarchyPosition",
     "hasMet",          # edm:hasMet is an EDM Event property; no mocho alignment, skip in mocho graph
     "hasType",         # handled by emit_hastype_triples(); IRI-with-label-stub (D16/D17)

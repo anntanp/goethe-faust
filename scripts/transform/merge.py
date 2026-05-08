@@ -1,15 +1,20 @@
 """
 Purpose:    Merge per-worker transform output shards into combined files.
-            Concatenates *.nq shards, merges werk_staging DuckDB tables, sums *-stats.json.
+            Concatenates *.nq shards, merges werk_staging DuckDB tables, sums *-stats.json,
+            concatenates *-errors.jsonl and *.log shards.
             Shard files are deleted only after all merges complete without error.
 Usage:      python -m transform merge <out_base>
-                [--nq PATH] [--db PATH] [--stats PATH]
+                [--nq PATH] [--db PATH] [--stats PATH] [--errors PATH] [--log PATH]
 Inputs:     <out_base>/**/*.nq                   N-Quads shards (one per worker)
             <out_base>/**/*-werk-staging.duckdb  DuckDB werk_staging shards
             <out_base>/**/*-stats.json           per-worker stats JSON files
+            <out_base>/**/*-errors.jsonl         per-worker error records
+            <out_base>/**/*.log                  per-worker run logs
 Outputs:    <out_base>/combined.nq               merged N-Quads (or --nq)
             <out_base>/werk-staging-merged.duckdb merged werk_staging (or --db)
-            <out_base>/combined-stats.json        merged stats (or --stats)
+            <out_base>/<stem>-stats.json          merged stats (or --stats)
+            <out_base>/<stem>-errors.jsonl        merged errors (or --errors)
+            <out_base>/<stem>.log                 merged logs (or --log)
 Deps:       stdlib only + duckdb (pip install duckdb) for .duckdb merge
 Assumes:    All shards produced by `python -m transform` with compatible --stats level.
             Output files are overwritten if they already exist.
@@ -148,20 +153,28 @@ def main(argv=None) -> None:
     parser.add_argument("--db",      type=Path, default=None,
                         help="Output DuckDB path (default: <out_base>/werk-staging-merged.duckdb)")
     parser.add_argument("--stats",   type=Path, default=None,
-                        help="Output stats path (default: <out_base>/combined-stats.json)")
+                        help="Output stats path (default: <out_base>/<stem>-stats.json)")
+    parser.add_argument("--errors",  type=Path, default=None,
+                        help="Output errors path (default: <out_base>/<stem>-errors.jsonl)")
+    parser.add_argument("--log",     type=Path, default=None,
+                        help="Output log path (default: <out_base>/<stem>.log)")
     parser.add_argument("--skip-nq", action="store_true",
                         help="Skip .nq concatenation; merge only stats and werk_staging")
     args = parser.parse_args(argv)
 
-    out_base  = args.out_base
-    stem      = out_base.name
-    nq_out    = args.nq    or out_base / "combined.nq"
-    db_out    = args.db    or out_base / f"{stem}-werk-staging.duckdb"
-    stats_out = args.stats or out_base / f"{stem}-stats.json"
+    out_base   = args.out_base
+    stem       = out_base.name
+    nq_out     = args.nq     or out_base / "combined.nq"
+    db_out     = args.db     or out_base / f"{stem}-werk-staging.duckdb"
+    stats_out  = args.stats  or out_base / f"{stem}-stats.json"
+    errors_out = args.errors or out_base / f"{stem}-errors.jsonl"
+    log_out    = args.log    or out_base / f"{stem}.log"
 
-    nq_paths    = sorted(p for p in out_base.rglob("*.nq")                  if p != nq_out)
-    db_paths    = sorted(p for p in out_base.rglob("*-werk-staging.duckdb") if p != db_out)
-    stats_paths = sorted(p for p in out_base.rglob("*-stats.json")          if p != stats_out)
+    nq_paths     = sorted(p for p in out_base.rglob("*.nq")                  if p != nq_out)
+    db_paths     = sorted(p for p in out_base.rglob("*-werk-staging.duckdb") if p != db_out)
+    stats_paths  = sorted(p for p in out_base.rglob("*-stats.json")          if p != stats_out)
+    errors_paths = sorted(p for p in out_base.rglob("*-errors.jsonl")        if p != errors_out)
+    log_paths    = sorted(p for p in out_base.rglob("*.log")                 if p != log_out)
 
     if not args.skip_nq and not nq_paths:
         print(f"No *.nq shard files found under {out_base}", file=sys.stderr)
@@ -198,6 +211,21 @@ def main(argv=None) -> None:
                   f"({r['processed']:,} records, {t['total']:,} triples)")
         else:
             print("  stats:  no shards found — skipping")
+
+        if errors_paths:
+            _merge_nq(errors_paths, errors_out)
+            to_delete.extend(errors_paths)
+            n_lines = sum(1 for _ in open(errors_out, encoding="utf-8"))
+            print(f"  errors: {len(errors_paths)} shards → {errors_out} ({n_lines:,} error records)")
+        else:
+            print("  errors: no shards found — skipping")
+
+        if log_paths:
+            _merge_nq(log_paths, log_out)
+            to_delete.extend(log_paths)
+            print(f"  logs:   {len(log_paths)} shards → {log_out}")
+        else:
+            print("  logs:   no shards found — skipping")
 
     except Exception as exc:
         print(f"Merge error: {exc} — shard files retained", file=sys.stderr)
