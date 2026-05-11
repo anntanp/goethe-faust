@@ -27,7 +27,11 @@ from .utils import (
 )
 
 
-def emit_ddbedm_triples(rdf: dict, graph_iri: str) -> tuple[NQList, Counter, Counter, Counter]:
+def emit_ddbedm_triples(
+    rdf: dict,
+    graph_iri: str,
+    lang_coll: set[str] | None = None,
+) -> tuple[NQList, Counter, Counter, Counter]:
     """Emit verbatim EDM passthrough triples for all entity types in rdf (§6.1).
 
     Subject: first URI in entity['about']; owl:sameAs emitted for any additional URIs.
@@ -68,7 +72,7 @@ def emit_ddbedm_triples(rdf: dict, graph_iri: str) -> tuple[NQList, Counter, Cou
                     continue
                 pred_nt = f"<{pred_iri}>"
                 curie   = _to_curie(pred_iri)
-                for obj_nt in value_to_nt_obj(val, sani_ctr):
+                for obj_nt in value_to_nt_obj(val, sani_ctr, lang_coll):
                     lines.append(make_nq(subj_nt, pred_nt,
                                          expand_obj_nt(obj_nt, bare_id_to_uri), graph_iri))
                     pred_ctr[curie] += 1
@@ -635,6 +639,7 @@ def emit_mocho_triples(
     class_prop_align: PropAlign,
     lido_dispatch: dict,
     graph_iri: str,
+    lang_coll: set[str] | None = None,
 ) -> tuple[NQList, str, str, dict]:
     """Emit all mocho-graph triples for one record (§6.3). Returns (lines, target_class, wemi, dispatch_flags).
 
@@ -732,7 +737,7 @@ def emit_mocho_triples(
     # ── dc:title — dual-emit (props-mapping D4) ───────────────────────────────
     dc_title_iri = "http://purl.org/dc/elements/1.1/title"
     title_prop   = class_prop_align.get((target_class, dc_title_iri), "")
-    for obj_nt in value_to_nt_obj(cho.get("title"), sani_ctr):
+    for obj_nt in value_to_nt_obj(cho.get("title"), sani_ctr, lang_coll):
         lines.append(make_nq(cho_nt, f"<{dc_title_iri}>", obj_nt, graph_iri))
         _track(dc_title_iri)
         if title_prop and title_prop != dc_title_iri:
@@ -787,7 +792,7 @@ def emit_mocho_triples(
                 _track(target_prop)
             continue
 
-        for obj_nt in value_to_nt_obj(val, sani_ctr):
+        for obj_nt in value_to_nt_obj(val, sani_ctr, lang_coll):
             lines.append(make_nq(cho_nt, f"<{target_prop}>",
                                  expand_obj_nt(obj_nt, bare_id_to_uri), graph_iri))
             _track(target_prop)

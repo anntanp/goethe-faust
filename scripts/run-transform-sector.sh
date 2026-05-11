@@ -11,12 +11,12 @@
 #              --merge-all        Merge stats + werk_staging + .nq after workers finish
 #              --output-dir DIR   Override output directory (default: derived from mode)
 #              --test             JSONL mode: input items-all-goethe-faust.json,
-#                                 output /data/gemea/mocho-transform/goethe-faust/, 5 workers
+#                                 output /data/gemea/www/downloads/gemea/<version>/, 5 workers
 # Inputs:    <sqlite-dir>/<sector>.sqlite  (normal mode)
 #            <scripts-dir>/../data/items-all-goethe-faust.json  (--test mode)
-# Outputs:   /data/gemea/mocho-transform/<version>/<sector>/combined.nq
-#            /data/gemea/mocho-transform/<version>/<sector>/combined-stats.json
-#            /data/gemea/mocho-transform/<version>/<sector>/werk-staging-merged.duckdb
+# Outputs:   /data/gemea/www/downloads/gemea/<version>/nq/<version>.nq
+#            /data/gemea/www/downloads/gemea/<version>/combined-stats.json
+#            /data/gemea/www/downloads/gemea/<version>/werk-staging-merged.duckdb
 # Deps:      python3; duckdb (pip install duckdb) for .duckdb merge; split (coreutils)
 # Assumes:   Config files at <scripts-dir>/../output/config/
 
@@ -57,10 +57,10 @@ PYTHON=$(cd "$SCRIPTS_DIR" && { [[ -x "../.venv/bin/python3" ]] && echo "../.ven
 if [[ "$TEST" == "true" ]]; then
   [[ "$WORKERS" -eq 50 ]] && WORKERS=5   # apply test default only if not explicitly overridden
   JSONL="$GOETHE/data/items-all-goethe-faust.json"
-  OUT="${OUTPUT_DIR:-/data/gemea/mocho-transform/goethe-faust}"
+  OUT="${OUTPUT_DIR:-/data/gemea/www/downloads/gemea/$VERSION}"
 else
   DB="$SQLITE_DIR/${SECTOR}.sqlite"
-  OUT="${OUTPUT_DIR:-/data/gemea/mocho-transform/$VERSION/$SECTOR}"
+  OUT="${OUTPUT_DIR:-/data/gemea/www/downloads/gemea/$VERSION}"
 fi
 
 # ── Validate ──────────────────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ else
   [[ -f "$DB" ]]    || { echo "SQLite not found: $DB" >&2; exit 1; }
 fi
 
-mkdir -p "$OUT"
+mkdir -p "$OUT" "$OUT/nq"
 
 # ── Launch workers ─────────────────────────────────────────────────────────────
 if [[ "$TEST" == "true" ]]; then
@@ -92,7 +92,7 @@ if [[ "$TEST" == "true" ]]; then
       cd "$SCRIPTS_DIR"
       $PYTHON -m transform \
         --jsonl     "$chunk" \
-        --outdir    "$OUT" \
+        --outdir    "$OUT/nq" \
         --stats     dispatch \
         --total     "$CHUNK_TOTAL" \
         --alignment "$CFG/lookup_class_prop_alignment.csv" \
@@ -119,7 +119,7 @@ else
         --db        "$DB" \
         --offset    "$OFFSET" \
         --limit     "$CHUNK" \
-        --outdir    "$OUT" \
+        --outdir    "$OUT/nq" \
         --stats     dispatch \
         --total     "$CHUNK" \
         --alignment "$CFG/lookup_class_prop_alignment.csv" \
@@ -139,11 +139,11 @@ echo "[$(date '+%F %T')] Workers done"
 if [[ "$MERGE_ALL" == "true" ]]; then
   echo "[$(date '+%F %T')] Merging shards (stats + werk_staging + .nq)"
   cd "$SCRIPTS_DIR"
-  $PYTHON -m transform merge "$OUT"
+  $PYTHON -m transform merge "$OUT/nq" --outdir "$OUT"
 elif [[ "$MERGE" == "true" ]]; then
   echo "[$(date '+%F %T')] Merging shards (stats + werk_staging only)"
   cd "$SCRIPTS_DIR"
-  $PYTHON -m transform merge "$OUT" --skip-nq
+  $PYTHON -m transform merge "$OUT/nq" --outdir "$OUT" --skip-nq
 else
   echo "[$(date '+%F %T')] Skipping merge (pass --merge or --merge-all)"
 fi

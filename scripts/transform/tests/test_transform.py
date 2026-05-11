@@ -1102,3 +1102,68 @@ class TestEmitMochoMediaTypeSector:
     def test_sector_any_not_emitted(self):
         lines = self._run("any", _MT002)
         assert not any(f"<{_MOCHO_SECTOR}>" in l for l in lines)
+
+
+# ── lang normalization via langcodes + IANA collection codes ─────────────────
+
+from transform.utils import _IANA_COLLECTION_CODES, _invalid_bcp47
+
+class TestIanaCollectionCodes:
+    def test_collection_codes_loaded(self):
+        assert len(_IANA_COLLECTION_CODES) > 0, "registry parse failed"
+
+    def test_known_collective_present(self):
+        for code in ("wen", "gem", "sem", "dra", "alg", "btk", "sit", "sla"):
+            assert code in _IANA_COLLECTION_CODES, code
+
+    def test_valid_individual_absent(self):
+        for code in ("ger", "eng", "lat", "hsb", "dsb", "und", "zxx"):
+            assert code not in _IANA_COLLECTION_CODES, code
+
+class TestInvalidBcp47:
+    def test_collective_is_invalid(self):
+        for code in ("wen", "gem", "dra"):
+            assert _invalid_bcp47(code), code
+
+    def test_malformed_is_invalid(self):
+        assert _invalid_bcp47("gerger")
+
+    def test_valid_codes_not_invalid(self):
+        for code in ("ger", "eng", "lat", "und", "zxx", "hsb"):
+            assert not _invalid_bcp47(code), code
+
+
+class TestValueToNtObjLangNorm:
+    def test_wen_normalized_to_und(self):
+        assert value_to_nt_obj({"$": "Janske jěchanje", "lang": "wen"}) == ['"Janske jěchanje"@und']
+
+    def test_valid_lang_unchanged(self):
+        assert value_to_nt_obj({"$": "Faust", "lang": "ger"}) == ['"Faust"@ger']
+
+    def test_collective_to_und(self):
+        assert value_to_nt_obj({"$": "some text", "lang": "gem"}) == ['"some text"@und']
+
+    def test_malformed_to_und(self):
+        assert value_to_nt_obj({"$": "text", "lang": "gerger"}) == ['"text"@und']
+
+    def test_no_lang_unchanged(self):
+        assert value_to_nt_obj({"$": "untitled"}) == ['"untitled"']
+
+    def test_lang_coll_populated_on_collective(self):
+        coll: set[str] = set()
+        value_to_nt_obj({"$": "Janske jěchanje", "lang": "wen"}, lang_coll=coll)
+        assert coll == {"wen"}
+
+    def test_lang_coll_populated_on_malformed(self):
+        coll: set[str] = set()
+        value_to_nt_obj({"$": "text", "lang": "gerger"}, lang_coll=coll)
+        assert coll == {"gerger"}
+
+    def test_lang_coll_empty_for_valid_lang(self):
+        coll: set[str] = set()
+        value_to_nt_obj({"$": "Faust", "lang": "ger"}, lang_coll=coll)
+        assert coll == set()
+
+    def test_lang_coll_none_no_crash(self):
+        result = value_to_nt_obj({"$": "text", "lang": "wen"}, lang_coll=None)
+        assert result == ['"text"@und']

@@ -28,9 +28,10 @@ AgentDict = Dict[str, object]
 
 # ─── Named graphs ─────────────────────────────────────────────────────────────
 
-GRAPH_DDBEDM = "https://gemea.ise.fiz-karlsruhe.de/graph/ddbedm"
-GRAPH_MOCHO  = "https://gemea.ise.fiz-karlsruhe.de/graph/mocho"
-GRAPH_PROV   = "https://gemea.ise.fiz-karlsruhe.de/graph/prov"
+GRAPH_DDBEDM     = "https://gemea.ise.fiz-karlsruhe.de/graph/ddbedm"
+GRAPH_MOCHO      = "https://gemea.ise.fiz-karlsruhe.de/graph/mocho"
+GRAPH_PROV       = "https://gemea.ise.fiz-karlsruhe.de/graph/prov"
+GRAPH_LANG_TITLE = "https://gemea.ise.fiz-karlsruhe.de/graph/lang-title"
 
 # ─── URI bases ────────────────────────────────────────────────────────────────
 

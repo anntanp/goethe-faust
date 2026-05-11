@@ -4,17 +4,17 @@ Purpose:    Merge per-worker transform output shards into combined files.
             concatenates *-errors.jsonl and *.log shards.
             Shard files are deleted only after all merges complete without error.
 Usage:      python -m transform merge <out_base>
-                [--nq PATH] [--db PATH] [--stats PATH] [--errors PATH] [--log PATH]
+                [--outdir DIR] [--nq PATH] [--db PATH] [--stats PATH] [--errors PATH] [--log PATH]
 Inputs:     <out_base>/**/*.nq                   N-Quads shards (one per worker)
             <out_base>/**/*-werk-staging.duckdb  DuckDB werk_staging shards
             <out_base>/**/*-stats.json           per-worker stats JSON files
             <out_base>/**/*-errors.jsonl         per-worker error records
             <out_base>/**/*.log                  per-worker run logs
-Outputs:    <out_base>/combined.nq               merged N-Quads (or --nq)
-            <out_base>/werk-staging-merged.duckdb merged werk_staging (or --db)
-            <out_base>/<stem>-stats.json          merged stats (or --stats)
-            <out_base>/<stem>-errors.jsonl        merged errors (or --errors)
-            <out_base>/<stem>.log                 merged logs (or --log)
+Outputs:    <out_base>/<stem>.nq                  merged N-Quads (or --nq)
+            <outdir>/werk-staging-merged.duckdb  merged werk_staging (or --db); outdir=out_base if omitted
+            <outdir>/<stem>-stats.json           merged stats (or --stats)
+            <outdir>/<stem>-errors.jsonl         merged errors (or --errors)
+            <outdir>/<stem>.log                  merged logs (or --log)
 Deps:       stdlib only + duckdb (pip install duckdb) for .duckdb merge
 Assumes:    All shards produced by `python -m transform` with compatible --stats level.
             Output files are overwritten if they already exist.
@@ -148,27 +148,30 @@ def main(argv=None) -> None:
     )
     parser.add_argument("out_base", type=Path,
                         help="Run directory containing shard subdirectories")
+    parser.add_argument("--outdir",  type=Path, default=None,
+                        help="Directory for non-.nq outputs (default: same as out_base)")
     parser.add_argument("--nq",      type=Path, default=None,
                         help="Output .nq path (default: <out_base>/combined.nq)")
     parser.add_argument("--db",      type=Path, default=None,
-                        help="Output DuckDB path (default: <out_base>/werk-staging-merged.duckdb)")
+                        help="Output DuckDB path (default: <outdir>/werk-staging-merged.duckdb)")
     parser.add_argument("--stats",   type=Path, default=None,
-                        help="Output stats path (default: <out_base>/<stem>-stats.json)")
+                        help="Output stats path (default: <outdir>/<stem>-stats.json)")
     parser.add_argument("--errors",  type=Path, default=None,
-                        help="Output errors path (default: <out_base>/<stem>-errors.jsonl)")
+                        help="Output errors path (default: <outdir>/<stem>-errors.jsonl)")
     parser.add_argument("--log",     type=Path, default=None,
-                        help="Output log path (default: <out_base>/<stem>.log)")
+                        help="Output log path (default: <outdir>/<stem>.log)")
     parser.add_argument("--skip-nq", action="store_true",
                         help="Skip .nq concatenation; merge only stats and werk_staging")
     args = parser.parse_args(argv)
 
     out_base   = args.out_base
-    stem       = out_base.name
-    nq_out     = args.nq     or out_base / "combined.nq"
-    db_out     = args.db     or out_base / f"{stem}-werk-staging.duckdb"
-    stats_out  = args.stats  or out_base / f"{stem}-stats.json"
-    errors_out = args.errors or out_base / f"{stem}-errors.jsonl"
-    log_out    = args.log    or out_base / f"{stem}.log"
+    outdir     = args.outdir or out_base
+    stem       = outdir.name
+    nq_out     = args.nq     or out_base / f"{stem}.nq"
+    db_out     = args.db     or outdir / f"{stem}-werk-staging.duckdb"
+    stats_out  = args.stats  or outdir / f"{stem}-stats.json"
+    errors_out = args.errors or outdir / f"{stem}-errors.jsonl"
+    log_out    = args.log    or outdir / f"{stem}.log"
 
     nq_paths     = sorted(p for p in out_base.rglob("*.nq")                  if p != nq_out)
     db_paths     = sorted(p for p in out_base.rglob("*-werk-staging.duckdb") if p != db_out)

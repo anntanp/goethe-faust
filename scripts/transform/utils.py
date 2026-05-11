@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from functools import lru_cache
+from pathlib import Path
+
+import langcodes
 
 from .constants import (
     AgentDict, NQuad, NQList,
@@ -82,7 +86,48 @@ def _escape_literal(s: str) -> str:
              .replace("\t", "\\t"))
 
 
-def value_to_nt_obj(val: object, sani_ctr: Counter | None = None) -> list[str]:
+def _build_iana_collection_codes() -> frozenset[str]:
+    """Return all IANA language subtags with Scope: collection, read from the
+    registry bundled with langcodes. Falls back to empty set on any error."""
+    try:
+        registry = (Path(langcodes.__file__).parent / "data" / "language-subtag-registry.txt").read_text()
+    except Exception:
+        return frozenset()
+    codes: set[str] = set()
+    in_language_block = is_collection = False
+    subtag = ""
+    for line in registry.splitlines():
+        if line == "%%":
+            if in_language_block and is_collection and subtag:
+                codes.add(subtag)
+            in_language_block = is_collection = False
+            subtag = ""
+        elif line == "Type: language":
+            in_language_block = True
+        elif line.startswith("Subtag: "):
+            subtag = line[8:].strip()
+        elif line == "Scope: collection":
+            is_collection = True
+    return frozenset(codes)
+
+
+_IANA_COLLECTION_CODES: frozenset[str] = _build_iana_collection_codes()
+
+
+@lru_cache(maxsize=512)
+def _invalid_bcp47(lang: str) -> bool:
+    """True if lang should be normalized to 'und': invalid BCP 47 or IANA collection."""
+    try:
+        return not langcodes.tag_is_valid(lang) or lang in _IANA_COLLECTION_CODES
+    except Exception:
+        return True
+
+
+def value_to_nt_obj(
+    val: object,
+    sani_ctr: Counter | None = None,
+    lang_coll: set[str] | None = None,
+) -> list[str]:
     """Convert a JSONL field value to a list of N-Triples object strings.
 
     Handles all value shapes produced by the DDB EDM JSONL:
@@ -95,6 +140,7 @@ def value_to_nt_obj(val: object, sani_ctr: Counter | None = None) -> list[str]:
       {"resource": null, "$": ""}  → []
 
     sani_ctr: if provided, incremented once per IRI that required sanitisation.
+    lang_coll: if provided, receives original collective lang codes that were normalized.
     """
     if val is None:
         return []
@@ -103,7 +149,7 @@ def value_to_nt_obj(val: object, sani_ctr: Counter | None = None) -> list[str]:
     if isinstance(val, list):
         result = []
         for item in val:
-            result.extend(value_to_nt_obj(item, sani_ctr))
+            result.extend(value_to_nt_obj(item, sani_ctr, lang_coll))
         return result
     if isinstance(val, dict):
         resource = val.get("resource")
@@ -123,6 +169,10 @@ def value_to_nt_obj(val: object, sani_ctr: Counter | None = None) -> list[str]:
             return []
         escaped = _escape_literal(str(text))
         lang = val.get("lang")
+        if lang and _invalid_bcp47(str(lang)):
+            if lang_coll is not None:
+                lang_coll.add(str(lang))
+            lang = "und"
         if lang:
             return [f'"{escaped}"@{lang}']
         return [f'"{escaped}"']

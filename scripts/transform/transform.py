@@ -6,10 +6,13 @@ from collections import Counter
 
 from .constants import (
     NQList, PropAlign,
-    MT007_IRI, GRAPH_DDBEDM, GRAPH_MOCHO, GRAPH_PROV,
+    MT007_IRI, GRAPH_DDBEDM, GRAPH_MOCHO, GRAPH_PROV, GRAPH_LANG_TITLE,
 )
-from .utils import get_object_id, mint_bare_id, mint_cho_uri, _extract_mediatype_sector, coerce_list
+from .utils import get_object_id, make_nq, mint_bare_id, mint_cho_uri, _extract_mediatype_sector, coerce_list
 from .emitters import emit_ddbedm_triples, emit_prov_triples, emit_mocho_triples, werk_staging_row
+
+_DCTERMS_LANGUAGE = "http://purl.org/dc/terms/language"
+_ISO639_2_BASE    = "http://id.loc.gov/vocabulary/iso639-2/"
 
 
 def transform_record(
@@ -48,9 +51,12 @@ def transform_record(
     is_mt007 = (mediatype == MT007_IRI)
 
     streams: dict[str, NQList] = {}
+    lang_coll: set[str] = set()
 
     # Streams [1] and [4] always run, including mt007 (faithfulness + audit trail)
-    ddbedm_lines, ddbedm_classes, ddbedm_preds, ddbedm_sani = emit_ddbedm_triples(rdf, GRAPH_DDBEDM)
+    ddbedm_lines, ddbedm_classes, ddbedm_preds, ddbedm_sani = emit_ddbedm_triples(
+        rdf, GRAPH_DDBEDM, lang_coll,
+    )
     streams["ddbedm"] = ddbedm_lines
     streams["prov"]   = emit_prov_triples(record, ddb_uri, GRAPH_PROV)
 
@@ -63,6 +69,7 @@ def transform_record(
             rdf, cho_uri, ddb_uri, sector, mediatype,
             mediatype_class_map, htype_map, audio_type2class,
             class_prop_align, lido_dispatch, GRAPH_MOCHO,
+            lang_coll=lang_coll,
         )
         streams["mocho"] = mocho_lines
         werk_row = werk_staging_row(cho_uri, cho, target_class)
@@ -76,6 +83,18 @@ def transform_record(
         mocho_preds_new = Counter()
         mocho_uri_sani  = 0
         mocho_uri_split = 0
+
+    if lang_coll:
+        ddb_nt = f"<{ddb_uri}>"
+        lang_title_lines: NQList = []
+        for orig_lang in sorted(lang_coll):
+            lang_title_lines.append(make_nq(
+                ddb_nt,
+                f"<{_DCTERMS_LANGUAGE}>",
+                f"<{_ISO639_2_BASE}{orig_lang}>",
+                GRAPH_LANG_TITLE,
+            ))
+        streams[GRAPH_LANG_TITLE] = lang_title_lines
 
     pred_info: dict = {
         "ddbedm_classes":   ddbedm_classes,
