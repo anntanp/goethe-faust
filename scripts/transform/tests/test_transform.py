@@ -219,12 +219,13 @@ class TestRetypeEntities:
         assert "http://rdaregistry.info/Elements/c/C10001" in types
         assert "https://ise-fizkarlsruhe.github.io/ddbkg/mocho#Manifestation" in types
         assert wemi == "W"
-        assert any(DDB_HIERARCHY_TYPE in l and f"{_HTYPE_PREFIX}htype_021" in l for l in lines)
+        assert any(DDB_HIERARCHY_TYPE in l and f"{_HTYPE_PREFIX}ht021" in l for l in lines)
 
     def test_htype_emitted_as_iri(self, configs):
-        """htype_code is emitted as a vocnet-htype: IRI object."""
+        """htype_code emits vocnet IRI in ht-prefix form (ht042, not htype_042)."""
         lines, _, _, _ = self._call(_SPARTE001, _MT003, "htype_042", configs)
-        assert any(DDB_HIERARCHY_TYPE in l and f"{_HTYPE_PREFIX}htype_042" in l for l in lines)
+        assert any(DDB_HIERARCHY_TYPE in l and f"{_HTYPE_PREFIX}ht042" in l for l in lines)
+        assert not any(f"{_HTYPE_PREFIX}htype_042" in l for l in lines)
 
     def test_no_htype_no_hierarchy_type_triple(self, configs):
         """No htype_code → ddbedm:hierarchyType triple must not appear."""
@@ -249,6 +250,30 @@ class TestRetypeEntities:
         types = _rdf_types(lines)
         assert MOCHO_NS + "Manifestation" in types
         assert target_class == MOCHO_NS + "Manifestation"
+
+    def test_multi_htype_emits_two_triples(self, configs):
+        """Space-separated hierarchyType emits one ddbedm:hierarchyType triple per code."""
+        lines, _, _, _ = self._call(_SPARTE001, _MT003, "htype_007 htype_020", configs)
+        htype_lines = [l for l in lines if DDB_HIERARCHY_TYPE in l]
+        assert len(htype_lines) == 2
+        assert any(f"{_HTYPE_PREFIX}ht007" in l for l in htype_lines)
+        assert any(f"{_HTYPE_PREFIX}ht020" in l for l in htype_lines)
+
+    def test_multi_htype_no_space_in_iri(self, configs):
+        """No emitted IRI may contain a space (guard against raw multi-value passthrough)."""
+        lines, _, _, _ = self._call(_SPARTE001, _MT003, "htype_007 htype_020", configs)
+        for l in lines:
+            if DDB_HIERARCHY_TYPE in l:
+                obj_token = l.split()[2]  # "<http://...>" — whitespace-split is safe for IRI objects
+                assert " " not in obj_token
+
+    def test_multi_htype_dispatch_uses_first(self, configs):
+        """Dispatch resolves class from the first htype only; second code is ignored for typing."""
+        # htype_007 → doco:Part + rdac:C10007; htype_020 → rdac:C10007 only
+        # If dispatch used the full string no class would resolve → fallback mocho:Manifestation
+        lines, _, _, flags = self._call(_SPARTE001, _MT003, "htype_007 htype_020", configs)
+        assert flags["htype_used"] is True
+        assert flags["fallback"] is False
 
 
 # ── emit_creator_triples ──────────────────────────────────────────────────────
@@ -1167,3 +1192,17 @@ class TestValueToNtObjLangNorm:
     def test_lang_coll_none_no_crash(self):
         result = value_to_nt_obj({"$": "text", "lang": "wen"}, lang_coll=None)
         assert result == ['"text"@und']
+
+    def test_spaced_lang_normalized_to_und(self):
+        # "en en" is a DDB data-quality artifact (two URIs in about → two lang attrs joined)
+        result = value_to_nt_obj({"$": "Multivolume work Volume", "lang": "en en"})
+        assert result == ['"Multivolume work Volume"@und']
+
+    def test_spaced_lang_not_added_to_lang_coll(self):
+        coll: set[str] = set()
+        value_to_nt_obj({"$": "Multivolume work Volume", "lang": "en en"}, lang_coll=coll)
+        assert coll == set()
+
+    def test_leading_trailing_whitespace_stripped(self):
+        result = value_to_nt_obj({"$": "Faust", "lang": " ger "})
+        assert result == ['"Faust"@ger']

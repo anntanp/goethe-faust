@@ -145,6 +145,7 @@ Named graphs:
 | `https://gemea.ise.fiz-karlsruhe.de/graph/ddbedm` | Verbatim EDM passthrough (always, including mt007) |
 | `https://gemea.ise.fiz-karlsruhe.de/graph/mocho` | mocho-aligned triples (skipped for mt007) |
 | `https://gemea.ise.fiz-karlsruhe.de/graph/prov` | PROV-O Layer 1 (always) |
+| `https://gemea.ise.fiz-karlsruhe.de/graph/lang-title` | `dcterms:language` provenance triples for normalized lang codes (emitted only when a record carries at least one invalid BCP 47 code) |
 
 ---
 
@@ -383,7 +384,113 @@ Full run on `data/items-all-goethe-faust.json` (115,432 records) after agent lab
 
 ---
 
-## 9. Full-corpus run plan
+## 9. `hierarchyType` URI fixes (2026-05-12)
+
+Two bugs in `retype_entities` (`emitters.py`) in the handling of `ProvidedCHO.hierarchyType`.
+
+Corpus evidence: object `LH3LUU63TUKZJHMQEILGTP3HZXZP5IFT` (`s2.sqlite`) has `"hierarchyType": "htype_007 htype_020"`.
+
+### 9.1 Bug 1 — wrong vocnet URI form
+
+Raw values use the form `htype_NNN` (e.g. `htype_007`). The correct vocnet IRI suffix is `htNNN` (e.g. `ht007`). The emitter was appending the raw code directly to `_HTYPE_PREFIX`, producing the invalid IRI `http://ddb.vocnet.org/hierarchietyp/htype_007`.
+
+**Fix** (`emitters.py` lines 277–283): apply `.replace("htype_", "ht")` to each code before constructing the IRI.
+
+### 9.2 Bug 2 — space-separated multi-value treated as single code
+
+`hierarchyType` can contain multiple space-separated codes. The emitter passed the raw string as one unit, producing a single IRI with an embedded space: `<…/htype_007 htype_020>`. The dispatch lookup (`htype_map.get(htype_code)`) also silently failed for any multi-value record.
+
+**Fix** (`emitters.py`):
+- **Dispatch** (layer 1): `htype_map.get(htype_code.split()[0])` — first code only, consistent with "most specific class" intent.
+- **URI emission**: iterate `htype_code.split()`; emit one `ddbedm:hierarchyType` triple per code with the corrected IRI.
+
+### 9.3 Test additions
+
+Three new tests in `TestRetypeEntities` (`test_transform.py`):
+
+| Test | Assertion |
+|---|---|
+| `test_multi_htype_emits_two_triples` | `"htype_007 htype_020"` → exactly 2 `ddbedm:hierarchyType` triples, IRIs `ht007` and `ht020` |
+| `test_multi_htype_no_space_in_iri` | No object token in any `ddbedm:hierarchyType` triple contains a space |
+| `test_multi_htype_dispatch_uses_first` | `flags["htype_used"] is True` and `flags["fallback"] is False` — first code resolves a class |
+
+Two existing tests updated: `test_sparte001_mt003_htype021` and `test_htype_emitted_as_iri` now assert `ht021`/`ht042` (not `htype_021`/`htype_042`) in the emitted IRI.
+
+Total: 140 tests.
+
+---
+
+## 10. BCP 47 language tag normalization (2026-05-12)
+
+QLever validates RDF language tags against BCP 47 and terminates indexing on the first invalid tag. DDB source records carry ISO 639-2 collective codes (e.g. `wen`, `gem`) and malformed codes (e.g. `gerger`) in the `lang` field of cortex JSON. Neither is a valid BCP 47 individual-language subtag.
+
+Design record: `gemea/notes/ingest/transform-language-tag.md`.
+
+### 10.1 Validation approach
+
+`langcodes` (v3.5.1, added to `requirements.txt`) is used rather than a hand-curated dict. Two failure classes must be caught:
+
+1. **Malformed codes** (e.g. `gerger`) — `langcodes.tag_is_valid()` returns `False`.
+2. **IANA collection subtags** (e.g. `wen`, `gem`) — `langcodes.tag_is_valid()` returns `True` (they are in the IANA registry), but QLever rejects them. Detected by membership in `_IANA_COLLECTION_CODES`, a `frozenset` parsed at import time from the IANA registry bundled with `langcodes` (`data/language-subtag-registry.txt`, `Scope: collection` entries). 116 codes in the current registry.
+
+Both → normalized to `"und"` (BCP 47 "undetermined"). Original code retained via provenance triple.
+
+### 10.2 Code changes
+
+**`utils.py`**
+
+| Change | Detail |
+|---|---|
+| `_build_iana_collection_codes()` | Parses bundled IANA registry line-by-line; returns `frozenset` of all `Scope: collection` subtags. Falls back to empty set on error. |
+| `_IANA_COLLECTION_CODES` | Module-level `frozenset` built at import. |
+| `_invalid_bcp47(lang)` | `@lru_cache(maxsize=512)`. `True` if `not tag_is_valid(lang) or lang in _IANA_COLLECTION_CODES`. |
+| `value_to_nt_obj()` | Added `lang_coll: set[str] \| None = None` parameter. Strips `lang` before validation; guards `lang_coll.add()` against values containing internal spaces (see §10.3). |
+
+**`emitters.py`**
+
+`lang_coll: set[str] | None = None` added to `emit_ddbedm_triples()` and `emit_mocho_triples()`; passed to every `value_to_nt_obj()` call that processes CHO fields (title, generic property loop). Secondary emitters (`emit_subject_triples`, `emit_creator_triples`, `emit_contributor_triples`, `emit_hastype_triples`, `emit_current_location_triples`) are unchanged — corpus analysis (`analyse_lang_tags_by_entity.py`) confirmed no collective codes on non-CHO entities.
+
+**`transform.py`**
+
+`lang_coll: set[str] = set()` created in `transform_record()`; passed to both emitters (mutated in place). After emitters complete, one `dcterms:language <http://id.loc.gov/vocabulary/iso639-2/{orig_lang}>` provenance triple per unique original code is emitted to `GRAPH_LANG_TITLE`. Subject is `ddb_uri` (not `cho_uri`).
+
+**`constants.py`**
+
+`GRAPH_LANG_TITLE = "https://gemea.ise.fiz-karlsruhe.de/graph/lang-title"` added.
+
+### 10.3 Whitespace-in-lang bug
+
+`lang = "en en"` appears on record `LH3LUU63TUKZJHMQEILGTP3HZXZP5IFT` (`s2.sqlite`) on `ProvidedCHO.dcType` and `Concept[1].prefLabel`. Root cause: `Concept[1].about` contains two space-joined URIs (`"http://ddb.vocnet.org/hierarchietyp/ht007 http://ddb.vocnet.org/hierarchietyp/ht020"`); the DDB XML-to-JSON converter applied the same join to the `lang` attributes of the repeated element, concatenating `"en"` + `" "` + `"en"`.
+
+Without the guard, `lang_coll.add("en en")` would produce `<http://id.loc.gov/vocabulary/iso639-2/en en>` — an invalid N-Quads IRI. Fix in `value_to_nt_obj()`:
+
+```python
+lang = val.get("lang")
+if lang:
+    lang = str(lang).strip()
+if lang and _invalid_bcp47(lang):
+    if lang_coll is not None and " " not in lang:
+        lang_coll.add(lang)
+    lang = "und"
+```
+
+`.strip()` handles leading/trailing whitespace. `" " not in lang` prevents any space-containing value from entering `lang_coll` (it still normalizes to `"und"`, so the literal output is correct).
+
+### 10.4 Test additions
+
+Three new test classes in `test_transform.py`:
+
+| Class | Tests | Covers |
+|---|---|---|
+| `TestIanaCollectionCodes` | 3 | Registry loaded (>0 codes); known collectives (`wen`, `gem`) present; valid individuals (`ger`, `eng`) absent |
+| `TestInvalidBcp47` | 4 | Collective → `True`; malformed → `True`; valid codes → `False`; `und` itself → `False` |
+| `TestValueToNtObjLangNorm` | 10 | `wen`/`gem`/`gerger` → `@und`; valid lang unchanged; `lang_coll` populated for collective/malformed, empty for valid; `"en en"` → `@und` and not added to `lang_coll`; leading/trailing whitespace stripped |
+
+Total: 137 tests (135 passing; 2 pre-existing failures in `TestRetypeEntities` — see §9.3).
+
+---
+
+## 12. Full-corpus run plan
 
 See `notes/transform-dryrun-plan.md §6` for the full pipeline:
 

@@ -235,8 +235,9 @@ def retype_entities(
     htype_used    = False
 
     # Layer 1: htype-derived class (for htype-first strata)
+    # hierarchyType may be space-separated (e.g. "htype_007 htype_020"); use first for dispatch
     if use_htype and htype_code:
-        entry = htype_map.get(htype_code)
+        entry = htype_map.get(htype_code.split()[0])
         if entry:
             type_iris, rst_iris = entry
             for t in type_iris:
@@ -274,9 +275,13 @@ def retype_entities(
         lines.append(make_nq(cho_nt, f"<{RDF_TYPE}>", f"<{fallback}>", graph_iri))
         primary_class = fallback
 
+    # hierarchyType may be space-separated; emit one triple per code with correct URI form
+    # (raw: "htype_007" → vocnet: "ht007")
     if htype_code:
-        lines.append(make_nq(cho_nt, f"<{DDB_HIERARCHY_TYPE}>",
-                             f"<{_HTYPE_PREFIX}{htype_code}>", graph_iri))
+        for _code in htype_code.split():
+            _uri_code = _code.replace("htype_", "ht")
+            lines.append(make_nq(cho_nt, f"<{DDB_HIERARCHY_TYPE}>",
+                                 f"<{_HTYPE_PREFIX}{_uri_code}>", graph_iri))
 
     wemi = _CLASS_WEMI.get(primary_class, "M")
     return lines, primary_class, wemi, {"htype_used": htype_used, "fallback": is_fallback}

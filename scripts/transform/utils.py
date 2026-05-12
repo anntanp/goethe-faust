@@ -169,9 +169,11 @@ def value_to_nt_obj(
             return []
         escaped = _escape_literal(str(text))
         lang = val.get("lang")
-        if lang and _invalid_bcp47(str(lang)):
-            if lang_coll is not None:
-                lang_coll.add(str(lang))
+        if lang:
+            lang = str(lang).strip()
+        if lang and _invalid_bcp47(lang):
+            if lang_coll is not None and " " not in lang:
+                lang_coll.add(lang)
             lang = "und"
         if lang:
             return [f'"{escaped}"@{lang}']
