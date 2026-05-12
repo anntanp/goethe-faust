@@ -160,13 +160,15 @@ def main(argv=None) -> None:
                         help="Output errors path (default: <outdir>/<stem>-errors.jsonl)")
     parser.add_argument("--log",     type=Path, default=None,
                         help="Output log path (default: <outdir>/<stem>.log)")
+    parser.add_argument("--stem",   type=str, default=None,
+                        help="Output filename stem (default: outdir basename)")
     parser.add_argument("--skip-nq", action="store_true",
                         help="Skip .nq concatenation; merge only stats and werk_staging")
     args = parser.parse_args(argv)
 
     out_base   = args.out_base
     outdir     = args.outdir or out_base
-    stem       = outdir.name
+    stem       = args.stem or outdir.name
     nq_out     = args.nq     or out_base / f"{stem}.nq"
     db_out     = args.db     or outdir / f"{stem}-werk-staging.duckdb"
     stats_out  = args.stats  or outdir / f"{stem}-stats.json"

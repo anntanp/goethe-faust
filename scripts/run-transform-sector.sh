@@ -14,9 +14,11 @@
 #                                 output /data/gemea/www/downloads/gemea/<version>/, 5 workers
 # Inputs:    <sqlite-dir>/<sector>.sqlite  (normal mode)
 #            <scripts-dir>/../data/items-all-goethe-faust.json  (--test mode)
-# Outputs:   /data/gemea/www/downloads/gemea/<version>/nq/<version>.nq
-#            /data/gemea/www/downloads/gemea/<version>/combined-stats.json
-#            /data/gemea/www/downloads/gemea/<version>/werk-staging-merged.duckdb
+# Outputs:   /data/gemea/www/downloads/gemea/<version>/nq/<sector>.nq       (--merge-all)
+#            /data/gemea/www/downloads/gemea/<version>/<sector>-stats.json
+#            /data/gemea/www/downloads/gemea/<version>/<sector>-werk-staging.duckdb
+#            /data/gemea/www/downloads/gemea/<version>/<sector>-errors.jsonl
+#            /data/gemea/www/downloads/gemea/<version>/<sector>.log
 # Deps:      python3; duckdb (pip install duckdb) for .duckdb merge; split (coreutils)
 # Assumes:   Config files at <scripts-dir>/../output/config/
 
@@ -139,11 +141,11 @@ echo "[$(date '+%F %T')] Workers done"
 if [[ "$MERGE_ALL" == "true" ]]; then
   echo "[$(date '+%F %T')] Merging shards (stats + werk_staging + .nq)"
   cd "$SCRIPTS_DIR"
-  $PYTHON -m transform merge "$OUT/nq" --outdir "$OUT"
+  $PYTHON -m transform merge "$OUT/nq" --outdir "$OUT" --stem "$SECTOR"
 elif [[ "$MERGE" == "true" ]]; then
   echo "[$(date '+%F %T')] Merging shards (stats + werk_staging only)"
   cd "$SCRIPTS_DIR"
-  $PYTHON -m transform merge "$OUT/nq" --outdir "$OUT" --skip-nq
+  $PYTHON -m transform merge "$OUT/nq" --outdir "$OUT" --stem "$SECTOR" --skip-nq
 else
   echo "[$(date '+%F %T')] Skipping merge (pass --merge or --merge-all)"
 fi

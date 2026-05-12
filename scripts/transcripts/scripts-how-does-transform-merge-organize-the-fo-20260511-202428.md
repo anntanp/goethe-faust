@@ -1,7 +1,7 @@
 # Transcript: b33d79bc-f3a1-4bb8-80a4-78a30ac1319f
 
 **Project:** /Users/mta/Documents/claude/goethe-faust/scripts  
-**Messages:** 41
+**Messages:** 111
 
 ---
 
@@ -1291,6 +1291,780 @@ mktemp: mkdtemp failed on /var/folders/kl/rzmwkdk57b159md_p3qhnh480000gp/T/tmp.K
   logs:   3 shards → /var/folders/kl/rzmwkdk57b159md_p3qhnh480000gp/T/merge-test-20260511/merge-test-20260511.log
 Merged and deleted 15 shard files.
 [2026-05-11 22:33:42] Done. Output: /var/folders/kl/rzmwkdk57b159md_p3qhnh480000gp/T//merge-test-20260511
+```
+
+---
+
+### Assistant *(2026-05-11T20:33:46.255Z)*
+
+Works. The N-Quads file is now `merge-test-20260511.nq` (named after the `outdir` stem) instead of `combined.nq`.
+
+Also note: the shell script header comment on line 17 still says `combined.nq` — want me to update that too?
+
+---
+
+### User *(2026-05-11T20:34:37.777Z)*
+
+yes
+
+---
+
+### Assistant *(2026-05-11T20:34:41.199Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/run-transform-sector.sh",
+  "old_string": "#            /data/gemea/www/downloads/gemea/<version>/nq/combined.nq",
+  "new_string": "#            /data/gemea/www/downloads/gemea/<version>/nq/<version>.nq"
+}
+```
+
+---
+
+### User *(2026-05-11T20:34:41.201Z)*
+
+**Tool result** *(error)*
+```
+<tool_use_error>String to replace not found in file.
+String: #            /data/gemea/www/downloads/gemea/<version>/nq/combined.nq</tool_use_error>
+```
+
+---
+
+### Assistant *(2026-05-11T20:34:43.611Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "grep -n \"combined\" /Users/mta/Documents/claude/goethe-faust/scripts/run-transform-sector.sh",
+  "description": "Find combined.nq references in shell script"
+}
+```
+
+---
+
+### User *(2026-05-11T20:34:43.671Z)*
+
+**Tool result**
+```
+17:# Outputs:   /data/gemea/www/downloads/gemea/<version>/nq/combined.nq
+18:#            /data/gemea/www/downloads/gemea/<version>/combined-stats.json
+```
+
+---
+
+### Assistant *(2026-05-11T20:34:45.931Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/run-transform-sector.sh",
+  "offset": 17,
+  "limit": 1
+}
+```
+
+---
+
+### User *(2026-05-11T20:34:45.944Z)*
+
+**Tool result**
+```
+17	# Outputs:   /data/gemea/www/downloads/gemea/<version>/nq/combined.nq
+```
+
+---
+
+### Assistant *(2026-05-11T20:34:49.106Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/run-transform-sector.sh",
+  "old_string": "# Outputs:   /data/gemea/www/downloads/gemea/<version>/nq/combined.nq",
+  "new_string": "# Outputs:   /data/gemea/www/downloads/gemea/<version>/nq/<version>.nq"
+}
+```
+
+---
+
+### User *(2026-05-11T20:34:51.838Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/run-transform-sector.sh has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-11T20:34:54.303Z)*
+
+Done.
+
+---
+
+### User *(2026-05-11T20:37:46.038Z)*
+
+i want to run with input /data/gemea/sqlite/s2.sqlite, and output /data/gemea/www/downloads/20260511/. what the complete command for run_transform_sector.sh
+
+---
+
+### Assistant *(2026-05-11T20:38:04.492Z)*
+
+```bash
+bash scripts/run-transform-sector.sh \
+  --sector s2 \
+  --sqlite-dir /data/gemea/sqlite \
+  --output-dir /data/gemea/www/downloads/20260511 \
+  --scripts-dir /home/ann/goethe-faust/scripts \
+  --merge-all
+```
+
+`--sector s2` and `--sqlite-dir` match their defaults, so you can drop those two if the defaults are correct. `--scripts-dir` defaults to `/home/ann/goethe-faust/scripts` — adjust if the repo lives elsewhere on the server.
+
+---
+
+### User *(2026-05-11T20:38:54.345Z)*
+
+i dont want to merge all. i just want to merge the non .nq files
+
+---
+
+### Assistant *(2026-05-11T20:39:02.550Z)*
+
+Replace `--merge-all` with `--merge`:
+
+```bash
+bash scripts/run-transform-sector.sh \
+  --sector s2 \
+  --sqlite-dir /data/gemea/sqlite \
+  --output-dir /data/gemea/www/downloads/20260511 \
+  --scripts-dir /home/ann/goethe-faust/scripts \
+  --merge
+```
+
+`--merge` passes `--skip-nq` to `merge.py`, so only stats, werk_staging, errors, and logs are merged.
+
+---
+
+### User *(2026-05-11T20:39:45.712Z)*
+
+why do i need to define scripts-dir?
+
+---
+
+### Assistant *(2026-05-11T20:39:48.661Z)*
+
+You don't — `/home/ann/goethe-faust/scripts` is already the default. Drop it:
+
+```bash
+bash scripts/run-transform-sector.sh \
+  --sector s2 \
+  --sqlite-dir /data/gemea/sqlite \
+  --output-dir /data/gemea/www/downloads/20260511 \
+  --merge
+```
+
+---
+
+### User *(2026-05-11T20:40:01.482Z)*
+
+and do i need to define sqlite-dir?
+
+---
+
+### Assistant *(2026-05-11T20:40:03.691Z)*
+
+No, `/data/gemea/sqlite` is the default too. Minimal command:
+
+```bash
+bash scripts/run-transform-sector.sh \
+  --output-dir /data/gemea/www/downloads/20260511 \
+  --merge
+```
+
+---
+
+### User *(2026-05-11T20:40:16.398Z)*
+
+what about output-dir?
+
+---
+
+### Assistant *(2026-05-11T20:40:19.179Z)*
+
+The default output is `/data/gemea/www/downloads/gemea/$VERSION` (where VERSION is today's date). Your target is `/data/gemea/www/downloads/20260511` — note the missing `gemea/` segment — so you do need to specify it explicitly.
+
+---
+
+### User *(2026-05-11T20:40:46.426Z)*
+
+correct output-dir is /data/gemea/www/downloads/gemea/20260511/
+
+---
+
+### Assistant *(2026-05-11T20:40:48.949Z)*
+
+Then you don't need it either — that's exactly what the default resolves to today. Minimal command:
+
+```bash
+bash scripts/run-transform-sector.sh --merge
+```
+
+---
+
+### User *(2026-05-11T20:41:25.827Z)*
+
+and workers = 50?
+
+---
+
+### Assistant *(2026-05-11T20:41:27.844Z)*
+
+Yes, 50 is the default. The command stays the same:
+
+```bash
+bash scripts/run-transform-sector.sh --merge
+```
+
+---
+
+### User *(2026-05-11T20:41:37.404Z)*
+
+if i want it to be 20?
+
+---
+
+### Assistant *(2026-05-11T20:41:39.533Z)*
+
+```bash
+bash scripts/run-transform-sector.sh --merge --workers 20
+```
+
+---
+
+### User *(2026-05-11T20:41:51.910Z)*
+
+and what about differnt sqlite input file?
+
+---
+
+### Assistant *(2026-05-11T20:41:56.612Z)*
+
+Use `--sqlite-dir` if it's in a different directory, `--sector` if it's a different filename stem. For example, `/data/gemea/sqlite/s1.sqlite`:
+
+```bash
+bash scripts/run-transform-sector.sh --merge --sector s1
+```
+
+Or `/data/other/s2.sqlite`:
+
+```bash
+bash scripts/run-transform-sector.sh --merge --sqlite-dir /data/other
+```
+
+---
+
+### User *(2026-05-11T20:42:37.716Z)*
+
+import langcodes
+ModuleNotFoundError: No module named 'langcodes'
+
+---
+
+### Assistant *(2026-05-11T20:42:41.076Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "grep -r \"langcodes\" /Users/mta/Documents/claude/goethe-faust/scripts/transform/ | head -20",
+  "description": "Find langcodes usage in transform scripts"
+}
+```
+
+---
+
+### User *(2026-05-11T20:42:41.163Z)*
+
+**Tool result**
+```
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/utils.py:import langcodes
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/utils.py:    registry bundled with langcodes. Falls back to empty set on any error."""
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/utils.py:        registry = (Path(langcodes.__file__).parent / "data" / "language-subtag-registry.txt").read_text()
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/utils.py:        return not langcodes.tag_is_valid(lang) or lang in _IANA_COLLECTION_CODES
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/tests/test_transform.py:# ── lang normalization via langcodes + IANA collection codes ─────────────────
+```
+
+---
+
+### User *(2026-05-11T20:42:44.758Z)*
+
+[Request interrupted by user]
+
+---
+
+### User *(2026-05-11T20:42:50.374Z)*
+
+i'm running it on a separate machine
+
+---
+
+### Assistant *(2026-05-11T20:42:52.373Z)*
+
+```bash
+pip install langcodes
+```
+
+Or if using the project venv:
+
+```bash
+.venv/bin/pip install langcodes
+```
+
+---
+
+### User *(2026-05-12T07:49:49.434Z)*
+
+Continue from where you left off.
+
+---
+
+### Assistant *(2026-05-12T07:49:49.434Z)*
+
+No response requested.
+
+---
+
+### User *(2026-05-12T08:07:35.978Z)*
+
+what happens if I already transformed s1 -- output are in 
+/data/gemea/www/downloads/gemea/20260512/20260512-stats.json (3,638,021 records, 501,431,917 triples)
+  errors: 20 shards → /data/gemea/www/downloads/gemea/20260512/20260512-errors.jsonl (0 error records)
+  logs:   20 shards → /data/gemea/www/downloads/gemea/20260512/20260512.log
+
+then I have to run s2 again? how come the merge did not use s<x> as stem in the merged output?
+
+---
+
+### Assistant *(2026-05-12T08:08:02.526Z)*
+
+Two issues here:
+
+**Why the date stem?** `stem` in `merge.py` comes from `outdir.name` — the last component of `--outdir`, which is `20260512`. The sector name is never passed to the merge command.
+
+**What happens if you run s2 into the same dir?** The s1 shard files were deleted after merge, so the s2 merge would only find s2 shards — and overwrite `20260512-stats.json`, `20260512.log`, etc. with s2-only data. You'd lose s1.
+
+The simplest fix is a sector-specific `--outdir` per run:
+
+```bash
+# s1 (already done — would have needed):
+bash scripts/run-transform-sector.sh --merge --sector s1 \
+  --output-dir /data/gemea/www/downloads/gemea/20260512/s1
+
+# s2:
+bash scripts/run-transform-sector.sh --merge --sector s2 \
+  --output-dir /data/gemea/www/downloads/gemea/20260512/s2
+```
+
+That gives you `s1-stats.json`, `s2-stats.json` etc. separately, and the `.nq` shards stay segregated under `s1/nq/` and `s2/nq/` for the final full merge.
+
+Do you want to update the shell script to derive the output dir from the sector name automatically?
+
+---
+
+### User *(2026-05-12T08:11:23.087Z)*
+
+i dont want to create /data/gemea/www/downloads/gemea/20260512/s2, separate dirs per section. I just want transform to create s<x>-<workerid>.logs file, then during merge, these should be merged to s<x>.logs
+
+---
+
+### Assistant *(2026-05-12T08:11:30.296Z)*
+
+Let me look at how the transform workers name their shard files.
+
+---
+
+### Assistant *(2026-05-12T08:11:31.493Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "grep -n \"outdir\\|\\.nq\\|\\.log\\|stats\\|errors\\|duckdb\\|stem\\|worker\\|prefix\\|out_path\\|outfile\" /Users/mta/Documents/claude/goethe-faust/scripts/transform/transform.py | head -60",
+  "description": "Find output file naming in transform.py"
+}
+```
+
+---
+
+### User *(2026-05-12T08:11:31.640Z)*
+
+**Tool result**
+```
+(Bash completed with no output)
+```
+
+---
+
+### Assistant *(2026-05-12T08:11:34.894Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "grep -rn \"outdir\\|\\.nq\\|\\.log\\|stats\\|errors\\|duckdb\\|worker\\|prefix\\|out_path\" /Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py 2>/dev/null | head -40; ls /Users/mta/Documents/claude/goethe-faust/scripts/transform/",
+  "description": "Find transform module entry point and list files"
+}
+```
+
+---
+
+### User *(2026-05-12T08:11:34.970Z)*
+
+**Tool result**
+```
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:9:                [--jsonl FILE] [--ids FILE] [--outdir DIR]
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:12:                [--stats LEVEL] [--log-level LEVEL]
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:22:              <stem>.nq                                    combined N-Quads (all named graphs)
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:23:              <stem>-werk-staging.duckdb                  W-slot staging rows
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:24:              <stem>-stats.json                           run statistics
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:25:              <stem>-errors.jsonl                         per-record errors (written live)
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:26:              <stem>.log                                  run log
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:27:            <stem> is the input filename without extension (e.g. s2 → s2.nq)
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:28:Deps:       stdlib only + duckdb (pip install duckdb)
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:31:            Graceful exit on SIGINT/SIGTERM: partial stats and errors are written.
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:97:                    help="Skip first N rows in SQLite (for parallel workers; use with --db and --limit)")
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:101:    io.add_argument("--outdir", type=Path, default=None,
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:106:                         "e.g. --stem items-all-goethe-faust → items-all-goethe-faust.nq, etc.")
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:131:    run.add_argument("--stats",     choices=["none", "basic", "dispatch", "full"],
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:133:                     help="Stats verbosity written to transform_stats.json: "
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:153:        args.log_level = "DEBUG"
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:156:    outdir = args.outdir or (DEFAULT_OUTPUT_BASE / ts)
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:157:    outdir.mkdir(parents=True, exist_ok=True)
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:165:    out_path    = outdir / f"{stem}.nq"
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:166:    werk_path   = outdir / f"{stem}-werk-staging.duckdb"
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:167:    stats_path  = outdir / f"{stem}-stats.json"
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:168:    errors_path = outdir / f"{stem}-errors.jsonl"
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:169:    log_path    = outdir / f"{stem}.log"
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:173:        level=getattr(logging, args.log_level),
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:192:        import duckdb
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:193:        conn = duckdb.connect(str(werk_path))
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:195:        log.warning("duckdb not available — werk_staging will not be written")
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:211:    stats_level = args.stats
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:213:    stats:  Counter = Counter()
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:248:    with open(out_path, "w", encoding="utf-8") as out, \
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:249:         open(errors_path, "w", encoding="utf-8") as err_fh:
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:268:                stats["json_errors"] += 1
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:285:                stats["record_errors"] += 1
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:289:                stats["filtered"] += 1
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:295:                    stats["triples_total"] += 1
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:296:                    stats[f"triples_{graph_name}"] += 1
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:298:            stats["records_processed"]  += 1
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:299:            stats["uri_sanitized"]      += pred_info.get("uri_sanitized",   0)
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:300:            stats["uri_split"]          += pred_info.get("uri_split",       0)
+/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py:301:            stats["uri_about_split"]    += pred_info.get("uri_about_split", 0)
+README.md
+__init__.py
+__main__.py
+constants.py
+emitters.py
+loaders.py
+merge.py
+sqlite_export.py
+tests
+transform.py
+utils.py
+```
+
+---
+
+### Assistant *(2026-05-12T08:11:37.850Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/__main__.py",
+  "offset": 100,
+  "limit": 70
+}
+```
+
+---
+
+### User *(2026-05-12T08:11:37.887Z)*
+
+**Tool result**
+```
+100	                         "or '-' to read from stdin; omit to process all records")
+101	    io.add_argument("--outdir", type=Path, default=None,
+102	                    help="Output directory; auto-timestamped if omitted "
+103	                         "(default: output/transform/YYYYMMDD_HHMMSS)")
+104	    io.add_argument("--stem", type=str, default=None,
+105	                    help="Output filename stem (overrides the input filename); "
+106	                         "e.g. --stem items-all-goethe-faust → items-all-goethe-faust.nq, etc.")
+107	
+108	    cfg = parser.add_argument_group("Config")
+109	    cfg.add_argument("--alignment", type=Path, default=DEFAULT_ALIGNMENT,
+110	                     help="Property alignment lookup CSV "
+111	                          "(target_class, edm_prop) → mocho property; "
+112	                          "default: output/config/lookup_class_prop_alignment.csv")
+113	    cfg.add_argument("--lido",      type=Path, default=DEFAULT_LIDO,
+114	                     help="LIDO event type dispatch CSV "
+115	                          "(event URI → agent predicates per WEMI level); "
+116	                          "default: output/config/lido_event_types.csv")
+117	    cfg.add_argument("--htype",     type=Path, default=DEFAULT_HTYPE,
+118	                     help="htype → class lookup CSV "
+119	                          "(htype_code → rdf:type IRIs for §1.1 dispatch); "
+120	                          "default: output/config/lookup_htype_doco_rico.csv")
+121	    cfg.add_argument("--mediatype", type=Path, default=DEFAULT_MEDIATYPE,
+122	                     help="Mediatype × sector → class lookup CSV "
+123	                          "(sector, mediatype → WEMI class IRIs); "
+124	                          "default: output/config/lookup_mediatype_class.csv")
+125	    cfg.add_argument("--audio",     type=Path, default=DEFAULT_AUDIO,
+126	                     help="mt001 dc:type → audio group JSON "
+127	                          "(dc:type value → A/B/C group for audio class dispatch); "
+128	                          "default: output/config/audio_type2class.json")
+129	
+130	    run = parser.add_argument_group("Run control")
+131	    run.add_argument("--stats",     choices=["none", "basic", "dispatch", "full"],
+132	                     default="basic",
+133	                     help="Stats verbosity written to transform_stats.json: "
+134	                          "none=nothing written, basic=run/records/triples/werk_staging, "
+135	                          "dispatch=basic+WEMI class counts (recommended for full-corpus runs), "
+136	                          "full=dispatch+per-predicate mocho counts (slow — use with --limit); "
+137	                          "default: basic")
+138	    run.add_argument("--log-level", default="INFO",
+139	                     choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+140	                     dest="log_level",
+141	                     help="Console and file log verbosity; default: INFO")
+142	    run.add_argument("--limit",        type=int, default=None,
+143	                     help="Stop after N records — for smoke-testing and sampling")
+144	    run.add_argument("--total",        type=int, default=None,
+145	                     help="Expected total records — enables ETA in progress log")
+146	    run.add_argument("--log-interval", type=int, default=100_000, dest="log_interval",
+147	                     help="Log a progress line every N records (default: 100000)")
+148	    run.add_argument("--debug",     action="store_true",
+149	                     help="Enable DEBUG logging (shorthand for --log-level DEBUG)")
+150	
+151	    args = parser.parse_args()
+152	    if args.debug:
+153	        args.log_level = "DEBUG"
+154	
+155	    ts     = datetime.now().strftime("%Y%m%d_%H%M%S")
+156	    outdir = args.outdir or (DEFAULT_OUTPUT_BASE / ts)
+157	    outdir.mkdir(parents=True, exist_ok=True)
+158	
+159	    if args.stem:
+160	        stem = args.stem
+161	    elif args.db:
+162	        stem = args.db.stem + (f"-{args.offset}" if args.offset else "")
+163	    else:
+164	        stem = Path(args.jsonl).stem
+165	    out_path    = outdir / f"{stem}.nq"
+166	    werk_path   = outdir / f"{stem}-werk-staging.duckdb"
+167	    stats_path  = outdir / f"{stem}-stats.json"
+168	    errors_path = outdir / f"{stem}-errors.jsonl"
+169	    log_path    = outdir / f"{stem}.log"
+```
+
+---
+
+### Assistant *(2026-05-12T08:11:55.258Z)*
+
+The stem for merged outputs comes from `outdir.name` (`merge.py:169`), which is the date dir. The shard files are already named correctly — for SQLite mode, `__main__.py:162` derives `stem = s2-<offset>`, so shards are `s2-0.log`, `s2-38400.log`, etc.
+
+Two small changes needed:
+
+1. **`merge.py`** — add a `--stem` arg that overrides `outdir.name`
+2. **`run-transform-sector.sh`** — pass `--stem "$SECTOR"` to the merge call
+
+Result: shards stay `s2-*.log`; merged output becomes `s2.log`, `s2-stats.json`, etc. Multiple sectors can share the same output dir without colliding.
+
+Proceed?
+
+---
+
+### User *(2026-05-12T08:12:47.809Z)*
+
+yes, proceed.
+
+---
+
+### Assistant *(2026-05-12T08:12:50.379Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/merge.py",
+  "offset": 145,
+  "limit": 35
+}
+```
+
+---
+
+### User *(2026-05-12T08:12:50.402Z)*
+
+**Tool result**
+```
+145	def main(argv=None) -> None:
+146	    parser = argparse.ArgumentParser(
+147	        description="Merge per-worker transform shards: .nq, werk_staging, stats"
+148	    )
+149	    parser.add_argument("out_base", type=Path,
+150	                        help="Run directory containing shard subdirectories")
+151	    parser.add_argument("--outdir",  type=Path, default=None,
+152	                        help="Directory for non-.nq outputs (default: same as out_base)")
+153	    parser.add_argument("--nq",      type=Path, default=None,
+154	                        help="Output .nq path (default: <out_base>/combined.nq)")
+155	    parser.add_argument("--db",      type=Path, default=None,
+156	                        help="Output DuckDB path (default: <outdir>/werk-staging-merged.duckdb)")
+157	    parser.add_argument("--stats",   type=Path, default=None,
+158	                        help="Output stats path (default: <outdir>/<stem>-stats.json)")
+159	    parser.add_argument("--errors",  type=Path, default=None,
+160	                        help="Output errors path (default: <outdir>/<stem>-errors.jsonl)")
+161	    parser.add_argument("--log",     type=Path, default=None,
+162	                        help="Output log path (default: <outdir>/<stem>.log)")
+163	    parser.add_argument("--skip-nq", action="store_true",
+164	                        help="Skip .nq concatenation; merge only stats and werk_staging")
+165	    args = parser.parse_args(argv)
+166	
+167	    out_base   = args.out_base
+168	    outdir     = args.outdir or out_base
+169	    stem       = outdir.name
+170	    nq_out     = args.nq     or out_base / f"{stem}.nq"
+171	    db_out     = args.db     or outdir / f"{stem}-werk-staging.duckdb"
+172	    stats_out  = args.stats  or outdir / f"{stem}-stats.json"
+173	    errors_out = args.errors or outdir / f"{stem}-errors.jsonl"
+174	    log_out    = args.log    or outdir / f"{stem}.log"
+175	
+176	    nq_paths     = sorted(p for p in out_base.rglob("*.nq")                  if p != nq_out)
+177	    db_paths     = sorted(p for p in out_base.rglob("*-werk-staging.duckdb") if p != db_out)
+178	    stats_paths  = sorted(p for p in out_base.rglob("*-stats.json")          if p != stats_out)
+179	    errors_paths = sorted(p for p in out_base.rglob("*-errors.jsonl")        if p != errors_out)
+```
+
+---
+
+### Assistant *(2026-05-12T08:12:54.573Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/merge.py",
+  "old_string": "    parser.add_argument(\"--skip-nq\", action=\"store_true\",\n                        help=\"Skip .nq concatenation; merge only stats and werk_staging\")\n    args = parser.parse_args(argv)\n\n    out_base   = args.out_base\n    outdir     = args.outdir or out_base\n    stem       = outdir.name",
+  "new_string": "    parser.add_argument(\"--stem\",   type=str, default=None,\n                        help=\"Output filename stem (default: outdir basename)\")\n    parser.add_argument(\"--skip-nq\", action=\"store_true\",\n                        help=\"Skip .nq concatenation; merge only stats and werk_staging\")\n    args = parser.parse_args(argv)\n\n    out_base   = args.out_base\n    outdir     = args.outdir or out_base\n    stem       = args.stem or outdir.name"
+}
+```
+
+---
+
+### User *(2026-05-12T08:13:00.792Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/merge.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-12T08:13:05.662Z)*
+
+Now update the shell script merge calls to pass `--stem "$SECTOR"`:
+
+---
+
+### Assistant *(2026-05-12T08:13:08.242Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/run-transform-sector.sh",
+  "old_string": "if [[ \"$MERGE_ALL\" == \"true\" ]]; then\n  echo \"[$(date '+%F %T')] Merging shards (stats + werk_staging + .nq)\"\n  cd \"$SCRIPTS_DIR\"\n  $PYTHON -m transform merge \"$OUT/nq\" --outdir \"$OUT\"\nelif [[ \"$MERGE\" == \"true\" ]]; then\n  echo \"[$(date '+%F %T')] Merging shards (stats + werk_staging only)\"\n  cd \"$SCRIPTS_DIR\"\n  $PYTHON -m transform merge \"$OUT/nq\" --outdir \"$OUT\" --skip-nq",
+  "new_string": "if [[ \"$MERGE_ALL\" == \"true\" ]]; then\n  echo \"[$(date '+%F %T')] Merging shards (stats + werk_staging + .nq)\"\n  cd \"$SCRIPTS_DIR\"\n  $PYTHON -m transform merge \"$OUT/nq\" --outdir \"$OUT\" --stem \"$SECTOR\"\nelif [[ \"$MERGE\" == \"true\" ]]; then\n  echo \"[$(date '+%F %T')] Merging shards (stats + werk_staging only)\"\n  cd \"$SCRIPTS_DIR\"\n  $PYTHON -m transform merge \"$OUT/nq\" --outdir \"$OUT\" --stem \"$SECTOR\" --skip-nq"
+}
+```
+
+---
+
+### User *(2026-05-12T08:13:11.108Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/run-transform-sector.sh has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-12T08:13:14.403Z)*
+
+Also update the shell script header comment to reflect the new output names:
+
+---
+
+### Assistant *(2026-05-12T08:13:17.657Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/run-transform-sector.sh",
+  "old_string": "# Outputs:   /data/gemea/www/downloads/gemea/<version>/nq/<version>.nq\n#            /data/gemea/www/downloads/gemea/<version>/combined-stats.json\n#            /data/gemea/www/downloads/gemea/<version>/werk-staging-merged.duckdb",
+  "new_string": "# Outputs:   /data/gemea/www/downloads/gemea/<version>/nq/<sector>.nq       (--merge-all)\n#            /data/gemea/www/downloads/gemea/<version>/<sector>-stats.json\n#            /data/gemea/www/downloads/gemea/<version>/<sector>-werk-staging.duckdb\n#            /data/gemea/www/downloads/gemea/<version>/<sector>-errors.jsonl\n#            /data/gemea/www/downloads/gemea/<version>/<sector>.log"
+}
+```
+
+---
+
+### User *(2026-05-12T08:13:19.991Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/run-transform-sector.sh has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-12T08:13:23.143Z)*
+
+Now let me do a quick smoke test to verify the stem flows through correctly:
+
+---
+
+### Assistant *(2026-05-12T08:13:24.895Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "cd /Users/mta/Documents/claude/goethe-faust/scripts && bash run-transform-sector.sh \\\n  --test \\\n  --merge \\\n  --workers 2 \\\n  --scripts-dir /Users/mta/Documents/claude/goethe-faust/scripts \\\n  --output-dir \"$TMPDIR/stem-test\" 2>&1",
+  "description": "Smoke test merge with sector stem",
+  "timeout": 120000,
+  "dangerouslyDisableSandbox": true
+}
+```
+
+---
+
+### User *(2026-05-12T08:14:15.190Z)*
+
+**Tool result**
+```
+[2026-05-12 10:13:40] TEST mode  total=  115432  workers=2
+  JSONL   = /Users/mta/Documents/claude/goethe-faust/data/items-all-goethe-faust.json
+  OUT     = /var/folders/kl/rzmwkdk57b159md_p3qhnh480000gp/T//stem-test
+[2026-05-12 10:13:42] All 2 workers launched — waiting...
+[2026-05-12 10:14:14] Workers done
+[2026-05-12 10:14:14] Merging shards (stats + werk_staging only)
+  .nq:    skipped (--skip-nq)
+  .duckdb: 2 shards → /var/folders/kl/rzmwkdk57b159md_p3qhnh480000gp/T/stem-test/s2-werk-staging.duckdb (15 rows)
+  stats:  2 shards → /var/folders/kl/rzmwkdk57b159md_p3qhnh480000gp/T/stem-test/s2-stats.json (115,432 records, 14,552,687 triples)
+  errors: 2 shards → /var/folders/kl/rzmwkdk57b159md_p3qhnh480000gp/T/stem-test/s2-errors.jsonl (0 error records)
+  logs:   2 shards → /var/folders/kl/rzmwkdk57b159md_p3qhnh480000gp/T/stem-test/s2.log
+Merged and deleted 8 shard files.
+[2026-05-12 10:14:15] Done. Output: /var/folders/kl/rzmwkdk57b159md_p3qhnh480000gp/T//stem-test
 ```
 
 ---
