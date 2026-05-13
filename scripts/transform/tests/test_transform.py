@@ -109,14 +109,14 @@ class TestMintBareId:
 
     def test_other_entity_bare_id(self):
         result = mint_bare_id("Agent", self._id)
-        assert result == f"urn:ddbedm:Agent:{self._id}"
+        assert result == f"urn:ddbedm:{self._id}"
 
     def test_full_uri_passthrough(self):
         uri = "http://d-nb.info/gnd/1234567"
         assert mint_bare_id("Agent", uri) == uri
 
     def test_urn_passthrough(self):
-        urn = "urn:ddbedm:Agent:12345"
+        urn = "urn:ddbedm:12345"
         assert mint_bare_id("Agent", urn) == urn
 
 
@@ -468,11 +468,11 @@ class TestBuildBareIdIndex:
     def test_bare_concept_indexed(self):
         idx = build_bare_id_index(self._rdf())
         assert _BARE_CONCEPT in idx
-        assert idx[_BARE_CONCEPT] == f"urn:ddbedm:Concept:{_BARE_CONCEPT}"
+        assert idx[_BARE_CONCEPT] == f"urn:ddbedm:{_BARE_CONCEPT}"
 
     def test_bare_place_indexed(self):
         idx = build_bare_id_index(self._rdf())
-        assert idx[_BARE_PLACE] == f"urn:ddbedm:Place:{_BARE_PLACE}"
+        assert idx[_BARE_PLACE] == f"urn:ddbedm:{_BARE_PLACE}"
 
     def test_full_uri_not_indexed(self):
         idx = build_bare_id_index(self._rdf())
@@ -483,19 +483,19 @@ class TestBuildBareIdIndex:
 
 
 class TestExpandObjNt:
-    _idx = {_BARE_CONCEPT: f"urn:ddbedm:Concept:{_BARE_CONCEPT}"}
+    _idx = {_BARE_CONCEPT: f"urn:ddbedm:{_BARE_CONCEPT}"}
 
     def test_bare_id_resolved(self):
         result = expand_obj_nt(f"<{_BARE_CONCEPT}>", self._idx)
-        assert result == f"<urn:ddbedm:Concept:{_BARE_CONCEPT}>"
+        assert result == f"<urn:ddbedm:{_BARE_CONCEPT}>"
 
     def test_full_uri_unchanged(self):
         result = expand_obj_nt("<http://example.org/foo>", self._idx)
         assert result == "<http://example.org/foo>"
 
     def test_urn_unchanged(self):
-        result = expand_obj_nt("<urn:ddbedm:Concept:XXXX>", self._idx)
-        assert result == "<urn:ddbedm:Concept:XXXX>"
+        result = expand_obj_nt("<urn:ddbedm:XXXX>", self._idx)
+        assert result == "<urn:ddbedm:XXXX>"
 
     def test_literal_unchanged(self):
         result = expand_obj_nt('"hello"@de', self._idx)
@@ -530,7 +530,7 @@ class TestEmitDdbedmBareIds:
             (l for l in lines if "terms/subject" in l), None
         )
         assert subj_line is not None, "dcterms:subject triple not emitted"
-        assert f"urn:ddbedm:Concept:{_BARE_CONC}" in subj_line, (
+        assert f"urn:ddbedm:{_BARE_CONC}" in subj_line, (
             f"bare ID not expanded; got: {subj_line}"
         )
 
@@ -558,16 +558,16 @@ class TestEmitSubjectTriplesBareId:
     _bare   = "Q" * 32
 
     def test_bare_id_expanded_via_index(self):
-        bare_id_to_uri = {self._bare: f"urn:ddbedm:Concept:{self._bare}"}
+        bare_id_to_uri = {self._bare: f"urn:ddbedm:{self._bare}"}
         vals = [{"resource": self._bare, "$": "", "lang": ""}]
         lines = emit_subject_triples(self._cho_nt, vals, {}, GRAPH_MOCHO, bare_id_to_uri)
-        assert any(f"urn:ddbedm:Concept:{self._bare}" in l for l in lines)
+        assert any(f"urn:ddbedm:{self._bare}" in l for l in lines)
 
     def test_bare_id_fallback_concept_mint(self):
         """No index entry → mint as Concept URN as fallback."""
         vals = [{"resource": self._bare, "$": "", "lang": ""}]
         lines = emit_subject_triples(self._cho_nt, vals, {}, GRAPH_MOCHO, {})
-        assert any(f"urn:ddbedm:Concept:{self._bare}" in l for l in lines)
+        assert any(f"urn:ddbedm:{self._bare}" in l for l in lines)
 
     def test_full_uri_unchanged(self):
         uri = "http://d-nb.info/gnd/4018197-4"
@@ -576,7 +576,7 @@ class TestEmitSubjectTriplesBareId:
         assert any(uri in l for l in lines)
 
     def test_label_stub_uses_expanded_uri(self):
-        bare_id_to_uri = {self._bare: f"urn:ddbedm:Concept:{self._bare}"}
+        bare_id_to_uri = {self._bare: f"urn:ddbedm:{self._bare}"}
         concept = {"about": self._bare, "prefLabel": [{"$": "Faust", "lang": "de"}]}
         vals = [{"resource": self._bare, "$": "", "lang": ""}]
         lines = emit_subject_triples(
@@ -584,7 +584,7 @@ class TestEmitSubjectTriplesBareId:
         )
         label_line = next((l for l in lines if '"Faust"@de' in l), None)
         assert label_line is not None
-        assert f"urn:ddbedm:Concept:{self._bare}" in label_line
+        assert f"urn:ddbedm:{self._bare}" in label_line
 
 
 # ── _MOCHO_SKIP: hasMet excluded from mocho graph ────────────────────────────
@@ -607,15 +607,15 @@ class TestEmitHastypeTriples:
         assert any(EDM_HAS_TYPE in l and uri in l for l in lines)
 
     def test_bare_id_expanded_via_index(self):
-        bare_id_to_uri = {_BARE_HT: f"urn:ddbedm:Concept:{_BARE_HT}"}
+        bare_id_to_uri = {_BARE_HT: f"urn:ddbedm:{_BARE_HT}"}
         vals = [{"resource": _BARE_HT}]
         lines = emit_hastype_triples(self._cho_nt, vals, {}, GRAPH_MOCHO, bare_id_to_uri)
-        assert any(f"urn:ddbedm:Concept:{_BARE_HT}" in l for l in lines)
+        assert any(f"urn:ddbedm:{_BARE_HT}" in l for l in lines)
 
     def test_bare_id_fallback_concept_mint(self):
         vals = [{"resource": _BARE_HT}]
         lines = emit_hastype_triples(self._cho_nt, vals, {}, GRAPH_MOCHO, {})
-        assert any(f"urn:ddbedm:Concept:{_BARE_HT}" in l for l in lines)
+        assert any(f"urn:ddbedm:{_BARE_HT}" in l for l in lines)
 
     def test_label_stub_from_concept(self):
         uri = "http://ddb.vocnet.org/thema/th001"
@@ -687,19 +687,19 @@ class TestResourceUris:
 
     def test_bare_id_index_lookup(self):
         bare = "A" * 32
-        index = {bare: f"urn:ddbedm:Concept:{bare}"}
+        index = {bare: f"urn:ddbedm:{bare}"}
         result = resource_uris(bare, index, "Concept")
-        assert result == [f"urn:ddbedm:Concept:{bare}"]
+        assert result == [f"urn:ddbedm:{bare}"]
 
     def test_bare_id_fallback_mint(self):
         bare = "B" * 32
         result = resource_uris(bare, {}, "Concept")
-        assert result == [f"urn:ddbedm:Concept:{bare}"]
+        assert result == [f"urn:ddbedm:{bare}"]
 
     def test_entity_class_forwarded(self):
         bare = "C" * 32
         result = resource_uris(bare, {}, "Place")
-        assert result == [f"urn:ddbedm:Place:{bare}"]
+        assert result == [f"urn:ddbedm:{bare}"]
 
     def test_unsafe_chars_sanitized(self):
         uri = "http://example.org/item<foo>"
@@ -771,13 +771,13 @@ class TestEmitCreatorTriplesBareId:
     _bare = "D" * 32
 
     def test_bare_id_expanded_via_param(self):
-        index = {self._bare: f"urn:ddbedm:Agent:{self._bare}"}
+        index = {self._bare: f"urn:ddbedm:{self._bare}"}
         align = {("http://www.w3.org/2002/07/owl#Thing",
                   "http://purl.org/dc/elements/1.1/creator"): "http://example.org/prop"}
         vals = [{"resource": self._bare}]
         lines = emit_creator_triples(_CREATOR_CHO, vals, {}, "http://www.w3.org/2002/07/owl#Thing",
                                      align, _CREATOR_G, index)
-        assert any(f"urn:ddbedm:Agent:{self._bare}" in l for l in lines)
+        assert any(f"urn:ddbedm:{self._bare}" in l for l in lines)
 
     def test_agent_uri_sanitized(self):
         unsafe_uri = "http://d-nb.info/gnd/118 540238"  # space in URI
@@ -811,10 +811,10 @@ class TestEmitContributorTriplesBareId:
     _bare = "E" * 32
 
     def test_bare_id_expanded_via_param(self):
-        index = {self._bare: f"urn:ddbedm:Agent:{self._bare}"}
+        index = {self._bare: f"urn:ddbedm:{self._bare}"}
         vals = [{"resource": self._bare}]
         lines = emit_contributor_triples(_CONTRIB_CHO, vals, {}, {}, "", "M", GRAPH_MOCHO, index)
-        assert any(f"urn:ddbedm:Agent:{self._bare}" in l for l in lines)
+        assert any(f"urn:ddbedm:{self._bare}" in l for l in lines)
 
 
 # ── emit_creator_triples — prefLabel list (Bug 1 fix) ────────────────────────
@@ -1020,10 +1020,10 @@ class TestEmitCurrentLocationTriples:
 
     def test_bare_id_expanded(self):
         bare = "F" * 32
-        index = {bare: f"urn:ddbedm:Place:{bare}"}
+        index = {bare: f"urn:ddbedm:{bare}"}
         vals = [{"resource": bare}]
         lines = emit_current_location_triples(_CURLOC_CHO, vals, {}, GRAPH_MOCHO, index)
-        assert any(f"urn:ddbedm:Place:{bare}" in l for l in lines)
+        assert any(f"urn:ddbedm:{bare}" in l for l in lines)
 
 
 # ── TestFixtures — integration tests on real corpus records ───────────────────
@@ -1082,7 +1082,7 @@ class TestFixtures:
         bare = "DJVX2BT7X2HN24O6YRDOQM6T3CNZYYY6"
         lines = _run_fixture("bare_id")
         assert not any(f"<{bare}>" in l for l in lines), "Bare ID not expanded"
-        assert any(f"urn:ddbedm:Concept:{bare}" in l for l in lines), "Expanded URN missing"
+        assert any(f"urn:ddbedm:{bare}" in l for l in lines), "Expanded URN missing"
 
 
 # ── mocho:mediaType and mocho:sector as vocnet IRIs ───────────────────────────

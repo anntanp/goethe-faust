@@ -117,7 +117,7 @@ Returns one N-Quads line: `f"{s_nt} {p_nt} {o_nt} <{graph_iri}> ."`. Inputs are 
 Returns `GEMEA_BASE + obj_id` (bare IRI, no angle brackets).
 
 ### §5.4 `mint_bare_id(entity_class, raw_id)` → `str`
-D27: if `raw_id` starts with `http` or `urn`: return as-is. `ProvidedCHO` → `DDB_ITEM_BASE + raw_id`; others → `f"urn:ddbedm:{entity_class}:{raw_id}"`.
+D27: if `raw_id` starts with `http` or `urn`: return as-is. `ProvidedCHO` → `DDB_ITEM_BASE + raw_id`; others → `f"urn:ddbedm:{raw_id}"`.
 
 ### §5.5 `normalize_date(s)` → `list[str]`
 D17: 8-digit compact YYYYMMDD → `YYYY-MM-DD`; `begin/end` ISO interval → `[begin, end]`; else `[s]`.
@@ -451,7 +451,7 @@ def mint_bare_id(entity_class: str, raw_id: str) -> str:
         return raw_id
     if entity_class == "ProvidedCHO":
         return DDB_ITEM_BASE + raw_id
-    return f"urn:ddbedm:{entity_class}:{raw_id}"
+    return f"urn:ddbedm:{raw_id}"
 
 # avoid
 def mint_bare_id(entity_class: str, raw_id: str) -> str:
@@ -459,7 +459,7 @@ def mint_bare_id(entity_class: str, raw_id: str) -> str:
         if entity_class == "ProvidedCHO":
             return DDB_ITEM_BASE + raw_id
         else:
-            return f"urn:ddbedm:{entity_class}:{raw_id}"
+            return f"urn:ddbedm:{raw_id}"
     return raw_id
 ```
 
