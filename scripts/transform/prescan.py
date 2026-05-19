@@ -573,6 +573,11 @@ def main() -> None:
     )
     log = logging.getLogger(__name__)
 
+    # Ensure all output parent directories exist before scanning starts
+    for p in (args.prov_db, args.concept_labels_db, args.agent_labels_db,
+              args.prov_out, args.parquet_out):
+        p.parent.mkdir(parents=True, exist_ok=True)
+
     # Load LIDO event type labels
     lido_labels: dict[str, str] = {}
     with open(args.lido, encoding="utf-8", newline="") as f:
