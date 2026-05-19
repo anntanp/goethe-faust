@@ -145,9 +145,9 @@ Layer 1 Without-Activity. Six node types per `ddbedm-prov-o-plan.md §2`:
 | Node | URI pattern | Source fields |
 |---|---|---|
 | CHO | `ddb:item/<item-id>` | `properties.item-id` |
-| Dataset | `urn:ddbedm:properties:dataset-id:<id>` | `properties.dataset-id` |
-| XSLT | `urn:ddbedm:properties:mapping-version:<ver>` | `properties.mapping-version` |
-| Provider | `urn:ddbedm:provider-info:provider-ddb-id:<id>` | `provider-info.provider-ddb-id` |
+| Dataset | `urn:ddbedm:dataset:<id>` | `properties.dataset-id` |
+| XSLT | `urn:ddbedm:xslt:<ver>` | `properties.mapping-version` |
+| Provider | `urn:ddbedm:provider:<id>` | `provider-info.provider-ddb-id` |
 | DDB | `http://www.deutsche-digitale-bibliothek.de` | fixed |
 | SourceRecord | `ddb-api:items/<id>/source/record` | `binaries.binary[]` (one block per entry) |
 

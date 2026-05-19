@@ -594,13 +594,13 @@ The DuckDB table path is passed via `--werk-staging` CLI flag. Source: `transfor
 | Entity type | Minting rule | Example |
 |---|---|---|
 | `ProvidedCHO` | `http://www.deutsche-digitale-bibliothek.de/item/<id>` | `…/item/225LOCJZSZLTA4DCUBFIHG72SPN7JTQZ` |
-| All others (`Aggregation`, `Agent`, `Event`, `Place`, `WebResource`, …) | `urn:ddbedm:<ClassName>:<id>` | `urn:ddbedm:Agent:O5XUSBA7IPKSXYUTN6EQNWK62BQRF7GN` |
+| All others (`Aggregation`, `Agent`, `Event`, `Place`, `WebResource`, …) | `urn:ddbedm:<id>` | `urn:ddbedm:O5XUSBA7IPKSXYUTN6EQNWK62BQRF7GN` |
 
 Detection: value does not start with `http` or `urn`.
 
 For `.resource` cross-references, the target entity type is resolved from a per-record lookup of all `about` values built before traversal begins.
 
-**Rationale**: `ProvidedCHO` bare IDs are DDB item identifiers — the canonical DDB item URI scheme (`…/item/<id>`) is the correct dereferenceable form and aligns with the `owl:sameAs` link emitted in the mocho graph. All other entity types have no canonical HTTP URI, so the `urn:ddbedm:` scheme encodes both the namespace and the entity class, making the source unambiguous without requiring a dereferenceable endpoint. Consistent with `export-s2-plan.md §4.3`.
+**Rationale**: `ProvidedCHO` bare IDs are DDB item identifiers — the canonical DDB item URI scheme (`…/item/<id>`) is the correct dereferenceable form and aligns with the `owl:sameAs` link emitted in the mocho graph. All other entity types have no canonical HTTP URI; the `urn:ddbedm:` prefix scopes them to the namespace without encoding a class name. PROV-O shared nodes (Dataset, XSLT, Provider) use a typed-prefix form (`urn:ddbedm:dataset:<id>`, `urn:ddbedm:xslt:<ver>`, `urn:ddbedm:provider:<id>`) as a collision guard — since DDB IDs are purely alphanumeric (no colons), the colon after the type prefix is an unambiguous discriminator. Consistent with `export-s2-plan.md §4.3` and D29.
 
 ---
 
@@ -633,6 +633,54 @@ def split_nq(nq_path: Path, out_dir: Path):
 ```
 
 **Amends D22** on the file format question only: D22 governs the generator (NQ output, graph IRI on every emitted line). This decision governs what happens to the `.nq` files after generation; D22 remains in effect for the transform itself.
+
+---
+
+## Decision 29: DuckDB-backed cross-run shared-entity deduplication
+
+**Decision**: Descriptive triples for shared named entities are emitted at most once per URI across all transform runs, tracked via a persistent DuckDB table (`emitted_entities`).
+
+**Entity types deduplicated**:
+
+| entity_type value | Source | Scope of sharing |
+|---|---|---|
+| `prov_xslt` | `properties.mapping-version` → XSLT URI | All records with same mapping version |
+| `prov_ddb` | `DDB_BASE` (fixed) | Every record in every run |
+| `prov_provider` | `provider-info.provider-ddb-id` → Provider URI | All records from same institution |
+| `prov_dataset` | `properties.dataset-id` → Dataset URI | All records in same delivery batch |
+| `edm_agent` | `edm.RDF.Agent[].about` | GND agent URIs shared across records |
+| `edm_place` | `edm.RDF.Place[].about` | GND place URIs shared across records |
+| `skos_concept` | `edm.RDF.Concept[].about` | Subject concept URIs shared across records |
+| `edm_timespan` | `edm.RDF.TimeSpan[].about` | Time period URIs shared across records |
+
+**PROV-O node URI scheme**: shared PROV-O nodes use typed-prefix URNs to prevent collision with bare entity IDs (`urn:ddbedm:<id>`):
+
+| Node | URI |
+|---|---|
+| Dataset | `urn:ddbedm:dataset:<properties.dataset-id>` |
+| XSLT | `urn:ddbedm:xslt:<properties.mapping-version>` |
+| Provider | `urn:ddbedm:provider:<provider-info.provider-ddb-id>` |
+| DDB Agent | `<http://www.deutsche-digitale-bibliothek.de>` (fixed HTTP URI, not URN) |
+
+DDB IDs are 32-character alphanumeric strings (no colons). The colon after the type prefix (`dataset:`, `xslt:`, `provider:`) is therefore an unambiguous discriminator between PROV-O nodes and bare entity URIs.
+
+**Schema** (single shared DuckDB file, not per-run):
+```sql
+CREATE TABLE IF NOT EXISTS emitted_entities (
+    uri         VARCHAR PRIMARY KEY,
+    entity_type VARCHAR NOT NULL
+)
+```
+
+**Runtime pattern**: at startup, load all rows into an in-memory `dict[str, str]` (`uri → entity_type`); check membership during processing; after the loop, `INSERT OR IGNORE` all entries back (idempotent, handles pre-existing rows).
+
+**Why not a per-record DuckDB lookup**: the number of unique shared-entity URIs is small (tens to low thousands). Loading into memory at startup is O(1) per record; a DuckDB round-trip per record would add I/O overhead at 18.5M scale.
+
+**Why not in-memory set only**: the transform is run once per sector file (s1–s7) as separate OS processes. An in-memory set resets between runs, so DDB Agent and XSLT triples would be re-emitted in every sector's output. The DuckDB file survives across runs.
+
+**`--entities-db` is optional**: if omitted, a fresh empty `dict` is used — within-run dedup only, no persistence. The `emitted` parameter defaults to `None` in both `emit_prov_triples` and `emit_ddbedm_triples`, which falls back to always-emit (backward-compatible for tests and other callers).
+
+**Per-CHO triples are never deduplicated**: linking triples from the CHO to shared nodes (`prov:wasDerivedFrom`, `prov:wasAttributedTo`, `prov:generatedAtTime`, `dcterms:hasVersion`, `dcterms:references`) are unique per record and emitted unconditionally.
 
 ---
 

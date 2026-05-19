@@ -497,6 +497,76 @@ Total: 137 tests (135 passing; 2 pre-existing failures in `TestRetypeEntities` �
 
 ---
 
+## 11. Shared-entity deduplication (2026-05-13)
+
+Descriptive triples for shared named entities are emitted at most once per URI across all transform runs. Without this, every sector run re-emits identical triples for the DDB Agent, XSLT SoftwareAgent, provider institutions, datasets, and all GND agents/places/concepts/timespans that appear in multiple records.
+
+### 11.1 Mechanism
+
+An `emitted: dict[str, str]` (`uri → entity_type`) is passed into both `emit_prov_triples` and `emit_ddbedm_triples`. Each shared-node block checks membership before emitting and registers the URI on first emission. The dict is initialized in `__main__.py` before the record loop (empty = within-run dedup only). With `--entities-db PATH`, it is loaded from DuckDB at startup and written back with `INSERT OR IGNORE` after the loop, enabling cross-run dedup across sector files.
+
+**Entity types tracked**:
+
+| entity_type | Source |
+|---|---|
+| `prov_xslt` | `properties.mapping-version` → XSLT SoftwareAgent URI |
+| `prov_ddb` | Fixed `DDB_BASE` URI |
+| `prov_provider` | `provider-info.provider-ddb-id` → Provider Agent URI |
+| `prov_dataset` | `properties.dataset-id` → Dataset URI |
+| `edm_agent` | `edm.RDF.Agent[].about` |
+| `edm_place` | `edm.RDF.Place[].about` |
+| `skos_concept` | `edm.RDF.Concept[].about` |
+| `edm_timespan` | `edm.RDF.TimeSpan[].about` |
+
+Per-CHO linking triples (`prov:wasDerivedFrom`, `prov:wasAttributedTo`, `prov:generatedAtTime`, `dcterms:hasVersion`, `dcterms:references`) are always emitted unconditionally.
+
+### 11.2 DuckDB schema
+
+```sql
+CREATE TABLE IF NOT EXISTS emitted_entities (
+    uri         VARCHAR PRIMARY KEY,
+    entity_type VARCHAR NOT NULL
+)
+```
+
+Separate file from `werk-staging.duckdb`; shared across all sector runs in a production campaign. Managed by the caller — not auto-created in the run output directory.
+
+### 11.3 New CLI flag
+
+| Flag | Default | Description |
+|---|---|---|
+| `--entities-db PATH` | _(none)_ | Shared cross-run entity-dedup DuckDB. Omit for within-run dedup only. |
+
+### 11.4 Code changes
+
+| File | Change |
+|---|---|
+| `emitters.py` | Add `_DEDUP_ENTITY_TYPES` dict; add `emitted` param to `emit_ddbedm_triples` and `emit_prov_triples`; guard 4 PROV-O shared-node blocks + entity loop in `emit_ddbedm_triples` |
+| `transform.py` | Add `emitted_entities` param to `transform_record`; thread through to both emitters |
+| `__main__.py` | Add `--entities-db` CLI arg; DuckDB setup/load at startup; pass `emitted_entities` to `transform_record`; batch write-back after loop |
+
+### 11.5 PROV-O URN scheme change
+
+PROV-O shared nodes switched from a verbose property-chain URN form to short typed-prefix URNs:
+
+| Node | Old form | New form |
+|---|---|---|
+| Dataset | `urn:ddbedm:properties:dataset-id:<id>` | `urn:ddbedm:dataset:<id>` |
+| XSLT | `urn:ddbedm:properties:mapping-version:<ver>` | `urn:ddbedm:xslt:<ver>` |
+| Provider | `urn:ddbedm:provider-info:provider-ddb-id:<id>` | `urn:ddbedm:provider:<id>` |
+
+**Collision guard**: bare DDB entity IDs (Agent, Place, Concept, TimeSpan) are minted as `urn:ddbedm:<id>` without a class name. DDB IDs are 32-character alphanumeric strings (no colons), so `urn:ddbedm:dataset:X` vs `urn:ddbedm:X` are unambiguous — the colon after the type segment is the discriminator.
+
+### 11.6 Test additions
+
+19 new tests across 2 new classes (total: 159).
+
+**`TestEmitProvTriplesDedup`** (11 tests): `emitted=None` emits all; dict populated with correct `entity_type` values; each of the 4 shared nodes skipped when URI already in `emitted`; per-CHO linking triples always present even when all shared nodes are pre-emitted; 4 URN-format tests asserting the new short-prefix form and no collision between PROV-O nodes and bare entity IDs.
+
+**`TestEmitDdbedmTriplesDedup`** (8 tests): Agent/Place/Concept/TimeSpan skipped when URI already in `emitted`; `ProvidedCHO` never skipped (not in `_DEDUP_ENTITY_TYPES`); `emitted=None` emits all; second call with same `emitted` dict emits 0 agent triples; dict populated with correct `entity_type` after first call.
+
+---
+
 ## 12. Full-corpus run plan
 
 The production orchestrator is `scripts/run-transform-sector.sh`. It splits the SQLite table into `--workers` chunks, launches one `python -m transform` OS process per chunk, waits for all to finish, then merges.

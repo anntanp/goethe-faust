@@ -41,9 +41,10 @@ from transform.emitters import (
     werk_staging_row,
     emit_ddbedm_triples,
     emit_mocho_triples,
+    emit_prov_triples,
 )
 from transform.constants import (
-    _MOCHO_SKIP, DDB_HIERARCHY_TYPE, _HTYPE_PREFIX, EDM_HAS_TYPE, EDM_NS,
+    _MOCHO_SKIP, DDB_HIERARCHY_TYPE, _HTYPE_PREFIX, EDM_HAS_TYPE, EDM_NS, DDB_BASE,
 )
 from transform.transform import transform_record
 from transform.loaders import load_mediatype_class, load_htype_map
@@ -1206,3 +1207,187 @@ class TestValueToNtObjLangNorm:
     def test_leading_trailing_whitespace_stripped(self):
         result = value_to_nt_obj({"$": "Faust", "lang": " ger "})
         assert result == ['"Faust"@ger']
+
+
+class TestEmitProvTriplesDedup:
+    _RECORD = {
+        "properties": {
+            "item-id":         "TESTITEMID00000000000000000000000",
+            "dataset-id":      "testdataset123",
+            "dataset-label":   "Test Dataset",
+            "revision-id":     "1",
+            "ingest-date":     "2026-01-01T00:00:00+0000",
+            "mapping-version": "6.18",
+        },
+        "provider-info": {
+            "provider-ddb-id": "PROVIDERID00000000000000000000000",
+            "provider-name":   "Test Provider",
+        },
+    }
+    _CHO_URI  = "http://www.deutsche-digitale-bibliothek.de/item/TESTITEMID00000000000000000000000"
+    _GRAPH    = "http://test.example/graph/prov"
+    _XSLT_URI = "urn:ddbedm:xslt:6.18"
+    _DS_URI   = "urn:ddbedm:dataset:testdataset123"
+    _PROV_URI = "urn:ddbedm:provider:PROVIDERID00000000000000000000000"
+
+    def _subjects(self, lines):
+        return [nq.split(" ", 1)[0] for nq in lines]
+
+    def test_emitted_none_emits_all(self):
+        lines = emit_prov_triples(self._RECORD, self._CHO_URI, self._GRAPH, emitted=None)
+        subjs = set(self._subjects(lines))
+        assert f"<{self._XSLT_URI}>" in subjs
+        assert f"<{DDB_BASE}>"       in subjs
+        assert f"<{self._DS_URI}>"   in subjs
+        assert f"<{self._PROV_URI}>" in subjs
+
+    def test_emitted_dict_populated(self):
+        emitted: dict[str, str] = {}
+        emit_prov_triples(self._RECORD, self._CHO_URI, self._GRAPH, emitted=emitted)
+        assert emitted.get(self._XSLT_URI) == "prov_xslt"
+        assert emitted.get(DDB_BASE)       == "prov_ddb"
+        assert emitted.get(self._DS_URI)   == "prov_dataset"
+        assert emitted.get(self._PROV_URI) == "prov_provider"
+
+    def test_xslt_skipped_when_emitted(self):
+        lines = emit_prov_triples(
+            self._RECORD, self._CHO_URI, self._GRAPH,
+            emitted={self._XSLT_URI: "prov_xslt"},
+        )
+        assert f"<{self._XSLT_URI}>" not in self._subjects(lines)
+
+    def test_ddb_agent_skipped_when_emitted(self):
+        lines = emit_prov_triples(
+            self._RECORD, self._CHO_URI, self._GRAPH,
+            emitted={DDB_BASE: "prov_ddb"},
+        )
+        assert f"<{DDB_BASE}>" not in self._subjects(lines)
+
+    def test_provider_skipped_when_emitted(self):
+        lines = emit_prov_triples(
+            self._RECORD, self._CHO_URI, self._GRAPH,
+            emitted={self._PROV_URI: "prov_provider"},
+        )
+        assert f"<{self._PROV_URI}>" not in self._subjects(lines)
+
+    def test_dataset_skipped_when_emitted(self):
+        lines = emit_prov_triples(
+            self._RECORD, self._CHO_URI, self._GRAPH,
+            emitted={self._DS_URI: "prov_dataset"},
+        )
+        assert f"<{self._DS_URI}>" not in self._subjects(lines)
+
+    def test_cho_linking_always_emitted(self):
+        emitted = {
+            self._XSLT_URI: "prov_xslt",
+            DDB_BASE:        "prov_ddb",
+            self._PROV_URI:  "prov_provider",
+            self._DS_URI:    "prov_dataset",
+        }
+        lines = emit_prov_triples(self._RECORD, self._CHO_URI, self._GRAPH, emitted=emitted)
+        cho_nt    = f"<{self._CHO_URI}>"
+        cho_lines = [nq for nq in lines if nq.startswith(cho_nt)]
+        predicates = {
+            nq.split("> <", 1)[1].split(">", 1)[0]
+            for nq in cho_lines if "> <" in nq
+        }
+        assert "http://www.w3.org/ns/prov#wasDerivedFrom"  in predicates
+        assert "http://www.w3.org/ns/prov#wasAttributedTo" in predicates
+        assert "http://www.w3.org/ns/prov#generatedAtTime" in predicates
+
+    # ── URN format tests ──────────────────────────────────────────────────────
+
+    def test_xslt_uri_short_prefix(self):
+        lines = emit_prov_triples(self._RECORD, self._CHO_URI, self._GRAPH)
+        assert any("urn:ddbedm:xslt:6.18" in nq for nq in lines)
+        assert not any("urn:ddbedm:properties:mapping-version" in nq for nq in lines)
+
+    def test_dataset_uri_short_prefix(self):
+        lines = emit_prov_triples(self._RECORD, self._CHO_URI, self._GRAPH)
+        assert any("urn:ddbedm:dataset:testdataset123" in nq for nq in lines)
+        assert not any("urn:ddbedm:properties:dataset-id" in nq for nq in lines)
+
+    def test_provider_uri_short_prefix(self):
+        lines = emit_prov_triples(self._RECORD, self._CHO_URI, self._GRAPH)
+        assert any("urn:ddbedm:provider:PROVIDERID00000000000000000000000" in nq for nq in lines)
+        assert not any("urn:ddbedm:provider-info:provider-ddb-id" in nq for nq in lines)
+
+    def test_prov_uris_no_collision_with_entity_bare_id(self):
+        # DDB bare IDs are 32-char alphanumeric — prov URNs use typed prefixes with colons
+        # so urn:ddbedm:provider:X and urn:ddbedm:X are distinct
+        lines = emit_prov_triples(self._RECORD, self._CHO_URI, self._GRAPH)
+        prov_subjects = {nq.split(" ", 1)[0] for nq in lines
+                         if nq.startswith("<urn:ddbedm:")}
+        for s in prov_subjects:
+            # every prov URN must carry a type segment (provider:, dataset:, xslt:)
+            inner = s[len("<urn:ddbedm:"):-1]
+            assert ":" in inner, f"prov URN missing type prefix: {s}"
+
+
+class TestEmitDdbedmTriplesDedup:
+    _GRAPH = "http://test.example/graph/ddbedm"
+
+    def _rdf_with(self, entity_type: str, about: str) -> dict:
+        return {entity_type: {"about": about, "prefLabel": [{"$": "Test Label", "lang": "de"}]}}
+
+    def test_agent_skipped_when_emitted(self):
+        uri     = "http://d-nb.info/gnd/118540238"
+        lines, *_ = emit_ddbedm_triples(
+            self._rdf_with("Agent", uri), self._GRAPH,
+            emitted={uri: "edm_agent"},
+        )
+        assert not any(f"<{uri}>" in nq for nq in lines)
+
+    def test_place_skipped_when_emitted(self):
+        uri     = "http://d-nb.info/gnd/4044283-4"
+        lines, *_ = emit_ddbedm_triples(
+            self._rdf_with("Place", uri), self._GRAPH,
+            emitted={uri: "edm_place"},
+        )
+        assert not any(f"<{uri}>" in nq for nq in lines)
+
+    def test_concept_skipped_when_emitted(self):
+        uri     = "http://d-nb.info/gnd/4020531-9"
+        lines, *_ = emit_ddbedm_triples(
+            self._rdf_with("Concept", uri), self._GRAPH,
+            emitted={uri: "skos_concept"},
+        )
+        assert not any(f"<{uri}>" in nq for nq in lines)
+
+    def test_timespan_skipped_when_emitted(self):
+        uri     = "http://d-nb.info/gnd/4806547-9"
+        lines, *_ = emit_ddbedm_triples(
+            self._rdf_with("TimeSpan", uri), self._GRAPH,
+            emitted={uri: "edm_timespan"},
+        )
+        assert not any(f"<{uri}>" in nq for nq in lines)
+
+    def test_provided_cho_never_skipped(self):
+        cho_uri = "http://www.deutsche-digitale-bibliothek.de/item/ABCABC"
+        lines, *_ = emit_ddbedm_triples(
+            {"ProvidedCHO": {"about": cho_uri}}, self._GRAPH,
+            emitted={cho_uri: "edm_agent"},  # present in dict but not a dedup type
+        )
+        assert any(f"<{cho_uri}>" in nq for nq in lines)
+
+    def test_emitted_none_emits_all(self):
+        uri     = "http://d-nb.info/gnd/118540238"
+        lines, *_ = emit_ddbedm_triples(
+            self._rdf_with("Agent", uri), self._GRAPH, emitted=None,
+        )
+        assert any(f"<{uri}>" in nq for nq in lines)
+
+    def test_second_record_shares_agent(self):
+        uri     = "http://d-nb.info/gnd/118540238"
+        emitted: dict[str, str] = {}
+        rdf = self._rdf_with("Agent", uri)
+        lines1, *_ = emit_ddbedm_triples(rdf, self._GRAPH, emitted=emitted)
+        lines2, *_ = emit_ddbedm_triples(rdf, self._GRAPH, emitted=emitted)
+        assert len([nq for nq in lines1 if f"<{uri}>" in nq]) > 0
+        assert len([nq for nq in lines2 if f"<{uri}>" in nq]) == 0
+
+    def test_emitted_dict_populated_with_type(self):
+        uri     = "http://d-nb.info/gnd/118540238"
+        emitted: dict[str, str] = {}
+        emit_ddbedm_triples(self._rdf_with("Agent", uri), self._GRAPH, emitted=emitted)
+        assert emitted.get(uri) == "edm_agent"

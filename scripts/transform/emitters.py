@@ -26,11 +26,22 @@ from .utils import (
     build_bare_id_index, expand_obj_nt, resource_uris,
 )
 
+# Entity types whose descriptive triples are deduplicated across records/runs via the
+# emitted dict (uri → entity_type).  ProvidedCHO, Aggregation, WebResource are excluded
+# — they are unique per record.
+_DEDUP_ENTITY_TYPES: dict[str, str] = {
+    "Agent":    "edm_agent",
+    "Place":    "edm_place",
+    "Concept":  "skos_concept",
+    "TimeSpan": "edm_timespan",
+}
+
 
 def emit_ddbedm_triples(
     rdf: dict,
     graph_iri: str,
     lang_coll: set[str] | None = None,
+    emitted: dict[str, str] | None = None,
 ) -> tuple[NQList, Counter, Counter, Counter]:
     """Emit verbatim EDM passthrough triples for all entity types in rdf (§6.1).
 
@@ -56,6 +67,10 @@ def emit_ddbedm_triples(
             about_parts = raw_about.split()
             subj_uri = mint_bare_id(entity_type, _sanitize_iri(about_parts[0]))
             subj_nt  = f"<{subj_uri}>"
+            if emitted is not None and entity_type in _DEDUP_ENTITY_TYPES:
+                if subj_uri in emitted:
+                    continue
+                emitted[subj_uri] = _DEDUP_ENTITY_TYPES[entity_type]
             if len(about_parts) > 1:
                 sani_ctr["uri_about_split"] += len(about_parts) - 1
                 for alt in about_parts[1:]:
@@ -79,7 +94,7 @@ def emit_ddbedm_triples(
     return lines, class_ctr, pred_ctr, sani_ctr
 
 
-def emit_prov_triples(record: dict, ddb_cho_uri: str, graph_iri: str) -> NQList:
+def emit_prov_triples(record: dict, ddb_cho_uri: str, graph_iri: str, emitted: dict[str, str] | None = None) -> NQList:
     """Emit PROV-O Layer 1 (Without-Activity) for one record (§6.2, ddbedm-prov-o-plan.md §2)."""
     lines: NQList = []
     props = record.get("properties") or {}
@@ -103,10 +118,9 @@ def emit_prov_triples(record: dict, ddb_cho_uri: str, graph_iri: str) -> NQList:
     src_href  = (src_ref.get("href", "") or "").strip() if isinstance(src_ref, dict) else ""
     rec_type  = (src_ref.get("type", "") or "").strip() if isinstance(src_ref, dict) else ""
 
-    ds_uri   = f"urn:ddbedm:properties:dataset-id:{dataset_id}"      if dataset_id      else ""
-    xslt_uri = f"urn:ddbedm:properties:mapping-version:{map_ver}"    if map_ver         else ""
-    prov_uri = f"urn:ddbedm:provider-info:provider-ddb-id:{provider_ddb_id}" \
-               if provider_ddb_id else ""
+    ds_uri   = f"urn:ddbedm:dataset:{dataset_id}"       if dataset_id      else ""
+    xslt_uri = f"urn:ddbedm:xslt:{map_ver}"             if map_ver         else ""
+    prov_uri = f"urn:ddbedm:provider:{provider_ddb_id}" if provider_ddb_id else ""
 
     # ── CHO node ──────────────────────────────────────────────────────────────
     cho_nt = f"<{ddb_cho_uri}>"
@@ -126,7 +140,9 @@ def emit_prov_triples(record: dict, ddb_cho_uri: str, graph_iri: str) -> NQList:
                              f'"ddb:{_escape_literal(ref_val)}"', graph_iri))
 
     # ── Dataset node ──────────────────────────────────────────────────────────
-    if ds_uri:
+    if ds_uri and (emitted is None or ds_uri not in emitted):
+        if emitted is not None:
+            emitted[ds_uri] = "prov_dataset"
         ds_nt = f"<{ds_uri}>"
         lines.append(make_nq(ds_nt, f"<{RDF_TYPE}>", f"<{DCAT_DATASET}>", graph_iri))
         lines.append(make_nq(ds_nt, f"<{RDF_TYPE}>", f"<{PROV_ENTITY}>",  graph_iri))
@@ -142,7 +158,9 @@ def emit_prov_triples(record: dict, ddb_cho_uri: str, graph_iri: str) -> NQList:
                                  f"<{prov_uri}>", graph_iri))
 
     # ── XSLT SoftwareAgent node ───────────────────────────────────────────────
-    if xslt_uri:
+    if xslt_uri and (emitted is None or xslt_uri not in emitted):
+        if emitted is not None:
+            emitted[xslt_uri] = "prov_xslt"
         xslt_nt = f"<{xslt_uri}>"
         lines.append(make_nq(xslt_nt, f"<{RDF_TYPE}>", f"<{PROV_SW_AGENT}>", graph_iri))
         lines.append(make_nq(xslt_nt, f"<{DCTERMS_HAS_VER}>",
@@ -150,14 +168,19 @@ def emit_prov_triples(record: dict, ddb_cho_uri: str, graph_iri: str) -> NQList:
         lines.append(make_nq(xslt_nt, f"<{PROV_ON_BEHALF}>", f"<{DDB_BASE}>", graph_iri))
 
     # ── DDB Agent node (fixed URI) ────────────────────────────────────────────
-    ddb_nt = f"<{DDB_BASE}>"
-    lines.append(make_nq(ddb_nt, f"<{RDF_TYPE}>", f"<{PROV_AGENT}>", graph_iri))
-    lines.append(make_nq(ddb_nt, f"<{RDF_TYPE}>", f"<{FOAF_ORG}>",   graph_iri))
-    lines.append(make_nq(ddb_nt, f"<{FOAF_NAME}>",
-                         '"Deutsche Digitale Bibliothek"', graph_iri))
+    if emitted is None or DDB_BASE not in emitted:
+        if emitted is not None:
+            emitted[DDB_BASE] = "prov_ddb"
+        ddb_nt = f"<{DDB_BASE}>"
+        lines.append(make_nq(ddb_nt, f"<{RDF_TYPE}>", f"<{PROV_AGENT}>", graph_iri))
+        lines.append(make_nq(ddb_nt, f"<{RDF_TYPE}>", f"<{FOAF_ORG}>",   graph_iri))
+        lines.append(make_nq(ddb_nt, f"<{FOAF_NAME}>",
+                             '"Deutsche Digitale Bibliothek"', graph_iri))
 
     # ── Provider Agent node ───────────────────────────────────────────────────
-    if prov_uri:
+    if prov_uri and (emitted is None or prov_uri not in emitted):
+        if emitted is not None:
+            emitted[prov_uri] = "prov_provider"
         prov_nt = f"<{prov_uri}>"
         lines.append(make_nq(prov_nt, f"<{RDF_TYPE}>", f"<{PROV_AGENT}>", graph_iri))
         lines.append(make_nq(prov_nt, f"<{RDF_TYPE}>", f"<{FOAF_ORG}>",   graph_iri))

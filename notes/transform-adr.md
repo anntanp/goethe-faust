@@ -313,9 +313,9 @@ chain, making the source unambiguous without requiring a dereferenceable endpoin
 | Node | URI pattern | JSON source |
 |---|---|---|
 | CHO | `ddb:item/<id>` | `properties.item-id` |
-| Dataset | `urn:ddbedm:properties:dataset-id:<id>` | `properties.dataset-id` |
-| XSLT | `urn:ddbedm:properties:mapping-version:<ver>` | `properties.mapping-version` |
-| Provider | `urn:ddbedm:provider-info:provider-ddb-id:<id>` | `provider-info.provider-ddb-id` |
+| Dataset | `urn:ddbedm:dataset:<id>` | `properties.dataset-id` |
+| XSLT | `urn:ddbedm:xslt:<ver>` | `properties.mapping-version` |
+| Provider | `urn:ddbedm:provider:<id>` | `provider-info.provider-ddb-id` |
 | DDB | `<http://www.deutsche-digitale-bibliothek.de>` | fixed |
 
 ### Turtle pattern
@@ -335,26 +335,26 @@ chain, making the source unambiguous without requiring a dereferenceable endpoin
 ddb:item/222NZKK63TNRLC2VETRV722VKBDSUVGL          # properties.item-id
     a prov:Entity ;
     prov:wasDerivedFrom
-        <urn:ddbedm:properties:dataset-id:76409877634279609sQOu> ;  # properties.dataset-id
+        <urn:ddbedm:dataset:76409877634279609sQOu> ;  # properties.dataset-id
     prov:wasAttributedTo
-        <urn:ddbedm:properties:mapping-version:6.18> ;              # properties.mapping-version
+        <urn:ddbedm:xslt:6.18> ;              # properties.mapping-version
     prov:generatedAtTime "2026-01-07T15:40:43+0100" ;               # properties.ingest-date
     dcterms:hasVersion   "43" ;                                      # properties.revision-id
     dcterms:references   "ddb:222NZKK63TNRLC2VETRV722VKBDSUVGL" .  # source.description.record.ref
 
 # ── Dataset ───────────────────────────────────────────────────────────────────
 
-<urn:ddbedm:properties:dataset-id:76409877634279609sQOu>
+<urn:ddbedm:dataset:76409877634279609sQOu>
     a dcat:Dataset, prov:Entity ;
     dcterms:identifier "76409877634279609sQOu" ;                     # properties.dataset-id
     rdfs:label         "Gesamtlieferung: Deutsche Fotothek - LIDO"@de ;  # properties.dataset-label
     dcterms:type       <http://www.lido-schema.org/> ;               # source.description.record.type
     prov:wasAttributedTo
-        <urn:ddbedm:provider-info:provider-ddb-id:CJY7MSLPOPB7FTPC7JM5K2GGM5PBGLYI> .
+        <urn:ddbedm:provider:CJY7MSLPOPB7FTPC7JM5K2GGM5PBGLYI> .
 
 # ── XSLT SoftwareAgent ────────────────────────────────────────────────────────
 
-<urn:ddbedm:properties:mapping-version:6.18>
+<urn:ddbedm:xslt:6.18>
     a prov:SoftwareAgent ;
     dcterms:hasVersion "6.18" ;                                      # properties.mapping-version
     prov:actedOnBehalfOf <http://www.deutsche-digitale-bibliothek.de> .
@@ -367,7 +367,7 @@ ddb:item/222NZKK63TNRLC2VETRV722VKBDSUVGL          # properties.item-id
 
 # ── Provider Agent ────────────────────────────────────────────────────────────
 
-<urn:ddbedm:provider-info:provider-ddb-id:CJY7MSLPOPB7FTPC7JM5K2GGM5PBGLYI>
+<urn:ddbedm:provider:CJY7MSLPOPB7FTPC7JM5K2GGM5PBGLYI>
     a prov:Agent, foaf:Organization ;
     foaf:name        "Deutsche Fotothek" ;                           # provider-info.provider-name
     schema:url       <http://www.deutschefotothek.de> ;              # provider-info.provider-uri
@@ -387,7 +387,7 @@ ddb:item/222NZKK63TNRLC2VETRV722VKBDSUVGL          # properties.item-id
 | `dcterms:hasVersion` | `properties.revision-id` | string literal |
 | `dcterms:references` | `source.description.record.ref` | `"ddb:<ref>"` literal |
 
-**Dataset** (`urn:ddbedm:properties:dataset-id:<value>`):
+**Dataset** (`urn:ddbedm:dataset:<value>`):
 
 | Triple | JSON path | Value type |
 |---|---|---|
@@ -396,14 +396,14 @@ ddb:item/222NZKK63TNRLC2VETRV722VKBDSUVGL          # properties.item-id
 | `dcterms:type` | `source.description.record.type` | URI |
 | `prov:wasAttributedTo` | `provider-info.provider-ddb-id` → Provider URN | URN |
 
-**XSLT** (`urn:ddbedm:properties:mapping-version:<value>`):
+**XSLT** (`urn:ddbedm:xslt:<value>`):
 
 | Triple | JSON path | Value type |
 |---|---|---|
 | `dcterms:hasVersion` | `properties.mapping-version` | string literal |
 | `prov:actedOnBehalfOf` | fixed: `<http://www.deutsche-digitale-bibliothek.de>` | URI |
 
-**Provider** (`urn:ddbedm:provider-info:provider-ddb-id:<value>`):
+**Provider** (`urn:ddbedm:provider:<value>`):
 
 | Triple | JSON path | Value type |
 |---|---|---|

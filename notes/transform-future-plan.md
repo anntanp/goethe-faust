@@ -241,7 +241,26 @@ See `transform-props-mapping-plan.md §13–14` and `transform-props-mapping-adr
 
 ---
 
-## §13 QLever text-entity link files for `ql:contains-word` support
+## §13 Entity resolution for bare DDB identifiers
+
+**Context**: DDB assigns record-scoped internal IDs (32-character alphanumeric) to `edm:Agent`, `edm:Place`, `skos:Concept`, and `edm:TimeSpan` entities when no authority URI (GND, GeoNames, etc.) is available. These IDs are not shared across contributing institutions, so the same real-world entity — for example the place "Leipzig" — can appear under multiple distinct bare IDs in the corpus. Each bare ID is minted as a separate `urn:ddbedm:<id>` URI, producing multiple disconnected nodes in the graph.
+
+**Evidence**: corpus sample of 200 records from `data/items-excerpt-1000.json` shows the same `skos:prefLabel "Leipzig"` under at least two different bare IDs (`LZUPFM3E4WLWD2BTG5INU4WFB5BE6BZG`, `RZPV44ZMPDRLCHGYMI2TXSB73UJ5QBHK`). Entities with GND URIs (e.g. `http://d-nb.info/gnd/4127793-4` for München) are already consistent across records and need no resolution.
+
+**Why not in the transform**: the transform emits triples faithful to the source. Two bare IDs pointing to the same label are two distinct source assertions; merging them would be data loss without an explicit authority decision. This is an entity resolution problem, not a deduplication problem.
+
+**Planned approach**:
+
+1. **Authority lookup first**: after `link_gnd_agents.py` links persons and organisations to GND URIs, the remaining unlinked agents are the hardest cases. For places, run bare-ID values through a GeoNames / GND-Geographikum lookup on `skos:prefLabel`.
+2. **Candidate pair generation**: for bare-ID entities of the same type with identical `skos:prefLabel` (case-folded, whitespace-normalised), emit them as `owl:sameAs` candidates into a separate staging table.
+3. **Merge decision**: apply a confidence threshold (exact label match + same entity type → high confidence); emit `owl:sameAs` triples into a dedicated named graph. QLever can then union-merge the nodes at query time without modifying the source `ddbedm` graph.
+4. **Scope**: prioritise `edm:Place` (GeoNames lookup) and `edm:Agent` persons (GND); `skos:Concept` and `edm:TimeSpan` bare IDs are lower priority.
+
+**Note for paper**: acknowledged as a known limitation in `paper/iswc-2026/40-quality.tex §Known Limitations` — authority-based entity resolution for bare-identifier entities is left as future work.
+
+---
+
+## §14 QLever text-entity link files for `ql:contains-word` support
 
 **Prerequisite**: N-Quads output from the transform pipeline (any run).
 

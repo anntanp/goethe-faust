@@ -18,6 +18,8 @@ DuckDB werk_staging table for GND Werk linking.
 | `__main__.py` | CLI entry point (`python -m transform`) |
 | `merge.py` | `python -m transform merge` — concat .nq shards, merge DuckDB + stats |
 | `sqlite_export.py` | `export()` — sequential SQLite → JSONL export for bulk runs |
+| `prescan.py` | Pass 1 prescan (`python -m transform.prescan`) — PROV-O shared nodes, label DBs, per-sector Parquet |
+| `merge_parquet.py` | `python -m transform merge_parquet` — concat per-sector `*_meta.parquet` files |
 
 ---
 
@@ -44,10 +46,16 @@ output/config/*.csv / *.json          dispatch + alignment tables
 
 ### Full GeMeA corpus (Option C parallel)
 
-One `sN.sqlite` per sector. Each sector runs in its own subshell — export then
-transform back-to-back — with all sectors in parallel:
+Two-pass pipeline. Pass 1 (prescan) runs all 7 sectors in parallel to build shared
+DuckDB files and per-sector Parquet before any transform worker starts. Pass 2
+(export + transform) then runs with read-only access to those shared files.
 
 ```
+s1.sqlite ─┐                           prov.duckdb          ─┐
+s2.sqlite ─┤  prescan (pass 1,         concept_labels.duckdb  ├─ shared (read-only in pass 2)
+  ...      ─┤  all in parallel)        agent_labels.duckdb  ─┘
+sN.sqlite ─┘                           sN_meta.parquet (per sector)
+
 s1.sqlite ─┐                          s1/ (.nq + .duckdb)  ─┐
 s2.sqlite ─┤  sqlite_export + transform  s2/ (.nq + .duckdb)  ─┤  cat → merged.nq
   ...      ─┤  (pipelined per sector,    ...                  ─┤  duckdb → merged.duckdb
@@ -171,9 +179,10 @@ python -m transform --ids ../data/ids-sample.txt
 .venv/bin/python -m pytest scripts/transform/tests/ -q
 ```
 
-42 unit tests covering loaders, class dispatch (§1.1), N-Quad formatting, PROV node
-construction, creator/contributor dispatch, and the D9 fallback. Uses actual config
-CSVs — no mocking.
+176 unit tests covering loaders, class dispatch (§1.1), N-Quad formatting, PROV node
+construction, creator/contributor dispatch, the D9 fallback, and prescan extraction
+(agents, dates, dc_type/dc_subject structs, lang split, sector/mediatype int, DuckDB
+label writes). Uses actual config CSVs — no mocking.
 
 ---
 

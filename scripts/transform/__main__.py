@@ -104,6 +104,12 @@ def main() -> None:
     io.add_argument("--stem", type=str, default=None,
                     help="Output filename stem (overrides the input filename); "
                          "e.g. --stem items-all-goethe-faust → items-all-goethe-faust.nq, etc.")
+    io.add_argument("--prov-db", type=Path, default=None,
+                    dest="prov_db",
+                    help="Read-only prov.duckdb built by prescan.py; pre-loads "
+                         "already-emitted PROV-O shared-node URIs so this worker "
+                         "skips re-emitting their descriptive triples. "
+                         "Omit to run without shared-node dedup.")
 
     cfg = parser.add_argument_group("Config")
     cfg.add_argument("--alignment", type=Path, default=DEFAULT_ALIGNMENT,
@@ -208,6 +214,23 @@ def main() -> None:
         )
     """)
 
+    emitted_entities: dict[str, str] = {}
+    if args.prov_db:
+        try:
+            import duckdb as _ddb_ent
+            _c = _ddb_ent.connect(str(args.prov_db), read_only=True)
+            rows = _c.execute(
+                "SELECT uri, entity_type FROM prov_entities"
+            ).fetchall()
+            _c.close()
+            emitted_entities = {uri: etype for uri, etype in rows}
+            log.info("Loaded %d prov entities from %s",
+                     len(emitted_entities), args.prov_db)
+        except ImportError:
+            log.warning("duckdb not available — --prov-db ignored")
+        except Exception as exc:
+            log.warning("Could not read --prov-db %s: %s", args.prov_db, exc)
+
     stats_level = args.stats
 
     stats:  Counter = Counter()
@@ -274,6 +297,7 @@ def main() -> None:
                     record, ids_set,
                     mediatype_class_map, htype_map, audio_type2class,
                     class_prop_align, lido_dispatch,
+                    emitted_entities=emitted_entities,
                 )
             except Exception as exc:
                 entry = {

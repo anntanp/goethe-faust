@@ -44,14 +44,14 @@ XSLT    ──prov:actedOnBehalfOf──────────► DDB
 | Node | PROV-O type | URI pattern |
 |---|---|---|
 | CHO | `prov:Entity` | `ddb:item/<properties.item-id>` |
-| Dataset | `dcat:Dataset`, `prov:Entity` | `urn:ddbedm:properties:dataset-id:<id>` |
-| XSLT | `prov:SoftwareAgent` | `urn:ddbedm:properties:mapping-version:<ver>` |
-| Provider | `prov:Agent`, `foaf:Organization` | `urn:ddbedm:provider-info:provider-ddb-id:<id>` |
+| Dataset | `dcat:Dataset`, `prov:Entity` | `urn:ddbedm:dataset:<id>` |
+| XSLT | `prov:SoftwareAgent` | `urn:ddbedm:xslt:<ver>` |
+| Provider | `prov:Agent`, `foaf:Organization` | `urn:ddbedm:provider:<id>` |
 | DDB | `prov:Agent`, `foaf:Organization` | `<http://www.deutsche-digitale-bibliothek.de>` (fixed) |
 
-**URI convention**: `urn:ddbedm:` URNs trace the identifier back to its JSON key
-chain (`urn:ddbedm:<block>:<key>:<value>`), making the source unambiguous without
-requiring a dereferenceable endpoint.
+**URI convention**: PROV-O shared nodes use short typed-prefix URNs — `urn:ddbedm:dataset:<id>`, `urn:ddbedm:xslt:<ver>`, `urn:ddbedm:provider:<id>` — rather than a property-chain form. The type prefix (`dataset:`, `xslt:`, `provider:`) is a collision guard: bare DDB entity IDs (Agent, Place, Concept, TimeSpan) are minted as `urn:ddbedm:<id>` without a class name, and DDB IDs are 32-character alphanumeric strings (no colons), so the colon after the type prefix is an unambiguous discriminator. None of these URNs are dereferenceable endpoints; they are stable, opaque identifiers scoped to the `urn:ddbedm:` namespace.
+
+**Shared node deduplication**: The four shared nodes (Dataset, XSLT, DDB Agent, Provider) have stable URIs that recur across records and sector files. Their descriptive triples are emitted only on first encounter per run via an `emitted: dict[str, str]` guard in `emit_prov_triples`. With `--entities-db`, the dict is persisted to DuckDB across runs; without it, deduplication is within-run only. The per-CHO linking triples (`prov:wasDerivedFrom`, `prov:wasAttributedTo`, `prov:generatedAtTime`, `dcterms:hasVersion`, `dcterms:references`) are always emitted. The XSLT URI is derived from the version number (`urn:ddbedm:xslt:{ver}`), so the version number is the effective lookup key at the code level.
 
 ### 2.2 JSON field → triple mapping
 
@@ -112,7 +112,7 @@ The relevant fields are spread across three top-level blocks:
 | `dcterms:hasVersion` | `properties.revision-id` | string literal |
 | `dcterms:references` | `source.description.record.ref` | `"ddb:<ref>"` literal |
 
-#### 2.2.3 Dataset (`urn:ddbedm:properties:dataset-id:<value>`)
+#### 2.2.3 Dataset (`urn:ddbedm:dataset:<value>`)
 
 | Triple | JSON path | Value type |
 |---|---|---|
@@ -122,7 +122,7 @@ The relevant fields are spread across three top-level blocks:
 | `dcterms:type` | `source.description.record.type` | URI |
 | `prov:wasAttributedTo` | `provider-info.provider-ddb-id` → Provider URN | URN |
 
-#### 2.2.4 XSLT (`urn:ddbedm:properties:mapping-version:<value>`)
+#### 2.2.4 XSLT (`urn:ddbedm:xslt:<value>`)
 
 | Triple | JSON path | Value type |
 |---|---|---|
@@ -137,7 +137,7 @@ The relevant fields are spread across three top-level blocks:
 | `rdf:type` | — | `prov:Agent`, `foaf:Organization` |
 | `foaf:name` | fixed | `"Deutsche Digitale Bibliothek"` |
 
-#### 2.2.6 Provider (`urn:ddbedm:provider-info:provider-ddb-id:<value>`)
+#### 2.2.6 Provider (`urn:ddbedm:provider:<value>`)
 
 | Triple | JSON path | Value type |
 |---|---|---|
@@ -182,26 +182,26 @@ One block of triples per `binaries.binary[i]` entry:
 ddb:item/222NZKK63TNRLC2VETRV722VKBDSUVGL
     a prov:Entity ;
     prov:wasDerivedFrom
-        <urn:ddbedm:properties:dataset-id:76409877634279609sQOu> ;
+        <urn:ddbedm:dataset:76409877634279609sQOu> ;
     prov:wasAttributedTo
-        <urn:ddbedm:properties:mapping-version:6.18> ;
+        <urn:ddbedm:xslt:6.18> ;
     prov:generatedAtTime "2026-01-07T15:40:43+0100" ;
     dcterms:hasVersion   "43" ;
     dcterms:references   "ddb:222NZKK63TNRLC2VETRV722VKBDSUVGL" .
 
 # ── Dataset ───────────────────────────────────────────────────────────────────
 
-<urn:ddbedm:properties:dataset-id:76409877634279609sQOu>
+<urn:ddbedm:dataset:76409877634279609sQOu>
     a dcat:Dataset, prov:Entity ;
     dcterms:identifier "76409877634279609sQOu" ;
     rdfs:label         "Gesamtlieferung: Deutsche Fotothek - LIDO"@de ;
     dcterms:type       <http://www.lido-schema.org/> ;
     prov:wasAttributedTo
-        <urn:ddbedm:provider-info:provider-ddb-id:CJY7MSLPOPB7FTPC7JM5K2GGM5PBGLYI> .
+        <urn:ddbedm:provider:CJY7MSLPOPB7FTPC7JM5K2GGM5PBGLYI> .
 
 # ── XSLT SoftwareAgent ────────────────────────────────────────────────────────
 
-<urn:ddbedm:properties:mapping-version:6.18>
+<urn:ddbedm:xslt:6.18>
     a prov:SoftwareAgent ;
     dcterms:hasVersion "6.18" ;
     prov:actedOnBehalfOf <http://www.deutsche-digitale-bibliothek.de> .
@@ -214,7 +214,7 @@ ddb:item/222NZKK63TNRLC2VETRV722VKBDSUVGL
 
 # ── Provider Agent ────────────────────────────────────────────────────────────
 
-<urn:ddbedm:provider-info:provider-ddb-id:CJY7MSLPOPB7FTPC7JM5K2GGM5PBGLYI>
+<urn:ddbedm:provider:CJY7MSLPOPB7FTPC7JM5K2GGM5PBGLYI>
     a prov:Agent, foaf:Organization ;
     foaf:name          "Deutsche Fotothek" ;
     schema:url         <http://www.deutschefotothek.de> ;

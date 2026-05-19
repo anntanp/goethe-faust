@@ -2,11 +2,13 @@
 # Purpose:   Full GeMeA corpus transform — 128 workers across 7 sectors in parallel (Option C, teach03)
 # Usage:     bash scripts/run_gemea_transform.sh --new      # wipe previous output and restart
 #            bash scripts/run_gemea_transform.sh --resume   # skip sectors already done
+#            Prepend PROV_DB_ARG=, CONCEPT_LABELS_DB_ARG=, AGENT_LABELS_DB_ARG=,
+#            PARQUET_DIR_ARG=, PARQUET_MERGE_ARG= to override default paths.
 #            Run from the goethe-faust project root, inside a tmux/screen session.
 # Inputs:    /data/ddb/data/s{1..7}.sqlite
 # Outputs:   $OUT_BASE/s{1..7}/   (per-sector .nq, .duckdb, -stats.json, -errors.jsonl, .log)
+#            $OUT_BASE/nq/ddbedm.nt, mocho.nt, prov.nt
 #            $OUT_BASE/werk-staging-merged.duckdb
-#            $OUT_BASE/nt/ddbedm.nt, mocho.nt, prov.nt
 # Deps:      .venv/ created by scripts/setup_venv.sh (optional), duckdb via pip3 --user,
 #            scripts/split_nq.py (stdlib only)
 # Notes:     Sectors with >1 worker: export → split JSONL → N parallel transforms.
@@ -36,9 +38,7 @@ GOETHE="$(cd "$(dirname "$0")/.." && pwd)"
 SQLITE_DIR=/data/ddb/data
 EXPORT_DIR=/data/ddb/gemea/json-export
 SCRIPTS=$GOETHE/scripts
-HASH=$(find "$SCRIPTS/transform" -name "*.py" | sort | xargs sha256sum | sha256sum | cut -c1-4)
-VERSION="$(date '+%Y%m%d')-$(date '+%H')${HASH}"
-OUT_BASE=/data/ddb/gemea/mocho-transform/$VERSION
+OUT_BASE=/data/gemea/www/downloads/gemea/$(date '+%Y%m%d')
 # ──────────────────────────────────────────────────────────────────────────────
 
 CFG=$GOETHE/output/config
@@ -50,10 +50,52 @@ declare -A WORKERS=([1]=17 [2]=86 [3]=1 [4]=6 [5]=8 [6]=9 [7]=1)
 
 mkdir -p "$EXPORT_DIR" "$OUT_BASE"
 
+PROV_DB=${PROV_DB_ARG:-$OUT_BASE/prov.duckdb}
+CONCEPT_LABELS_DB=${CONCEPT_LABELS_DB_ARG:-$OUT_BASE/concept_labels.duckdb}
+AGENT_LABELS_DB=${AGENT_LABELS_DB_ARG:-$OUT_BASE/agent_labels.duckdb}
+PARQUET_DIR=${PARQUET_DIR_ARG:-$OUT_BASE/parquet}
+PROV_SHARED=$OUT_BASE/prov-shared.nq
+
 if [[ "$MODE" == "new" ]]; then
   echo "[$(date '+%F %T')] --new: wiping previous output"
-  rm -rf "$OUT_BASE"/s{1..7} "$OUT_BASE/nt" "$OUT_BASE/werk-staging-merged.duckdb"
+  rm -rf "$OUT_BASE"/s{1..7} "$OUT_BASE/nq" \
+         "$OUT_BASE/werk-staging-merged.duckdb" \
+         "$OUT_BASE/prov.duckdb" \
+         "$OUT_BASE/prov-shared.nq"
 fi
+
+mkdir -p "$PARQUET_DIR"
+
+# ── Phase 0: prescan (parallel, one process per sector) ───────────────────────
+echo "[$(date '+%F %T')] Starting prescan phase (7 sectors in parallel)"
+for n in 1 2 3 4 5 6 7; do
+  (
+    echo "[$(date '+%F %T')] [s${n}] prescan starting"
+    cd "$SCRIPTS"
+    "$PYTHON" -m transform.prescan \
+      --db                "$SQLITE_DIR/s${n}.sqlite" \
+      --prov-db           "$PROV_DB" \
+      --concept-labels-db "$CONCEPT_LABELS_DB" \
+      --agent-labels-db   "$AGENT_LABELS_DB" \
+      --lido              "$CFG/lido_event_types.csv" \
+      --prov-out          "$PROV_SHARED" \
+      --parquet-out       "$PARQUET_DIR/s${n}_meta.parquet"
+    echo "[$(date '+%F %T')] [s${n}] prescan done"
+  ) &
+done
+wait
+echo "[$(date '+%F %T')] Prescan phase complete"
+
+# optional: merge per-sector Parquet into one combined file
+if [[ -n "${PARQUET_MERGE_ARG:-}" ]]; then
+  echo "[$(date '+%F %T')] Merging per-sector Parquet → $PARQUET_MERGE_ARG"
+  cd "$SCRIPTS"
+  "$PYTHON" -m transform merge_parquet \
+    --indir "$PARQUET_DIR" \
+    --out   "$PARQUET_MERGE_ARG"
+  echo "[$(date '+%F %T')] Parquet merge done"
+fi
+# ──────────────────────────────────────────────────────────────────────────────
 
 echo "[$(date '+%F %T')] Starting GeMeA transform (${MODE}) — 128 workers across 7 sectors"
 echo "  GOETHE     = $GOETHE"
@@ -101,7 +143,8 @@ for n in 1 2 3 4 5 6 7; do
         --lido       "$CFG/lido_event_types.csv" \
         --htype      "$CFG/lookup_htype_doco_rico.csv" \
         --mediatype  "$CFG/lookup_mediatype_class.csv" \
-        --audio      "$CFG/audio_type2class.json"
+        --audio      "$CFG/audio_type2class.json" \
+        --prov-db    "$PROV_DB"
     else
       # Multiple workers — split JSONL into W chunks then transform in parallel
       CHUNK_DIR="$EXPORT_DIR/s${n}_chunks"
@@ -125,7 +168,8 @@ for n in 1 2 3 4 5 6 7; do
             --lido       "$CFG/lido_event_types.csv" \
             --htype      "$CFG/lookup_htype_doco_rico.csv" \
             --mediatype  "$CFG/lookup_mediatype_class.csv" \
-            --audio      "$CFG/audio_type2class.json"
+            --audio      "$CFG/audio_type2class.json" \
+            --prov-db    "$PROV_DB"
         ) &
       done
       wait  # wait for all chunk workers of this sector
@@ -163,12 +207,14 @@ print(f"werk_staging merged ({len(shards)} shards, {rows} rows) → {out}")
 PYEOF
 
 # ── Phase 4: split each .nq → per-chunk .nt, then merge by graph ─────────────
-NT_DIR=$OUT_BASE/nt
+NT_DIR=$OUT_BASE/nq
 mkdir -p "$NT_DIR"
 echo "[$(date '+%F %T')] Splitting N-Quads into per-chunk .nt files"
 while IFS= read -r nq; do
   "$PYTHON" "$SCRIPTS/split_nq.py" "$nq" &
 done < <(find "$OUT_BASE" -name "*.nq" | sort)
+# include shared PROV-O node triples from prescan
+[[ -f "$PROV_SHARED" ]] && "$PYTHON" "$SCRIPTS/split_nq.py" "$PROV_SHARED" &
 wait
 echo "[$(date '+%F %T')] All splits done — merging by graph → $NT_DIR"
 
