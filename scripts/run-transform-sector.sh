@@ -7,6 +7,7 @@
 #              --scripts-dir DIR  Path to goethe-faust/scripts/  (default: /home/ann/goethe-faust/scripts)
 #              --version VER      Output version tag              (default: YYYYMMDD today)
 #              --workers N        Parallel worker count           (default: 50; 5 in --test mode)
+#              --prov-db FILE     Path to prov.duckdb from prescan (optional; passed to each worker)
 #              --merge            Merge stats + werk_staging after workers finish (default: off)
 #              --merge-all        Merge stats + werk_staging + .nq after workers finish
 #              --output-dir DIR   Override output directory (default: derived from mode)
@@ -30,6 +31,7 @@ SQLITE_DIR=/data/gemea/sqlite
 SCRIPTS_DIR=/home/ann/goethe-faust/scripts
 VERSION=$(date '+%Y%m%d')
 WORKERS=50
+PROV_DB=""
 MERGE=true
 MERGE_ALL=false
 TEST=false
@@ -43,6 +45,7 @@ while [[ $# -gt 0 ]]; do
     --scripts-dir)SCRIPTS_DIR="$2"; shift 2 ;;
     --version)    VERSION="$2";     shift 2 ;;
     --workers)    WORKERS="$2";     shift 2 ;;
+    --prov-db)    PROV_DB="$2";     shift 2 ;;
     --merge)       MERGE=true;        shift 1 ;;
     --merge-all)   MERGE_ALL=true;   shift 1 ;;
     --test)        TEST=true;        shift 1 ;;
@@ -88,6 +91,7 @@ if [[ "$TEST" == "true" ]]; then
   echo "  JSONL   = $JSONL"
   echo "  OUT     = $OUT"
 
+  PROV_ARG=(); [[ -n "$PROV_DB" ]] && PROV_ARG=(--prov-db "$PROV_DB")
   for chunk in "$CHUNK_DIR"/chunk_*; do
     CHUNK_TOTAL=$(wc -l < "$chunk")
     (
@@ -101,7 +105,8 @@ if [[ "$TEST" == "true" ]]; then
         --lido      "$CFG/lido_event_types.csv" \
         --htype     "$CFG/lookup_htype_doco_rico.csv" \
         --mediatype "$CFG/lookup_mediatype_class.csv" \
-        --audio     "$CFG/audio_type2class.json"
+        --audio     "$CFG/audio_type2class.json" \
+        "${PROV_ARG[@]}"
     ) &
   done
 else
@@ -112,7 +117,9 @@ else
   echo "  DB      = $DB"
   echo "  OUT     = $OUT"
   echo "  VERSION = $VERSION"
+  [[ -n "$PROV_DB" ]] && echo "  PROV_DB = $PROV_DB"
 
+  PROV_ARG=(); [[ -n "$PROV_DB" ]] && PROV_ARG=(--prov-db "$PROV_DB")
   for i in $(seq 0 $((WORKERS - 1))); do
     OFFSET=$(( i * CHUNK ))
     (
@@ -128,7 +135,8 @@ else
         --lido      "$CFG/lido_event_types.csv" \
         --htype     "$CFG/lookup_htype_doco_rico.csv" \
         --mediatype "$CFG/lookup_mediatype_class.csv" \
-        --audio     "$CFG/audio_type2class.json"
+        --audio     "$CFG/audio_type2class.json" \
+        "${PROV_ARG[@]}"
     ) &
   done
 fi

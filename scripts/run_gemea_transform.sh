@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Purpose:   Full GeMeA corpus transform — 128 workers across 7 sectors in parallel (Option C, teach03)
-# Usage:     bash scripts/run_gemea_transform.sh --new      # wipe previous output and restart
-#            bash scripts/run_gemea_transform.sh --resume   # skip sectors already done
+# Usage:     bash scripts/run_gemea_transform.sh --new             # wipe previous output and restart
+#            bash scripts/run_gemea_transform.sh --resume          # skip sectors already done
+#            bash scripts/run_gemea_transform.sh --new --skip-prescan  # transform only (prescan already done)
 #            Prepend PROV_DB_ARG=, CONCEPT_LABELS_DB_ARG=, AGENT_LABELS_DB_ARG=,
 #            PARQUET_DIR_ARG=, PARQUET_MERGE_ARG= to override default paths.
 #            Run from the goethe-faust project root, inside a tmux/screen session.
@@ -20,11 +21,13 @@ set -euo pipefail
 
 # ── Args ───────────────────────────────────────────────────────────────────────
 MODE=""
+SKIP_PRESCAN=false
 for arg in "$@"; do
   case "$arg" in
-    --new)    MODE=new ;;
-    --resume) MODE=resume ;;
-    *) echo "Usage: $0 [--new|--resume]" >&2; exit 1 ;;
+    --new)           MODE=new ;;
+    --resume)        MODE=resume ;;
+    --skip-prescan)  SKIP_PRESCAN=true ;;
+    *) echo "Usage: $0 [--new|--resume] [--skip-prescan]" >&2; exit 1 ;;
   esac
 done
 if [[ -z "$MODE" ]]; then
@@ -67,6 +70,10 @@ fi
 mkdir -p "$PARQUET_DIR"
 
 # ── Phase 0: prescan (parallel, one process per sector) ───────────────────────
+if [[ "$SKIP_PRESCAN" == "true" ]]; then
+  echo "[$(date '+%F %T')] Skipping prescan (--skip-prescan)"
+  [[ -f "$PROV_DB" ]] || { echo "Error: --skip-prescan requires PROV_DB to exist: $PROV_DB" >&2; exit 1; }
+else
 echo "[$(date '+%F %T')] Starting prescan phase (7 sectors in parallel)"
 for n in 1 2 3 4 5 6 7; do
   (
@@ -85,6 +92,7 @@ for n in 1 2 3 4 5 6 7; do
 done
 wait
 echo "[$(date '+%F %T')] Prescan phase complete"
+fi  # end SKIP_PRESCAN check
 
 # optional: merge per-sector Parquet into one combined file
 if [[ -n "${PARQUET_MERGE_ARG:-}" ]]; then
