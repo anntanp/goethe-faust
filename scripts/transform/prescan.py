@@ -573,10 +573,11 @@ def main() -> None:
     )
     log = logging.getLogger(__name__)
 
-    # Ensure all output parent directories exist before scanning starts
+    # Ensure all output parent directories exist and parquet path is writable
     for p in (args.prov_db, args.concept_labels_db, args.agent_labels_db,
               args.prov_out, args.parquet_out):
         p.parent.mkdir(parents=True, exist_ok=True)
+    args.parquet_out.touch()
 
     # Load LIDO event type labels
     lido_labels: dict[str, str] = {}
@@ -585,12 +586,28 @@ def main() -> None:
             lido_labels[row["resource"]] = row["label"]
     log.info("Loaded %d LIDO labels from %s", len(lido_labels), args.lido.name)
 
+    PARQUET_FLUSH = 500_000  # rows per flush
+
     # Scan accumulators
-    local_emitted: dict[str, str]            = {}  # PROV-O shared nodes seen this run
-    new_prov_lines: list[str]               = []  # shared-node NQ descriptor lines
+    local_emitted: dict[str, str]             = {}
+    new_prov_lines: list[str]                = []
     concept_labels_all: dict[str, str | None] = {}
     agent_labels_all:   dict[str, str | None] = {}
-    parquet_rows: list[dict]                = []
+    parquet_buf: list[dict]                  = []
+    parquet_writer: pq.ParquetWriter | None  = None
+    parquet_total = 0
+
+    def _flush_parquet() -> None:
+        nonlocal parquet_writer, parquet_total
+        if not parquet_buf:
+            return
+        arrays = {col: [r.get(col) for r in parquet_buf] for col in PARQUET_SCHEMA.names}
+        table  = pa.table(arrays, schema=PARQUET_SCHEMA)
+        if parquet_writer is None:
+            parquet_writer = pq.ParquetWriter(str(args.parquet_out), PARQUET_SCHEMA)
+        parquet_writer.write_table(table)
+        parquet_total += len(parquet_buf)
+        parquet_buf.clear()
 
     db_conn = sqlite3.connect(str(args.db))
     cur = db_conn.cursor()
@@ -612,7 +629,7 @@ def main() -> None:
         props  = data.get("properties") or {}
         obj_id = props.get("item-id") or uid
         cho_uri = DDB_ITEM_BASE + obj_id
-        cho_subj_nt = f"<{cho_uri}> "  # per-record CHO subject prefix
+        cho_subj_nt = f"<{cho_uri}> "
 
         # PROV-O: emit shared-node descriptor lines (skip per-CHO lines)
         all_prov_lines = emit_prov_triples(data, cho_uri, GRAPH_PROV, local_emitted)
@@ -623,7 +640,7 @@ def main() -> None:
         # Parquet row + pending label dicts
         try:
             row, cpending, apending = extract_record(data, lido_labels)
-            parquet_rows.append(row)
+            parquet_buf.append(row)
             for k, v in cpending.items():
                 concept_labels_all.setdefault(k, v)
             for k, v in apending.items():
@@ -635,9 +652,16 @@ def main() -> None:
         processed += 1
         if processed % 100_000 == 0:
             log.info("  %d / %d", processed, total)
+        if len(parquet_buf) >= PARQUET_FLUSH:
+            _flush_parquet()
+            log.info("  Parquet flush: %d rows written so far", parquet_total)
 
     db_conn.close()
-    log.info("Scan complete: %d processed, %d errors", processed, errors)
+    _flush_parquet()
+    if parquet_writer:
+        parquet_writer.close()
+    log.info("Scan complete: %d processed, %d errors, %d Parquet rows",
+             processed, errors, parquet_total)
 
     # After scan: local_emitted contains all PROV-O shared node URIs found
     new_entities = dict(local_emitted)
@@ -651,11 +675,6 @@ def main() -> None:
 
     log.info("Writing agent_labels.duckdb (%d URIs)", len(agent_labels_all))
     _write_labels_db(args.agent_labels_db, "agent_labels", agent_labels_all)
-
-    log.info("Writing Parquet: %d rows → %s", len(parquet_rows), args.parquet_out)
-    arrays = {col: [r.get(col) for r in parquet_rows] for col in PARQUET_SCHEMA.names}
-    table  = pa.table(arrays, schema=PARQUET_SCHEMA)
-    pq.write_table(table, str(args.parquet_out))
 
     log.info("Done.")
 
