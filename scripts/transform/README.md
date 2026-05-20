@@ -46,20 +46,26 @@ output/config/*.csv / *.json          dispatch + alignment tables
 
 ### Full GeMeA corpus (Option C parallel)
 
-Two-pass pipeline. Pass 1 (prescan) runs all 7 sectors in parallel to build shared
-DuckDB files and per-sector Parquet before any transform worker starts. Pass 2
-(export + transform) then runs with read-only access to those shared files.
+Three-phase pipeline. Phase 0 (prescan) runs all 7 sectors in parallel to build
+shared DuckDB files and per-sector Parquet. Phase 0.5 generates `prov-shared.nq`
+from the completed `prov.duckdb`. Phase 1+2 (export + transform) runs with
+read-only access to those shared files.
 
 ```
-s1.sqlite ─┐                           prov.duckdb          ─┐
-s2.sqlite ─┤  prescan (pass 1,         concept_labels.duckdb  ├─ shared (read-only in pass 2)
-  ...      ─┤  all in parallel)        agent_labels.duckdb  ─┘
+s1.sqlite ─┐                           prov.duckdb            ─┐
+s2.sqlite ─┤  prescan (phase 0,        concept_labels.duckdb    ├─ shared (read-only in phase 1+2)
+  ...      ─┤  all in parallel)        agent_labels.duckdb    ─┘
 sN.sqlite ─┘                           sN_meta.parquet (per sector)
+
+                                        ↓ phase 0.5 (once, after all prescan done)
+                                        python -m transform.prescan regen
+                                        → prov-shared.nq  (full PROV-O entity triples)
 
 s1.sqlite ─┐                          s1/ (.nq + .duckdb)  ─┐
 s2.sqlite ─┤  sqlite_export + transform  s2/ (.nq + .duckdb)  ─┤  cat → merged.nq
   ...      ─┤  (pipelined per sector,    ...                  ─┤  duckdb → merged.duckdb
 sN.sqlite ─┘   all in parallel)       sN/ (.nq + .duckdb)  ─┘
+                                        + prov-shared.nq included in final merge
 ```
 
 ```bash

@@ -22,6 +22,7 @@ from transform.prescan import (
     _write_labels_db,
     _write_prov_db,
     extract_record,
+    regenerate_prov_nq,
 )
 
 
@@ -44,17 +45,33 @@ def _rec(item_id, *, xslt=None, provider_ddb_id=None, dataset_id=None, cho=None)
 
 
 def _scan_prov(records):
-    """Simulate prescan's PROV-O emission: collect shared-node lines only."""
+    """Simulate prescan's PROV-O emission: collect shared-node URIs + metadata."""
     local_emitted: dict[str, str] = {}
-    new_prov_lines: list[str]     = []
+    prov_meta: dict[str, dict]    = {}
     for rec in records:
-        obj_id  = rec["properties"]["item-id"]
-        cho_uri = DDB_ITEM_BASE + obj_id
-        cho_sfx = f"<{cho_uri}> "
-        for line in emit_prov_triples(rec, cho_uri, GRAPH_PROV, local_emitted):
-            if not line.startswith(cho_sfx):
-                new_prov_lines.append(line)
-    return local_emitted, new_prov_lines
+        obj_id   = rec["properties"]["item-id"]
+        cho_uri  = DDB_ITEM_BASE + obj_id
+        prev     = set(local_emitted.keys())
+        emit_prov_triples(rec, cho_uri, GRAPH_PROV, local_emitted)
+        for uri in set(local_emitted.keys()) - prev:
+            etype     = local_emitted[uri]
+            prov_info = rec.get("provider-info") or {}
+            props_    = rec.get("properties") or {}
+            if etype == "prov_provider":
+                prov_meta[uri] = {
+                    "label":      prov_info.get("provider-name") or "",
+                    "url":        prov_info.get("provider-uri")  or "",
+                    "identifier": prov_info.get("provider-id")   or "",
+                    "isil":       prov_info.get("provider-isil") or "",
+                }
+            elif etype == "prov_dataset":
+                ddb_id = prov_info.get("provider-ddb-id") or ""
+                prov_meta[uri] = {
+                    "label":        props_.get("dataset-label") or "",
+                    "rec_type":     "",
+                    "provider_uri": f"urn:ddbedm:provider:{ddb_id}" if ddb_id else "",
+                }
+    return local_emitted, prov_meta
 
 
 # ── TestPrescanProv ────────────────────────────────────────────────────────────
@@ -70,10 +87,9 @@ class TestPrescanProv:
 
     def test_prov_entities_count_and_types(self, tmp_path):
         duckdb = pytest.importorskip("duckdb")
-        emitted, lines = _scan_prov(self._RECORDS)
+        emitted, prov_meta = _scan_prov(self._RECORDS)
         prov_db = tmp_path / "prov.duckdb"
-        prov_nq = tmp_path / "prov-shared.nq"
-        _write_prov_db(prov_db, prov_nq, dict(emitted), lines)
+        _write_prov_db(prov_db, dict(emitted), prov_meta)
 
         conn = duckdb.connect(str(prov_db))
         rows = conn.execute("SELECT entity_type FROM prov_entities").fetchall()
@@ -87,28 +103,31 @@ class TestPrescanProv:
 
     def test_prov_nq_line_count(self, tmp_path):
         # xslt: 3 lines, ddb_agent: 3 lines, prov001: 2 lines, prov002: 2 lines = 10
+        # (provider type-only: no names in test fixtures)
         pytest.importorskip("duckdb")
-        emitted, lines = _scan_prov(self._RECORDS)
+        emitted, prov_meta = _scan_prov(self._RECORDS)
         prov_db = tmp_path / "prov.duckdb"
         prov_nq = tmp_path / "prov-shared.nq"
-        _write_prov_db(prov_db, prov_nq, dict(emitted), lines)
+        _write_prov_db(prov_db, dict(emitted), prov_meta)
+        regenerate_prov_nq(prov_db, prov_nq)
 
         nq_lines = [l for l in prov_nq.read_text().splitlines() if l.strip()]
         assert len(nq_lines) == 10
 
     def test_prov_nq_idempotent(self, tmp_path):
-        """Second run with same records must not append duplicate lines."""
+        """Second write + regen must produce the same line count as the first."""
         pytest.importorskip("duckdb")
         records = [_rec("OBJ001", xslt="v1.0", provider_ddb_id="prov001")]
         prov_db = tmp_path / "prov.duckdb"
         prov_nq = tmp_path / "prov-shared.nq"
 
         for _ in range(2):
-            emitted, lines = _scan_prov(records)
-            _write_prov_db(prov_db, prov_nq, dict(emitted), lines)
+            emitted, prov_meta = _scan_prov(records)
+            _write_prov_db(prov_db, dict(emitted), prov_meta)
 
+        regenerate_prov_nq(prov_db, prov_nq)
         nq_lines = [l for l in prov_nq.read_text().splitlines() if l.strip()]
-        # xslt(3) + ddb_agent(3) + prov001(2) = 8; second run adds 0
+        # xslt(3) + ddb_agent(3) + prov001(2) = 8
         assert len(nq_lines) == 8
 
 

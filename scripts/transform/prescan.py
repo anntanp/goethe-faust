@@ -472,11 +472,19 @@ def extract_record(
 
 def _write_prov_db(
     prov_db_path: Path,
-    prov_out_path: Path,
     new_entities: dict[str, str],
-    new_prov_lines: list[str],
+    prov_meta: dict[str, dict],
 ) -> None:
-    """Lock-protected write to prov.duckdb + idempotent append to prov-shared.nq."""
+    """Lock-protected write of PROV-O shared node URIs + metadata to prov.duckdb.
+
+    Schema: (uri, entity_type, label, url, identifier, isil, rec_type, provider_uri)
+      label        — foaf:name (provider) or rdfs:label (dataset)
+      url          — schema:url (provider)
+      identifier   — dcterms:identifier (provider)
+      isil         — mocho:isil (provider)
+      rec_type     — dcterms:type URI (dataset)
+      provider_uri — prov:wasAttributedTo target (dataset → provider)
+    """
     import duckdb
     with open(str(prov_db_path) + ".lock", "a") as lf:
         fcntl.flock(lf, fcntl.LOCK_EX)
@@ -484,10 +492,26 @@ def _write_prov_db(
             conn = duckdb.connect(str(prov_db_path))
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS prov_entities (
-                    uri         VARCHAR PRIMARY KEY,
-                    entity_type VARCHAR NOT NULL
+                    uri          VARCHAR PRIMARY KEY,
+                    entity_type  VARCHAR NOT NULL,
+                    label        VARCHAR DEFAULT '',
+                    url          VARCHAR DEFAULT '',
+                    identifier   VARCHAR DEFAULT '',
+                    isil         VARCHAR DEFAULT '',
+                    rec_type     VARCHAR DEFAULT '',
+                    provider_uri VARCHAR DEFAULT ''
                 )
             """)
+            # Migrate tables from older schemas
+            cols = {r[0] for r in conn.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name='prov_entities'"
+            ).fetchall()}
+            for col in ("label", "url", "identifier", "isil", "rec_type", "provider_uri"):
+                if col not in cols:
+                    conn.execute(f"ALTER TABLE prov_entities ADD COLUMN {col} VARCHAR DEFAULT ''")
+            # nq_lines column is obsolete — drop silently if present (DuckDB doesn't support DROP COLUMN easily, just ignore)
+
             uris = list(new_entities.keys())
             if uris:
                 ph = ",".join("?" * len(uris))
@@ -498,20 +522,108 @@ def _write_prov_db(
                 existing = set()
             truly_new = {u: t for u, t in new_entities.items() if u not in existing}
             if truly_new:
+                rows = []
+                for u, t in truly_new.items():
+                    m = prov_meta.get(u) or {}
+                    rows.append((
+                        u, t,
+                        m.get("label",        "") or "",
+                        m.get("url",          "") or "",
+                        m.get("identifier",   "") or "",
+                        m.get("isil",         "") or "",
+                        m.get("rec_type",     "") or "",
+                        m.get("provider_uri", "") or "",
+                    ))
                 conn.executemany(
-                    "INSERT OR IGNORE INTO prov_entities VALUES (?, ?)",
-                    list(truly_new.items()),
+                    "INSERT OR IGNORE INTO prov_entities(uri,entity_type,label,url,identifier,isil,rec_type,provider_uri) VALUES (?,?,?,?,?,?,?,?)",
+                    rows,
                 )
             conn.close()
-            if truly_new:
-                truly_new_nts = {f"<{u}>" for u in truly_new}
-                with open(prov_out_path, "a", encoding="utf-8") as pf:
-                    for line in new_prov_lines:
-                        subj = line.split(" ", 1)[0]
-                        if subj in truly_new_nts:
-                            pf.write(line + "\n")
         finally:
             fcntl.flock(lf, fcntl.LOCK_UN)
+
+
+def regenerate_prov_nq(prov_db_path: Path, prov_out_path: Path) -> int:
+    """Generate prov-shared.nq from prov.duckdb metadata columns.
+
+    Overwrites prov_out_path. Returns number of lines written.
+    Run once after all sectors' prescan completes.
+    """
+    from .constants import (
+        GRAPH_PROV, RDF_TYPE, DDB_BASE,
+        PROV_AGENT, PROV_SW_AGENT, PROV_ENTITY, PROV_ON_BEHALF, PROV_ATTRIBUTED,
+        FOAF_ORG, FOAF_NAME, DCAT_DATASET,
+        DCTERMS_ID, DCTERMS_TYPE, DCTERMS_HAS_VER, RDFS_LABEL,
+        SCHEMA_URL, MOCHO_ISIL,
+    )
+    from .utils import make_nq
+
+    def _nq(s: str, p: str, o: str) -> str:
+        return make_nq(f"<{s}>", f"<{p}>", o, GRAPH_PROV)
+
+    import duckdb
+    conn = duckdb.connect(str(prov_db_path), read_only=True)
+    cols = {r[0] for r in conn.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name='prov_entities'"
+    ).fetchall()}
+    has_meta = "label" in cols
+    if has_meta:
+        raw = conn.execute(
+            "SELECT uri, entity_type, label, url, identifier, isil, rec_type, provider_uri "
+            "FROM prov_entities"
+        ).fetchall()
+    else:
+        raw = [(r[0], r[1], "", "", "", "", "", "")
+               for r in conn.execute("SELECT uri, entity_type FROM prov_entities").fetchall()]
+    conn.close()
+
+    lines: list[str] = []
+    for uri, etype, label, url, ident, isil, rec_type, provider_uri in raw:
+        if etype == "prov_xslt":
+            version = uri.rsplit(":", 1)[-1]
+            lines += [
+                _nq(uri, RDF_TYPE,        f"<{PROV_SW_AGENT}>"),
+                _nq(uri, DCTERMS_HAS_VER, f'"{version}"'),
+                _nq(uri, PROV_ON_BEHALF,  f"<{DDB_BASE}>"),
+            ]
+        elif etype == "prov_ddb":
+            lines += [
+                _nq(uri, RDF_TYPE,  f"<{PROV_AGENT}>"),
+                _nq(uri, RDF_TYPE,  f"<{FOAF_ORG}>"),
+                _nq(uri, FOAF_NAME, '"Deutsche Digitale Bibliothek"'),
+            ]
+        elif etype == "prov_provider":
+            lines += [
+                _nq(uri, RDF_TYPE, f"<{PROV_AGENT}>"),
+                _nq(uri, RDF_TYPE, f"<{FOAF_ORG}>"),
+            ]
+            if label:
+                lines.append(_nq(uri, FOAF_NAME, f'"{label}"'))
+            if url:
+                lines.append(_nq(uri, SCHEMA_URL, f"<{url}>"))
+            if ident:
+                lines.append(_nq(uri, DCTERMS_ID, f'"{ident}"'))
+            if isil:
+                lines.append(_nq(uri, MOCHO_ISIL, f'"{isil}"'))
+        elif etype == "prov_dataset":
+            dataset_id = uri.rsplit(":", 1)[-1]
+            lines += [
+                _nq(uri, RDF_TYPE,   f"<{DCAT_DATASET}>"),
+                _nq(uri, RDF_TYPE,   f"<{PROV_ENTITY}>"),
+                _nq(uri, DCTERMS_ID, f'"{dataset_id}"'),
+            ]
+            if label:
+                lines.append(_nq(uri, RDFS_LABEL, f'"{label}"@de'))
+            if rec_type:
+                lines.append(_nq(uri, DCTERMS_TYPE, f"<{rec_type}>"))
+            if provider_uri:
+                lines.append(_nq(uri, PROV_ATTRIBUTED, f"<{provider_uri}>"))
+
+    prov_out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(prov_out_path, "w", encoding="utf-8") as f:
+        for line in lines:
+            f.write(line + "\n")
+    return len(lines)
 
 
 def _write_labels_db(
@@ -550,21 +662,45 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Pass 1 prescan: PROV-O shared nodes + label DBs + Parquet"
     )
-    parser.add_argument("--db",                type=Path, required=True,
+    sub = parser.add_subparsers(dest="cmd")
+
+    # subcommand: regen — generate prov-shared.nq from prov.duckdb metadata columns
+    regen = sub.add_parser("regen", help="Generate prov-shared.nq from prov.duckdb metadata")
+    regen.add_argument("--prov-db",  type=Path, required=True, dest="prov_db")
+    regen.add_argument("--prov-out", type=Path, required=True, dest="prov_out")
+
+    parser.add_argument("--db",                type=Path,
                         help="Sector SQLite file (objs table, bufgz column)")
-    parser.add_argument("--prov-db",           type=Path, required=True, dest="prov_db",
+    parser.add_argument("--prov-db",           type=Path, dest="prov_db",
                         help="Shared prov.duckdb (prov_entities table); created if absent")
-    parser.add_argument("--concept-labels-db", type=Path, required=True, dest="concept_labels_db",
+    parser.add_argument("--concept-labels-db", type=Path, dest="concept_labels_db",
                         help="Shared concept_labels.duckdb; created if absent")
-    parser.add_argument("--agent-labels-db",   type=Path, required=True, dest="agent_labels_db",
+    parser.add_argument("--agent-labels-db",   type=Path, dest="agent_labels_db",
                         help="Shared agent_labels.duckdb; created if absent")
-    parser.add_argument("--lido",              type=Path, required=True,
+    parser.add_argument("--lido",              type=Path,
                         help="lido_event_types.csv (resource → label)")
-    parser.add_argument("--prov-out",          type=Path, required=True, dest="prov_out",
-                        help="prov-shared.nq output (appended, deduped)")
-    parser.add_argument("--parquet-out",       type=Path, required=True, dest="parquet_out",
+    parser.add_argument("--parquet-out",       type=Path, dest="parquet_out",
                         help="Per-sector Parquet output")
     args = parser.parse_args()
+
+    if args.cmd == "regen":
+        logging.basicConfig(level=logging.INFO,
+                            format="%(asctime)s %(levelname)-8s %(message)s",
+                            datefmt="%Y-%m-%d %H:%M:%S")
+        log = logging.getLogger(__name__)
+        n = regenerate_prov_nq(args.prov_db, args.prov_out)
+        log.info("Regenerated %s: %d lines", args.prov_out, n)
+        return
+
+    # Validate required args for the default scan mode
+    missing = [f for f, v in [
+        ("--db", args.db), ("--prov-db", args.prov_db),
+        ("--concept-labels-db", args.concept_labels_db),
+        ("--agent-labels-db", args.agent_labels_db),
+        ("--lido", args.lido), ("--parquet-out", args.parquet_out),
+    ] if v is None]
+    if missing:
+        parser.error(f"required arguments missing: {', '.join(missing)}")
 
     logging.basicConfig(
         level=logging.INFO,
@@ -574,8 +710,7 @@ def main() -> None:
     log = logging.getLogger(__name__)
 
     # Ensure all output parent directories exist and parquet path is writable
-    for p in (args.prov_db, args.concept_labels_db, args.agent_labels_db,
-              args.prov_out, args.parquet_out):
+    for p in (args.prov_db, args.concept_labels_db, args.agent_labels_db, args.parquet_out):
         p.parent.mkdir(parents=True, exist_ok=True)
     args.parquet_out.touch()
 
@@ -590,7 +725,7 @@ def main() -> None:
 
     # Scan accumulators
     local_emitted: dict[str, str]             = {}
-    new_prov_lines: list[str]                = []
+    prov_meta: dict[str, dict]               = {}
     concept_labels_all: dict[str, str | None] = {}
     agent_labels_all:   dict[str, str | None] = {}
     parquet_buf: list[dict]                  = []
@@ -631,11 +766,32 @@ def main() -> None:
         cho_uri = DDB_ITEM_BASE + obj_id
         cho_subj_nt = f"<{cho_uri}> "
 
-        # PROV-O: emit shared-node descriptor lines (skip per-CHO lines)
-        all_prov_lines = emit_prov_triples(data, cho_uri, GRAPH_PROV, local_emitted)
-        for line in all_prov_lines:
-            if not line.startswith(cho_subj_nt):
-                new_prov_lines.append(line)
+        # PROV-O: collect shared-node URIs + metadata
+        prev_keys = set(local_emitted.keys())
+        emit_prov_triples(data, cho_uri, GRAPH_PROV, local_emitted)
+        new_keys = set(local_emitted.keys()) - prev_keys
+        if new_keys:
+            prov_info = data.get("provider-info") or {}
+            props_    = data.get("properties") or {}
+            src_ref_  = ((data.get("source") or {}).get("description") or {}).get("record") or {}
+            if not isinstance(src_ref_, dict):
+                src_ref_ = {}
+            for uri in new_keys:
+                etype = local_emitted[uri]
+                if etype == "prov_provider":
+                    prov_meta[uri] = {
+                        "label":      prov_info.get("provider-name") or "",
+                        "url":        prov_info.get("provider-uri")  or "",
+                        "identifier": prov_info.get("provider-id")   or "",
+                        "isil":       prov_info.get("provider-isil") or "",
+                    }
+                elif etype == "prov_dataset":
+                    ddb_id = prov_info.get("provider-ddb-id") or ""
+                    prov_meta[uri] = {
+                        "label":        props_.get("dataset-label") or "",
+                        "rec_type":     src_ref_.get("type")        or "",
+                        "provider_uri": f"urn:ddbedm:provider:{ddb_id}" if ddb_id else "",
+                    }
 
         # Parquet row + pending label dicts
         try:
@@ -663,12 +819,10 @@ def main() -> None:
     log.info("Scan complete: %d processed, %d errors, %d Parquet rows",
              processed, errors, parquet_total)
 
-    # After scan: local_emitted contains all PROV-O shared node URIs found
+    # After scan: write shared node URIs + metadata to prov.duckdb
     new_entities = dict(local_emitted)
-
-    # Lock-protected writes
-    log.info("Writing prov.duckdb + prov-shared.nq (%d shared nodes)", len(new_entities))
-    _write_prov_db(args.prov_db, args.prov_out, new_entities, new_prov_lines)
+    log.info("Writing prov.duckdb (%d shared nodes)", len(new_entities))
+    _write_prov_db(args.prov_db, new_entities, prov_meta)
 
     log.info("Writing concept_labels.duckdb (%d URIs)", len(concept_labels_all))
     _write_labels_db(args.concept_labels_db, "concept_labels", concept_labels_all)

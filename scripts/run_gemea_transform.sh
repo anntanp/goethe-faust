@@ -85,13 +85,20 @@ for n in 1 2 3 4 5 6 7; do
       --concept-labels-db "$CONCEPT_LABELS_DB" \
       --agent-labels-db   "$AGENT_LABELS_DB" \
       --lido              "$CFG/lido_event_types.csv" \
-      --prov-out          "$PROV_SHARED" \
       --parquet-out       "$PARQUET_DIR/s${n}_meta.parquet"
     echo "[$(date '+%F %T')] [s${n}] prescan done"
   ) &
 done
 wait
 echo "[$(date '+%F %T')] Prescan phase complete"
+
+# Phase 0.5: generate prov-shared.nq from prov.duckdb metadata
+echo "[$(date '+%F %T')] Generating prov-shared.nq from prov.duckdb"
+cd "$SCRIPTS"
+"$PYTHON" -m transform.prescan regen \
+  --prov-db  "$PROV_DB" \
+  --prov-out "$PROV_SHARED"
+echo "[$(date '+%F %T')] prov-shared.nq ready"
 fi  # end SKIP_PRESCAN check
 
 # optional: merge per-sector Parquet into one combined file
