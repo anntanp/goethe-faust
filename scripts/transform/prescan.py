@@ -310,9 +310,10 @@ def _resolve_subject_items(
         if isinstance(v, dict):
             lit = v.get("$") or ""
             res = v.get("resource") or ""
+            is_ext = bool(res and _is_ext_uri(res) and not res.startswith(_DDB_VOCNET))
             if lit:
-                out.append({"name": lit, "is_ext_uri": False})
-            elif res and _is_ext_uri(res) and not res.startswith(_DDB_VOCNET):
+                out.append({"name": lit, "is_ext_uri": is_ext})
+            elif is_ext:
                 label = concept_labels.get(res)
                 if label:
                     out.append({"name": label, "is_ext_uri": True})
@@ -379,9 +380,10 @@ def extract_record(
         if isinstance(v, dict):
             lit = v.get("$") or ""
             res = v.get("resource") or ""
+            is_ext = bool(res and not res.startswith(_DDB_VOCNET) and _is_ext_uri(res))
             if lit:
-                dc_type.append({"name": lit, "is_ext_uri": False})
-            elif res and not res.startswith(_DDB_VOCNET) and _is_ext_uri(res):
+                dc_type.append({"name": lit, "is_ext_uri": is_ext})
+            elif is_ext:
                 label = concept_labels.get(res)
                 if label:
                     dc_type.append({"name": label, "is_ext_uri": True})

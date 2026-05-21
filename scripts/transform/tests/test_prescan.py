@@ -264,6 +264,40 @@ class TestAgentsStruct:
         assert agents[1]["is_ext_uri"] is False  # bare string — no resource key
         assert agents[2]["is_ext_uri"] is True   # GND URI participant
 
+    def test_contributor_with_uri_and_literal_is_ext_uri_true(self):
+        """Contributor dict with both $ and GND resource → is_ext_uri=True, name=literal."""
+        data = {
+            "properties":    {"item-id": "T003b"},
+            "provider-info": {},
+            "edm": {"RDF": {"ProvidedCHO": {
+                "contributor": [{"$": "Max Mustermann",
+                                 "resource": "http://d-nb.info/gnd/111111111"}],
+            }}},
+        }
+        row, _, _ = extract_record(data, {})
+        assert len(row["agents"]) == 1
+        a = row["agents"][0]
+        assert a["name"]       == "Max Mustermann"
+        assert a["type"]       == "contribution"
+        assert a["is_ext_uri"] is True
+
+    def test_publisher_with_uri_and_literal_is_ext_uri_true(self):
+        """Publisher dict with both $ and GND resource → is_ext_uri=True."""
+        data = {
+            "properties":    {"item-id": "T003c"},
+            "provider-info": {},
+            "edm": {"RDF": {"ProvidedCHO": {
+                "publisher": [{"$": "Teubner Verlag",
+                               "resource": "http://d-nb.info/gnd/222222222"}],
+            }}},
+        }
+        row, _, _ = extract_record(data, {})
+        assert len(row["agents"]) == 1
+        a = row["agents"][0]
+        assert a["name"]       == "Teubner Verlag"
+        assert a["type"]       == "publication"
+        assert a["is_ext_uri"] is True
+
 
 # ── TestDatesStruct ────────────────────────────────────────────────────────────
 
@@ -402,3 +436,92 @@ class TestDcTypeList:
             {"name": "Buch",      "is_ext_uri": False},
             {"name": "Monografie","is_ext_uri": False},
         ]
+
+
+# ── TestDcTypeExtUri ──────────────────────────────────────────────────────────
+
+class TestDcTypeExtUri:
+    """dcType dict with both $ (literal) and resource (external URI) → is_ext_uri=True.
+
+    rdf2jsonld embeds the Concept prefLabel as $ alongside the Concept about URI as
+    resource. The original code used `if lit: … elif res:`, so the resource was silently
+    discarded and is_ext_uri was always False for literal entries. The fix evaluates
+    is_ext from resource independently.
+    """
+
+    GND_URI    = "http://d-nb.info/gnd/4023007-2"
+    DDB_URI    = "http://ddb.vocnet.org/spartetyp/st001"
+    WIKIDATA   = "https://www.wikidata.org/entity/Q11292"
+
+    def _data(self, dc_types):
+        return {
+            "properties":    {"item-id": "T008"},
+            "provider-info": {},
+            "edm": {"RDF": {"ProvidedCHO": {"dcType": dc_types}}},
+        }
+
+    def test_literal_with_external_uri_is_ext_uri_true(self):
+        """$ + non-DDB resource → is_ext_uri=True, name=literal."""
+        row, _, _ = extract_record(
+            self._data([{"$": "Gemälde", "resource": self.GND_URI}]), {}
+        )
+        assert row["dc_type"] == [{"name": "Gemälde", "is_ext_uri": True}]
+
+    def test_literal_without_resource_is_ext_uri_false(self):
+        """$ with no resource → is_ext_uri=False (plain free-text label)."""
+        row, _, _ = extract_record(
+            self._data([{"$": "Buch"}]), {}
+        )
+        assert row["dc_type"] == [{"name": "Buch", "is_ext_uri": False}]
+
+    def test_literal_with_ddb_vocnet_uri_is_ext_uri_false(self):
+        """$ + DDB vocnet resource → is_ext_uri=False (vocnet URIs are internal)."""
+        row, _, _ = extract_record(
+            self._data([{"$": "Text", "resource": self.DDB_URI}]), {}
+        )
+        assert row["dc_type"] == [{"name": "Text", "is_ext_uri": False}]
+
+    def test_mixed_entries_correct_flags(self):
+        """Two entries: one with external URI (→ True), one plain literal (→ False)."""
+        row, _, _ = extract_record(
+            self._data([
+                {"$": "Gemälde",  "resource": self.GND_URI},
+                {"$": "Monografie"},
+            ]),
+            {},
+        )
+        assert row["dc_type"] == [
+            {"name": "Gemälde",   "is_ext_uri": True},
+            {"name": "Monografie","is_ext_uri": False},
+        ]
+
+    def test_literal_with_wikidata_uri_is_ext_uri_true(self):
+        """$ + Wikidata resource → is_ext_uri=True."""
+        row, _, _ = extract_record(
+            self._data([{"$": "Skulptur", "resource": self.WIKIDATA}]), {}
+        )
+        assert row["dc_type"] == [{"name": "Skulptur", "is_ext_uri": True}]
+
+    def test_dc_subject_literal_with_external_uri_is_ext_uri_true(self):
+        """Same fix applies to dc_subject: $ + non-DDB resource → is_ext_uri=True."""
+        data = {
+            "properties":    {"item-id": "T009"},
+            "provider-info": {},
+            "edm": {"RDF": {"ProvidedCHO": {
+                "dcSubject": [{"$": "Landschaft", "resource": self.GND_URI}],
+            }}},
+        }
+        row, _, _ = extract_record(data, {})
+        assert row["dc_subject"] == [{"name": "Landschaft", "is_ext_uri": True}]
+
+    def test_dc_subject_literal_without_resource_is_ext_uri_false(self):
+        """dc_subject: $ with no resource → is_ext_uri=False."""
+        data = {
+            "properties":    {"item-id": "T010"},
+            "provider-info": {},
+            "edm": {"RDF": {"ProvidedCHO": {
+                "dcSubject": [{"$": "Landschaft"}],
+            }}},
+        }
+        row, _, _ = extract_record(data, {})
+        assert row["dc_subject"] == [{"name": "Landschaft", "is_ext_uri": False}]

@@ -97,28 +97,35 @@ Each entry stores the resolved label in `name` and `True` in `is_ext_uri` when t
 Extraction logic (identical for both fields):
 
 1. Build a `concept_labels` dict from all `Concept[].about → prefLabel.$` in the record.
-2. For each entry:
-   - Has `$` (plain literal) → `{name: lit, is_ext_uri: False}`.
-   - Has `resource` (URI) that resolves in `concept_labels` → `{name: label, is_ext_uri: True}`.
-   - Has `resource` (non-DDB URI) **not** in `concept_labels` → store `(uri, None)` in
+2. For each entry, determine `is_ext` = the `resource` value is a non-DDB HTTP URI:
+   - Has `$` (plain literal) AND `resource` is a non-DDB HTTP URI → `{name: lit, is_ext_uri: True}`.
+     The literal was populated by rdf2jsonld from the Concept's prefLabel; the resource URI
+     identifies the authority concept. Both are present in the same dict.
+   - Has `$` (plain literal) AND no `resource` (or DDB-internal resource) → `{name: lit, is_ext_uri: False}`.
+   - Has `resource` (non-DDB URI) only, resolves in `concept_labels` → `{name: label, is_ext_uri: True}`.
+   - Has `resource` (non-DDB URI) only, **not** in `concept_labels` → store `(uri, None)` in
      `concept_labels.duckdb` for later enrichment; omit from Parquet list for now.
 3. DDB vocnet URIs (`http://ddb.vocnet.org/medientyp/…`, `http://ddb.vocnet.org/sparte/…`)
    are silently skipped — sector/mediatype codes are captured in the `mediatype`/`sector` columns instead.
 4. `dc_subject` additionally skips bare 32-char DDB IDs (no http prefix).
 
-Corpus sample results (1,000 records): 561 literal values, 231 URI values. Of the URIs,
-Getty AAT and GND resolve via same-record Concept blocks; Wikidata URIs often do not
-(no matching Concept entry in the record).
+**Bug fixed (2026-05-21)**: The original code used `if lit: … elif res:`, which silently
+discarded the resource URI when a literal was present, setting `is_ext_uri=False` for all
+literal entries regardless of whether they were paired with an authority URI. This caused
+`uri_count=0` across all sectors in the dc_type analysis. The corrected logic evaluates
+`is_ext` from `resource` independently and uses it when setting `is_ext_uri` on the literal entry.
 
 ```python
 # resolve dc_type values → list[{name, is_ext_uri}]
 dc_type: list[dict] = []
 for v in coerce_list(cho.get("dcType")):
     if isinstance(v, dict):
-        lit, res = v.get("$") or "", v.get("resource") or ""
+        lit = v.get("$") or ""
+        res = v.get("resource") or ""
+        is_ext = bool(res and not res.startswith(_DDB_VOCNET) and _is_ext_uri(res))
         if lit:
-            dc_type.append({"name": lit, "is_ext_uri": False})
-        elif res and not res.startswith("http://ddb.vocnet.org/") and _is_ext_uri(res):
+            dc_type.append({"name": lit, "is_ext_uri": is_ext})
+        elif is_ext:
             label = concept_labels.get(res)
             if label:
                 dc_type.append({"name": label, "is_ext_uri": True})
@@ -126,7 +133,7 @@ for v in coerce_list(cho.get("dcType")):
                 concept_labels_pending.setdefault(res, None)
     elif isinstance(v, str) and v:
         dc_type.append({"name": v, "is_ext_uri": False})
-# dc_subject uses the same pattern + skips bare 32-char DDB IDs
+# dc_subject/_resolve_subject_items uses the same corrected pattern + skips bare 32-char DDB IDs
 ```
 
 **`mediatype`**: not in `properties.*`. It comes from `edm.RDF.Concept[].about` —
