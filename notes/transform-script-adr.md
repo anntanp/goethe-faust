@@ -355,11 +355,11 @@ classes to the ProvidedCHO. Unlike mt002 (D11), audio ProvidedCHOs remain at
 **Manifestation level** — no W-slot class replaces `mocho:Manifestation` in the
 current phase. The dispatch uses a three-group classification:
 
-| Group | Semantics | ProvidedCHO class [M slot] | W slot |
+| Group | Semantics | W slot | M slot |
 |---|---|---|---|
-| A — Musical carriers | dc:type unambiguously names a musical carrier format | `mo:MusicalManifestation` | `mo:MusicalWork` (future) |
-| B — Produced audio | dc:type names an authored non-musical audio document | `aco:AudioManifestation` | — |
-| C — Generic / speech | dc:type is generic or names spoken-word content | `aco:AudioManifestation` | — |
+| A — Musical carriers | dc:type unambiguously names a musical carrier format | `mo:MusicalWork` | `mo:MusicalManifestation` |
+| B — Produced audio | dc:type names an authored non-musical audio document | — | `aco:AudioManifestation` |
+| C — Generic / speech | dc:type is generic or names spoken-word content | — | `aco:AudioManifestation` |
 
 **Group determination**: Groups are curator-assigned, not derived from a data field.
 The group for each dc:type entry is a manual annotation in `audio_type2class.json`
@@ -378,10 +378,10 @@ sparte004 Research; `Ton` → Group A in sparte006 Museum).
   `aco:AudioExpression` at [E] is noted for Group B (authored audio documents) as a
   future addition when expression-level modelling is in scope; not emitted currently.
 
-**W-slot status**: `mo:MusicalWork` [W] is populated in the config for Group A but
-is **not emitted** for the ProvidedCHO by the current transform. It is reserved for
-when Work-entity generation is implemented (a separate Work node typed `mo:MusicalWork`
-linked to the ProvidedCHO `mo:MusicalManifestation`).
+**W-slot status**: Group A emits both `mo:MusicalWork` [W] and `mo:MusicalManifestation` [M].
+`primary_class` is set to `mo:MusicalWork`, which triggers a `werk_staging` row for
+downstream GND Werk linking by `link_gnd_works.py` (same mechanism as `rdac:C10001` records).
+`wemi` resolves to `"W"` for contributor predicate alignment.
 
 **B vs. C distinction**: Both groups map to `aco:AudioManifestation` in the current
 transform. The distinction is semantic, not functional: Group B (produced, authored
@@ -394,6 +394,8 @@ updated with group classifications and WEMI-slot class assignments per
 `notes/audio-type-class-mapping.md`.
 
 **Reference**: `notes/audio-type-class-mapping.md` §1–2.
+
+**Fixed (B1)**: `notes/transform-bugs.md` — `load_audio_type2class` schema mismatch caused the group dispatch to never fire. Fixed 2026-05-21: loader rewritten to iterate `raw.items()`; Layer 2 defers `aco:AudioManifestation` emission when audio group dispatch is active; Group A dc:types now correctly emit `mo:MusicalManifestation`.
 
 ---
 

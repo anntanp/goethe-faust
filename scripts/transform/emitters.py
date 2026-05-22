@@ -100,7 +100,6 @@ def emit_prov_triples(record: dict, ddb_cho_uri: str, graph_iri: str, emitted: d
     props = record.get("properties") or {}
     prov  = record.get("provider-info") or {}
 
-    item_id         = (props.get("item-id")         or "").strip()
     dataset_id      = (props.get("dataset-id")      or "").strip()
     dataset_label   = (props.get("dataset-label")   or "").strip()
     revision        = (props.get("revision-id")     or "").strip()
@@ -271,25 +270,37 @@ def retype_entities(
             htype_used    = True
 
     # Layer 2: fixed mediatype class (always emit if set; added on top of layer 1)
+    # For mt001 dc:type-first strata, rdf_type_m is deferred to audio group dispatch (Layer 3)
+    # so that Group A emits mo:MusicalManifestation instead of aco:AudioManifestation (B1).
+    _aco_audio     = "https://w3id.org/ac-ontology/aco#AudioManifestation"
+    _mo_mani       = "http://purl.org/ontology/mo/MusicalManifestation"
+    _audio_dispatch = rdf_type_m == _aco_audio and bool(dctype_vals) and not use_htype
     if rdf_type_w:
         lines.append(make_nq(cho_nt, f"<{RDF_TYPE}>", f"<{rdf_type_w}>", graph_iri))
         if not primary_class:
             primary_class = rdf_type_w
-    if rdf_type_m:
+    if rdf_type_m and not _audio_dispatch:
         lines.append(make_nq(cho_nt, f"<{RDF_TYPE}>", f"<{rdf_type_m}>", graph_iri))
         if not primary_class:
             primary_class = rdf_type_m
 
-    # Audio group dispatch: dc:type → mo:MusicalManifestation (Group A) (§2.3)
-    _aco_audio = "https://w3id.org/ac-ontology/aco#AudioManifestation"
-    _mo_mani   = "http://purl.org/ontology/mo/MusicalManifestation"
-    if rdf_type_m == _aco_audio and dctype_vals and not use_htype:
+    # Audio group dispatch: dc:type → mo:MusicalWork (W) + mo:MusicalManifestation (M) for Group A (§2.3)
+    if _audio_dispatch:
+        _mo_work = "http://purl.org/ontology/mo/MusicalWork"
+        _matched = False
         for dct in dctype_vals:
             dc_text = (dct.get("$") or "").strip() if isinstance(dct, dict) else ""
-            if audio_type2class.get((sector, dc_text)) == "A":
+            group = audio_type2class.get((sector, dc_text)) or audio_type2class.get(("", dc_text))
+            if group == "A":
+                lines.append(make_nq(cho_nt, f"<{RDF_TYPE}>", f"<{_mo_work}>", graph_iri))
                 lines.append(make_nq(cho_nt, f"<{RDF_TYPE}>", f"<{_mo_mani}>", graph_iri))
-                primary_class = _mo_mani
+                primary_class = _mo_work  # W slot — triggers werk_staging
+                _matched = True
                 break
+        if not _matched:
+            lines.append(make_nq(cho_nt, f"<{RDF_TYPE}>", f"<{_aco_audio}>", graph_iri))
+            if not primary_class:
+                primary_class = _aco_audio
 
     # D9 fallback — no class resolved
     is_fallback = not primary_class

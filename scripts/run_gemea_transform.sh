@@ -92,6 +92,9 @@ done
 wait
 echo "[$(date '+%F %T')] Prescan phase complete"
 
+# Remove lock files left by prescan (safe to do after all processes finish)
+rm -f "${PROV_DB}.lock" "${CONCEPT_LABELS_DB}.lock" "${AGENT_LABELS_DB}.lock"
+
 # Phase 0.5: generate prov-shared.nq from prov.duckdb metadata
 echo "[$(date '+%F %T')] Generating prov-shared.nq from prov.duckdb"
 cd "$SCRIPTS"

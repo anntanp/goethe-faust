@@ -47,7 +47,7 @@ from transform.constants import (
     _MOCHO_SKIP, DDB_HIERARCHY_TYPE, _HTYPE_PREFIX, EDM_HAS_TYPE, EDM_NS, DDB_BASE,
 )
 from transform.transform import transform_record
-from transform.loaders import load_mediatype_class, load_htype_map
+from transform.loaders import load_mediatype_class, load_htype_map, load_audio_type2class
 
 # Config table paths
 _CONFIG = PROJECT_DIR / "output" / "config"
@@ -268,6 +268,51 @@ class TestRetypeEntities:
                 obj_token = l.split()[2]  # "<http://...>" — whitespace-split is safe for IRI objects
                 assert " " not in obj_token
 
+    def test_mt001_group_a_emits_musical_work_and_manifestation(self, configs):
+        """mt001 + group A dc:type (Schallplatte) → mo:MusicalWork (W) + mo:MusicalManifestation (M); target_class = MusicalWork → triggers werk_staging."""
+        mc_map, ht_map = configs
+        _SPARTE005 = "http://ddb.vocnet.org/sparte/sparte005"
+        audio_map  = load_audio_type2class(_CONFIG / "audio_type2class.json")
+        dctype_vals = [{"$": "Schallplatte"}]
+        lines, target_class, wemi, _ = retype_entities(
+            _SPARTE005, _MT001, None, dctype_vals,
+            self._cho_nt, mc_map, ht_map, audio_map, GRAPH_MOCHO,
+        )
+        types = _rdf_types(lines)
+        assert "http://purl.org/ontology/mo/MusicalWork" in types
+        assert "http://purl.org/ontology/mo/MusicalManifestation" in types
+        assert "https://w3id.org/ac-ontology/aco#AudioManifestation" not in types
+        assert target_class == "http://purl.org/ontology/mo/MusicalWork"
+        assert wemi == "W"
+
+    def test_mt001_group_b_dctype_keeps_aco(self, configs):
+        """mt001 + group B dc:type (Hörfunksendung) → aco:AudioManifestation unchanged (B1)."""
+        mc_map, ht_map = configs
+        _SPARTE005 = "http://ddb.vocnet.org/sparte/sparte005"
+        audio_map  = load_audio_type2class(_CONFIG / "audio_type2class.json")
+        dctype_vals = [{"$": "Hörfunksendung"}]
+        lines, _, _, _ = retype_entities(
+            _SPARTE005, _MT001, None, dctype_vals,
+            self._cho_nt, mc_map, ht_map, audio_map, GRAPH_MOCHO,
+        )
+        types = _rdf_types(lines)
+        assert "https://w3id.org/ac-ontology/aco#AudioManifestation" in types
+        assert "http://purl.org/ontology/mo/MusicalManifestation" not in types
+
+    def test_mt001_sector_specific_entry_matched(self, configs):
+        """Sector-specific entry (Magnettonband × sparte004) resolves correctly (B1)."""
+        mc_map, ht_map = configs
+        _SPARTE004 = "http://ddb.vocnet.org/sparte/sparte004"
+        audio_map  = load_audio_type2class(_CONFIG / "audio_type2class.json")
+        dctype_vals = [{"$": "Magnettonband"}]
+        lines, _, _, _ = retype_entities(
+            _SPARTE004, _MT001, None, dctype_vals,
+            self._cho_nt, mc_map, ht_map, audio_map, GRAPH_MOCHO,
+        )
+        types = _rdf_types(lines)
+        assert "https://w3id.org/ac-ontology/aco#AudioManifestation" in types
+        assert "http://purl.org/ontology/mo/MusicalManifestation" not in types
+
     def test_multi_htype_dispatch_uses_first(self, configs):
         """Dispatch resolves class from the first htype only; second code is ignored for typing."""
         # htype_007 → doco:Part + rdac:C10007; htype_020 → rdac:C10007 only
@@ -275,6 +320,38 @@ class TestRetypeEntities:
         lines, _, _, flags = self._call(_SPARTE001, _MT003, "htype_007 htype_020", configs)
         assert flags["htype_used"] is True
         assert flags["fallback"] is False
+
+
+class TestLoadAudioType2Class:
+    """Loader correctness tests (B1 fix)."""
+
+    def test_non_empty(self):
+        """Loader returns a non-empty dict for the real config file."""
+        result = load_audio_type2class(_CONFIG / "audio_type2class.json")
+        assert len(result) > 0
+
+    def test_sector_agnostic_group_a(self):
+        """Sector-agnostic Group A entry keyed as ('', dc_type)."""
+        result = load_audio_type2class(_CONFIG / "audio_type2class.json")
+        assert result[("", "Schallplatte")] == "A"
+        assert result[("", "CD")] == "A"
+        assert result[("", "Langspielplatte")] == "A"
+
+    def test_sector_agnostic_group_b(self):
+        """Sector-agnostic Group B entry keyed as ('', dc_type)."""
+        result = load_audio_type2class(_CONFIG / "audio_type2class.json")
+        assert result[("", "Hörfunksendung")] == "B"
+
+    def test_sector_specific_full_iri(self):
+        """Sector-specific entry uses full IRI as sector key."""
+        result = load_audio_type2class(_CONFIG / "audio_type2class.json")
+        key = ("http://ddb.vocnet.org/sparte/sparte004", "Magnettonband")
+        assert result[key] == "B"
+
+    def test_skips_doc_and_muster(self):
+        """_doc and Muster meta-entries are not loaded as dc:type entries."""
+        result = load_audio_type2class(_CONFIG / "audio_type2class.json")
+        assert not any(k[1] in {"_doc", "Muster"} for k in result)
 
 
 # ── emit_creator_triples ──────────────────────────────────────────────────────
