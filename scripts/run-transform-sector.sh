@@ -68,16 +68,23 @@ else
   OUT="${OUTPUT_DIR:-/data/gemea/www/downloads/gemea/$VERSION}"
 fi
 
-# ── Validate ──────────────────────────────────────────────────────────────────
-[[ -d "$SCRIPTS_DIR" ]] || { echo "Scripts dir not found: $SCRIPTS_DIR" >&2; exit 1; }
-[[ -d "$CFG" ]]         || { echo "Config dir not found: $CFG" >&2; exit 1; }
+# ── Preflight ─────────────────────────────────────────────────────────────────
+[[ -d "$SCRIPTS_DIR" ]] || { echo "ERROR: scripts dir not found: $SCRIPTS_DIR" >&2; exit 1; }
+[[ -d "$CFG" ]]         || { echo "ERROR: config dir not found: $CFG" >&2; exit 1; }
 if [[ "$TEST" == "true" ]]; then
-  [[ -f "$JSONL" ]] || { echo "Test JSONL not found: $JSONL" >&2; exit 1; }
+  [[ -f "$JSONL" ]] || { echo "ERROR: test JSONL not found: $JSONL" >&2; exit 1; }
 else
-  [[ -f "$DB" ]]    || { echo "SQLite not found: $DB" >&2; exit 1; }
+  [[ -f "$DB" ]]    || { echo "ERROR: SQLite not found: $DB" >&2; exit 1; }
 fi
-
-mkdir -p "$OUT" "$OUT/nq"
+if [[ -n "$PROV_DB" ]]; then
+  [[ -f "$PROV_DB" ]] || { echo "ERROR: prov-db not found: $PROV_DB" >&2; exit 1; }
+fi
+$PYTHON -c "import duckdb" 2>/dev/null \
+  || { echo "ERROR: duckdb not available in Python environment — werk_staging will not be written." >&2
+       echo "       Fix: $PYTHON -m pip install duckdb" >&2
+       exit 1; }
+mkdir -p "$OUT" "$OUT/nq" \
+  || { echo "ERROR: cannot create output directory: $OUT" >&2; exit 1; }
 
 # ── Launch workers ─────────────────────────────────────────────────────────────
 if [[ "$TEST" == "true" ]]; then
