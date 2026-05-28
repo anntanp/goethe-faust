@@ -1,7 +1,7 @@
 # Transcript: 0de9cbbf-84af-4e5a-9d27-80f146854276
 
 **Project:** /Users/mta/Documents/claude/goethe-faust/scripts  
-**Messages:** 1416
+**Messages:** 1615
 
 ---
 
@@ -27469,6 +27469,2843 @@ cd ~/goethe-faust/scripts
 ../.venv/bin/python3 -m transform.prescan regen \
   --prov-db  ~/gemea/output/20260519/prov.duckdb \
   --prov-out ~/gemea/output/20260519/prov-shared.nq
+```
+
+---
+
+### User *(2026-05-20T14:20:48.710Z)*
+
+i'll copy the prov.duckdb from teach03 to here, then can you create an adhoc script that reads the duckdb and recreate the nq lines?
+
+---
+
+### Assistant *(2026-05-20T14:21:41.776Z)*
+
+The teach03 prov.duckdb only has `uri` and `entity_type` — no triple content. From those two fields alone:
+
+- **xslt**: version is in the URI → full reconstruction
+- **ddb_agent**: fixed content → full reconstruction  
+- **providers**: type triples only (name, URL, ISIL not stored)
+- **datasets**: type + identifier only (label, rec_type, provider link not stored)
+
+That's a partial NQ but structurally correct. Writing the script now:
+
+---
+
+### Assistant *(2026-05-20T14:21:43.258Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "grep -n \"^GRAPH_PROV\\|^DDB_BASE\\|^PROV_\\|^FOAF_\\|^DCAT_\\|^RDFS_LABEL\\|^DCTERMS_\\|^RDF_TYPE\\|^SCHEMA_URL\\|^MOCHO_ISIL\" /Users/mta/Documents/claude/goethe-faust/scripts/transform/constants.py | head -40",
+  "description": "Check constant names in constants.py"
+}
+```
+
+---
+
+### User *(2026-05-20T14:21:43.330Z)*
+
+**Tool result**
+```
+33:GRAPH_PROV       = "https://gemea.ise.fiz-karlsruhe.de/graph/prov"
+40:DDB_BASE           = "http://www.deutsche-digitale-bibliothek.de"
+61:RDF_TYPE        = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+62:RDFS_LABEL      = "http://www.w3.org/2000/01/rdf-schema#label"
+66:DCTERMS_SOURCE  = "http://purl.org/dc/terms/source"
+67:FOAF_THUMBNAIL  = "http://xmlns.com/foaf/0.1/thumbnail"
+68:FOAF_ORG        = "http://xmlns.com/foaf/0.1/Organization"
+69:FOAF_NAME       = "http://xmlns.com/foaf/0.1/name"
+72:SCHEMA_URL      = "https://schema.org/url"
+73:MOCHO_ISIL      = "https://ise-fizkarlsruhe.github.io/ddbkg/mocho#isil"
+77:PROV_ENTITY     = "http://www.w3.org/ns/prov#Entity"
+78:PROV_AGENT      = "http://www.w3.org/ns/prov#Agent"
+79:PROV_SW_AGENT   = "http://www.w3.org/ns/prov#SoftwareAgent"
+80:PROV_DERIVED    = "http://www.w3.org/ns/prov#wasDerivedFrom"
+81:PROV_ATTRIBUTED = "http://www.w3.org/ns/prov#wasAttributedTo"
+82:PROV_GEN_TIME   = "http://www.w3.org/ns/prov#generatedAtTime"
+83:PROV_ON_BEHALF  = "http://www.w3.org/ns/prov#actedOnBehalfOf"
+84:DCAT_DATASET    = "http://www.w3.org/ns/dcat#Dataset"
+85:DCTERMS_ID      = "http://purl.org/dc/terms/identifier"
+86:DCTERMS_TYPE    = "http://purl.org/dc/terms/type"
+87:DCTERMS_HAS_VER = "http://purl.org/dc/terms/hasVersion"
+88:DCTERMS_REF     = "http://purl.org/dc/terms/references"
+89:DCTERMS_RIGHTS  = "http://purl.org/dc/terms/rights"
+94:DCTERMS_CREATOR = "http://purl.org/dc/terms/creator"
+97:DCTERMS_SUBJECT = "http://purl.org/dc/terms/subject"
+```
+
+---
+
+### Assistant *(2026-05-20T14:22:04.103Z)*
+
+**Tool call:** `Write`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/gemea/scripts/py/regen_prov_nq.py",
+  "content": "\"\"\"\nPurpose:    Regenerate prov-shared.nq from prov.duckdb when nq_lines column is absent.\n            Reconstructs triples from uri + entity_type:\n              prov_xslt      → full (version extracted from URI)\n              prov_ddb       → full (fixed content)\n              prov_provider  → partial (rdf:type triples only; name/URL/ISIL not stored)\n              prov_dataset   → partial (rdf:type + dcterms:identifier; label/provider not stored)\nUsage:      python scripts/py/regen_prov_nq.py \\\n                --prov-db  gemea/data/parquet/prov.duckdb \\\n                --prov-out gemea/output/20260520/prov-shared.nq\nInputs:     prov.duckdb — prov_entities(uri, entity_type)\nOutputs:    prov-shared.nq — N-Quads in graph/prov\nDeps:       duckdb\n\"\"\"\n\nfrom __future__ import annotations\n\nimport argparse\nimport sys\nfrom pathlib import Path\n\nGRAPH = \"https://gemea.ise.fiz-karlsruhe.de/graph/prov\"\n\nRDF_TYPE     = \"http://www.w3.org/1999/02/22-rdf-syntax-ns#type\"\nDCTERMS_ID   = \"http://purl.org/dc/terms/identifier\"\nDCTERMS_VER  = \"http://purl.org/dc/terms/hasVersion\"\nPROV_AGENT   = \"http://www.w3.org/ns/prov#Agent\"\nPROV_SW      = \"http://www.w3.org/ns/prov#SoftwareAgent\"\nPROV_ENTITY  = \"http://www.w3.org/ns/prov#Entity\"\nPROV_BEHALF  = \"http://www.w3.org/ns/prov#actedOnBehalfOf\"\nFOAF_ORG     = \"http://xmlns.com/foaf/0.1/Organization\"\nFOAF_NAME    = \"http://xmlns.com/foaf/0.1/name\"\nDCAT_DATASET = \"http://www.w3.org/ns/dcat#Dataset\"\nDDB_BASE     = \"http://www.deutsche-digitale-bibliothek.de\"\n\n\ndef _nq(subj: str, pred: str, obj: str) -> str:\n    return f\"<{subj}> <{pred}> {obj} <{GRAPH}> .\"\n\n\ndef _triples(uri: str, entity_type: str) -> list[str]:\n    if entity_type == \"prov_xslt\":\n        version = uri.rsplit(\":\", 1)[-1]\n        return [\n            _nq(uri, RDF_TYPE, f\"<{PROV_SW}>\"),\n            _nq(uri, DCTERMS_VER, f'\"{version}\"'),\n            _nq(uri, PROV_BEHALF, f\"<{DDB_BASE}>\"),\n        ]\n\n    if entity_type == \"prov_ddb\":\n        return [\n            _nq(uri, RDF_TYPE, f\"<{PROV_AGENT}>\"),\n            _nq(uri, RDF_TYPE, f\"<{FOAF_ORG}>\"),\n            _nq(uri, FOAF_NAME, '\"Deutsche Digitale Bibliothek\"'),\n        ]\n\n    if entity_type == \"prov_provider\":\n        # name / URL / ISIL not stored in prov.duckdb — type triples only\n        return [\n            _nq(uri, RDF_TYPE, f\"<{PROV_AGENT}>\"),\n            _nq(uri, RDF_TYPE, f\"<{FOAF_ORG}>\"),\n        ]\n\n    if entity_type == \"prov_dataset\":\n        # label / rec_type / provider link not stored — type + identifier only\n        dataset_id = uri.rsplit(\":\", 1)[-1]\n        return [\n            _nq(uri, RDF_TYPE, f\"<{DCAT_DATASET}>\"),\n            _nq(uri, RDF_TYPE, f\"<{PROV_ENTITY}>\"),\n            _nq(uri, DCTERMS_ID, f'\"{dataset_id}\"'),\n        ]\n\n    return []\n\n\ndef main() -> None:\n    ap = argparse.ArgumentParser(description=__doc__.splitlines()[1].strip())\n    ap.add_argument(\"--prov-db\",  type=Path, required=True)\n    ap.add_argument(\"--prov-out\", type=Path, required=True)\n    args = ap.parse_args()\n\n    try:\n        import duckdb\n    except ImportError:\n        sys.exit(\"duckdb not installed\")\n\n    conn = duckdb.connect(str(args.prov_db), read_only=True)\n    rows = conn.execute(\"SELECT uri, entity_type FROM prov_entities\").fetchall()\n    conn.close()\n\n    args.prov_out.parent.mkdir(parents=True, exist_ok=True)\n    total = 0\n    counts: dict[str, int] = {}\n    with open(args.prov_out, \"w\", encoding=\"utf-8\") as f:\n        for uri, entity_type in rows:\n            lines = _triples(uri, entity_type)\n            for line in lines:\n                f.write(line + \"\\n\")\n            total += len(lines)\n            counts[entity_type] = counts.get(entity_type, 0) + 1\n\n    print(f\"Written {total} triples to {args.prov_out}\")\n    for t, n in sorted(counts.items()):\n        note = \" (partial: type triples only)\" if t in (\"prov_provider\", \"prov_dataset\") else \"\"\n        print(f\"  {t}: {n} entities{note}\")\n\n\nif __name__ == \"__main__\":\n    main()\n"
+}
+```
+
+---
+
+### User *(2026-05-20T14:22:08.808Z)*
+
+**Tool result**
+```
+File created successfully at: /Users/mta/Documents/claude/gemea/scripts/py/regen_prov_nq.py (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:22:12.082Z)*
+
+Test it against the teach03 prov.duckdb you already have locally:
+
+---
+
+### Assistant *(2026-05-20T14:22:13.941Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "\\\n  goethe-faust/.venv/bin/python3 gemea/scripts/py/regen_prov_nq.py \\\n    --prov-db  gemea/data/parquet/prov.duckdb \\\n    --prov-out gemea/output/20260520/prov-shared-regen.nq",
+  "description": "Test regen_prov_nq.py against teach03 prov.duckdb"
+}
+```
+
+---
+
+### User *(2026-05-20T14:22:15.667Z)*
+
+**Tool result**
+```
+Written 4252 triples to gemea/output/20260520/prov-shared-regen.nq
+  prov_dataset: 879 entities (partial: type triples only)
+  prov_ddb: 1 entities
+  prov_provider: 683 entities (partial: type triples only)
+  prov_xslt: 82 entities
+```
+
+---
+
+### Assistant *(2026-05-20T14:22:20.755Z)*
+
+Works. 4,252 triples covering all 1,645 shared entities across the full corpus (s1–s7). xslt and ddb_agent are fully reconstructed; providers and datasets have type triples only — names and labels are missing because they were never stored in prov.duckdb.
+
+Once you copy the teach03 prov.duckdb here, run:
+
+```bash
+python3 gemea/scripts/py/regen_prov_nq.py \
+  --prov-db  gemea/data/parquet/prov.duckdb \
+  --prov-out gemea/output/<date>/prov-shared.nq
+```
+
+---
+
+### User *(2026-05-20T14:23:07.872Z)*
+
+how can i recover tha labels without running prescan again?
+
+---
+
+### Assistant *(2026-05-20T14:23:50.027Z)*
+
+The data you need is in the SQLite files — `provider-info` (name, URL, ISIL) and `properties.dataset-label` are in every record's JSON. A targeted scan that exits as soon as all provider/dataset URIs in prov.duckdb are resolved would be much faster than full prescan (no Parquet, no concept/agent label extraction, early exit).
+
+Let me check what's actually in `srcs` first in case it's a shortcut:
+
+---
+
+### Assistant *(2026-05-20T14:23:52.215Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "\\\n  goethe-faust/.venv/bin/python3 - <<'EOF'\nimport sqlite3, gzip, json\nconn = sqlite3.connect(\"gemea/data/sqlite/s7.sqlite\")\nrow = conn.execute(\"SELECT uid, bufgz FROM srcs LIMIT 1\").fetchone()\nif row:\n    data = json.loads(gzip.decompress(row[1]))\n    print(json.dumps(data, indent=2)[:1000])\nelse:\n    print(\"srcs is empty\")\nconn.close()\nEOF",
+  "description": "Inspect srcs table in s7.sqlite"
+}
+```
+
+---
+
+### User *(2026-05-20T14:23:54.208Z)*
+
+**Tool result** *(error)*
+```
+Exit code 1
+Traceback (most recent call last):
+  File "<stdin>", line 5, in <module>
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+```
+
+---
+
+### Assistant *(2026-05-20T14:23:58.514Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "\\\n  goethe-faust/.venv/bin/python3 - <<'EOF'\nimport sqlite3, gzip, json\nconn = sqlite3.connect(\"gemea/data/sqlite/s7.sqlite\")\nrow = conn.execute(\"SELECT uid, bufgz FROM srcs LIMIT 1\").fetchone()\nif row:\n    raw = gzip.decompress(row[1])\n    print(repr(raw[:200]))\nconn.close()\nEOF",
+  "description": "Check raw srcs content"
+}
+```
+
+---
+
+### User *(2026-05-20T14:24:03.133Z)*
+
+**Tool result** *(error)*
+```
+The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.
+```
+
+---
+
+### User *(2026-05-20T14:24:03.133Z)*
+
+[Request interrupted by user for tool use]
+
+---
+
+### User *(2026-05-20T14:24:16.934Z)*
+
+show be again the structure of prov.duckdb
+
+---
+
+### Assistant *(2026-05-20T14:24:21.037Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "goethe-faust/.venv/bin/python3 - <<'EOF'\nimport duckdb\nconn = duckdb.connect(\"gemea/data/parquet/prov.duckdb\", read_only=True)\nprint(conn.execute(\"SELECT entity_type, COUNT(*) FROM prov_entities GROUP BY entity_type\").fetchall())\nprint()\nprint(conn.execute(\"SELECT * FROM prov_entities LIMIT 8\").fetchall())\nconn.close()\nEOF",
+  "description": "Show prov.duckdb structure and sample rows"
+}
+```
+
+---
+
+### User *(2026-05-20T14:24:31.339Z)*
+
+**Tool result**
+```
+[('prov_xslt', 82), ('prov_dataset', 879), ('prov_ddb', 1), ('prov_provider', 683)]
+
+[('urn:ddbedm:dataset:1950683840929597AYTy', 'prov_dataset'), ('urn:ddbedm:xslt:6.13', 'prov_xslt'), ('http://www.deutsche-digitale-bibliothek.de', 'prov_ddb'), ('urn:ddbedm:provider:2Q37XY5KXJNJE5MV6SWP3UKKZ6RSBLK5', 'prov_provider'), ('urn:ddbedm:dataset:23436378663129797mRWI', 'prov_dataset'), ('urn:ddbedm:xslt:6.4', 'prov_xslt'), ('urn:ddbedm:provider:BZVTR553HLJBDMQD5NCJ6YKP3HMBQRF4', 'prov_provider'), ('urn:ddbedm:dataset:24278361347652271PIJc', 'prov_dataset')]
+```
+
+---
+
+### Assistant *(2026-05-20T14:24:37.848Z)*
+
+One table, two columns:
+
+| Column | Values |
+|---|---|
+| `uri` | `urn:ddbedm:xslt:<version>`, `urn:ddbedm:provider:<id>`, `urn:ddbedm:dataset:<id>`, `http://www.deutsche-digitale-bibliothek.de` |
+| `entity_type` | `prov_xslt` (82), `prov_provider` (683), `prov_dataset` (879), `prov_ddb` (1) |
+
+No labels, names, or NQ content — just URIs and their type classification. The provider `<id>` in the URI is the 32-char DDB provider ID; the dataset `<id>` is the dataset identifier from `properties.dataset-id` in the source JSON.
+
+To recover labels without re-running prescan, the only source is the SQLite files — specifically `provider-info.provider-name/uri/isil` and `properties.dataset-label` fields in the compressed JSON blobs.
+
+---
+
+### User *(2026-05-20T14:26:30.621Z)*
+
+should it have labels as well? so we can recreate the triples without having to rerun stuff?
+
+---
+
+### Assistant *(2026-05-20T14:26:48.655Z)*
+
+Yes — prov.duckdb should store enough to fully reconstruct every triple. The columns to add:
+
+| Column | Used by | Source field |
+|---|---|---|
+| `label` | provider (`foaf:name`), dataset (`rdfs:label`) | `provider-info.provider-name`, `properties.dataset-label` |
+| `url` | provider (`schema:url`) | `provider-info.provider-uri` |
+| `identifier` | provider (`dcterms:identifier`) | `provider-info.provider-id` |
+| `isil` | provider (`mocho:isil`) | `provider-info.provider-isil` |
+| `rec_type` | dataset (`dcterms:type`) | `source.description.record.type` |
+| `provider_uri` | dataset (`prov:wasAttributedTo`) | derived from `provider-info.provider-ddb-id` |
+
+xslt and ddb_agent need nothing extra — version is in the URI, ddb content is fixed.
+
+This means `regen_prov_nq.py` (and `prescan.py`'s `_write_prov_db`) need updating. Want me to do both now — extend the schema in `_write_prov_db` and update `regen_prov_nq.py` to emit full triples? The prescan will need to pass the extra fields through when it calls `_write_prov_db`.
+
+---
+
+### User *(2026-05-20T14:34:05.648Z)*
+
+it is a bit confusing now. you can also create the .nq triples for prov when running transform, right? 
+
+since you have the uri and the entity_type. you know which class they should belong to and which property to use in the prov triples
+
+---
+
+### User *(2026-05-20T14:34:14.224Z)*
+
+[Request interrupted by user]
+
+---
+
+### User *(2026-05-20T14:34:18.049Z)*
+
+it is a bit confusing now. you can also create the .nq triples for prov.duckdb when running transform, right? 
+
+since you have the uri and the entity_type. you know which class they should belong to and which property to use in the prov triples
+
+---
+
+### Assistant *(2026-05-20T14:34:47.756Z)*
+
+Yes, exactly. For type triples you can reconstruct everything from uri + entity_type:
+
+- `prov_xslt` → version is in the URI suffix → full reconstruction
+- `prov_ddb` → fixed content → full reconstruction
+- `prov_provider` → type triples (`prov:Agent`, `foaf:Organization`) from entity_type alone
+- `prov_dataset` → type triples + identifier from URI suffix
+
+The only things you *can't* reconstruct are the labels that aren't encoded in the URI: provider `foaf:name`, `schema:url`, `mocho:isil`, and dataset `rdfs:label`. Those require adding columns to prov.duckdb during prescan.
+
+So the cleaner design is:
+
+1. **Prescan** writes prov.duckdb with `(uri, entity_type, label, url, isil, ...)` — no prov-shared.nq at all
+2. **After prescan**, run `regen_prov_nq.py` (or a transform step) to generate prov-shared.nq from prov.duckdb
+3. **Transform workers** read prov.duckdb read-only to suppress re-emission
+
+This eliminates the fragile append-and-deduplicate logic in `_write_prov_db` entirely. Want me to refactor along these lines — add the label columns to prov.duckdb in prescan and drop prov-shared.nq generation from prescan?
+
+---
+
+### User *(2026-05-20T14:36:04.833Z)*
+
+ok
+
+---
+
+### Assistant *(2026-05-20T14:38:06.333Z)*
+
+I'll refactor prescan to store all prov metadata in the DB, drop `prov-shared.nq` from the scan, and update `regenerate_prov_nq` to emit full triples. Then update the standalone script.
+
+---
+
+### Assistant *(2026-05-20T14:38:06.697Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "offset": 473,
+  "limit": 120
+}
+```
+
+---
+
+### User *(2026-05-20T14:38:06.710Z)*
+
+**Tool result**
+```
+473	def _write_prov_db(
+474	    prov_db_path: Path,
+475	    prov_out_path: Path,
+476	    new_entities: dict[str, str],
+477	    new_prov_lines: list[str],
+478	) -> None:
+479	    """Lock-protected write to prov.duckdb + idempotent append to prov-shared.nq.
+480	
+481	    prov.duckdb stores (uri, entity_type, nq_lines) so prov-shared.nq can always
+482	    be regenerated via: SELECT nq_lines FROM prov_entities (see regenerate_prov_nq).
+483	    """
+484	    import duckdb
+485	
+486	    # Build per-URI NQ lines map from new_prov_lines
+487	    uri_to_lines: dict[str, list[str]] = {}
+488	    for uri in new_entities:
+489	        prefix = f"<{uri}> "
+490	        uri_to_lines[uri] = [l for l in new_prov_lines if l.startswith(prefix)]
+491	
+492	    with open(str(prov_db_path) + ".lock", "a") as lf:
+493	        fcntl.flock(lf, fcntl.LOCK_EX)
+494	        try:
+495	            conn = duckdb.connect(str(prov_db_path))
+496	            conn.execute("""
+497	                CREATE TABLE IF NOT EXISTS prov_entities (
+498	                    uri         VARCHAR PRIMARY KEY,
+499	                    entity_type VARCHAR NOT NULL,
+500	                    nq_lines    VARCHAR NOT NULL DEFAULT ''
+501	                )
+502	            """)
+503	            # Migrate existing tables that lack nq_lines
+504	            cols = {r[0] for r in conn.execute(
+505	                "SELECT column_name FROM information_schema.columns "
+506	                "WHERE table_name='prov_entities'"
+507	            ).fetchall()}
+508	            if "nq_lines" not in cols:
+509	                conn.execute("ALTER TABLE prov_entities ADD COLUMN nq_lines VARCHAR NOT NULL DEFAULT ''")
+510	
+511	            uris = list(new_entities.keys())
+512	            if uris:
+513	                ph = ",".join("?" * len(uris))
+514	                existing = {r[0] for r in conn.execute(
+515	                    f"SELECT uri FROM prov_entities WHERE uri IN ({ph})", uris
+516	                ).fetchall()}
+517	            else:
+518	                existing = set()
+519	            truly_new = {u: t for u, t in new_entities.items() if u not in existing}
+520	            if truly_new:
+521	                rows = [
+522	                    (u, t, "\n".join(uri_to_lines.get(u, [])))
+523	                    for u, t in truly_new.items()
+524	                ]
+525	                conn.executemany(
+526	                    "INSERT OR IGNORE INTO prov_entities VALUES (?, ?, ?)",
+527	                    rows,
+528	                )
+529	            conn.close()
+530	            # Write NQ lines for all newly inserted entities
+531	            if truly_new:
+532	                truly_new_nts = {f"<{u}>" for u in truly_new}
+533	                with open(prov_out_path, "a", encoding="utf-8") as pf:
+534	                    for line in new_prov_lines:
+535	                        subj = line.split(" ", 1)[0]
+536	                        if subj in truly_new_nts:
+537	                            pf.write(line + "\n")
+538	        finally:
+539	            fcntl.flock(lf, fcntl.LOCK_UN)
+540	
+541	
+542	def regenerate_prov_nq(prov_db_path: Path, prov_out_path: Path) -> int:
+543	    """Regenerate prov-shared.nq from nq_lines stored in prov.duckdb.
+544	
+545	    Overwrites prov_out_path. Returns number of lines written.
+546	    Safe to call after prescan when prov-shared.nq is missing or incomplete.
+547	    """
+548	    import duckdb
+549	    conn = duckdb.connect(str(prov_db_path), read_only=True)
+550	    rows = conn.execute("SELECT nq_lines FROM prov_entities WHERE nq_lines != ''").fetchall()
+551	    conn.close()
+552	    prov_out_path.parent.mkdir(parents=True, exist_ok=True)
+553	    count = 0
+554	    with open(prov_out_path, "w", encoding="utf-8") as f:
+555	        for (lines_str,) in rows:
+556	            for line in lines_str.splitlines():
+557	                if line.strip():
+558	                    f.write(line + "\n")
+559	                    count += 1
+560	    return count
+561	
+562	
+563	def _write_labels_db(
+564	    db_path: Path,
+565	    table: str,
+566	    pending: dict[str, str | None],
+567	) -> None:
+568	    """Lock-protected INSERT OR IGNORE of (uri, label) pairs into a labels DuckDB."""
+569	    if not pending:
+570	        return
+571	    import duckdb
+572	    with open(str(db_path) + ".lock", "a") as lf:
+573	        fcntl.flock(lf, fcntl.LOCK_EX)
+574	        try:
+575	            conn = duckdb.connect(str(db_path))
+576	            conn.execute(f"""
+577	                CREATE TABLE IF NOT EXISTS {table} (
+578	                    uri   VARCHAR PRIMARY KEY,
+579	                    label VARCHAR
+580	                )
+581	            """)
+582	            conn.executemany(
+583	                f"INSERT OR IGNORE INTO {table} VALUES (?, ?)",
+584	                list(pending.items()),
+585	            )
+586	            conn.close()
+587	        finally:
+588	            fcntl.flock(lf, fcntl.LOCK_UN)
+589	
+590	
+591	# ---------------------------------------------------------------------------
+592	# Main
+```
+
+---
+
+### Assistant *(2026-05-20T14:38:09.588Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "offset": 595,
+  "limit": 110
+}
+```
+
+---
+
+### User *(2026-05-20T14:38:09.592Z)*
+
+**Tool result**
+```
+595	def main() -> None:
+596	    parser = argparse.ArgumentParser(
+597	        description="Pass 1 prescan: PROV-O shared nodes + label DBs + Parquet"
+598	    )
+599	    sub = parser.add_subparsers(dest="cmd")
+600	
+601	    # subcommand: regen — regenerate prov-shared.nq from existing prov.duckdb
+602	    regen = sub.add_parser("regen", help="Regenerate prov-shared.nq from prov.duckdb nq_lines")
+603	    regen.add_argument("--prov-db",  type=Path, required=True, dest="prov_db")
+604	    regen.add_argument("--prov-out", type=Path, required=True, dest="prov_out")
+605	
+606	    parser.add_argument("--db",                type=Path,
+607	                        help="Sector SQLite file (objs table, bufgz column)")
+608	    parser.add_argument("--prov-db",           type=Path, dest="prov_db",
+609	                        help="Shared prov.duckdb (prov_entities table); created if absent")
+610	    parser.add_argument("--concept-labels-db", type=Path, dest="concept_labels_db",
+611	                        help="Shared concept_labels.duckdb; created if absent")
+612	    parser.add_argument("--agent-labels-db",   type=Path, dest="agent_labels_db",
+613	                        help="Shared agent_labels.duckdb; created if absent")
+614	    parser.add_argument("--lido",              type=Path,
+615	                        help="lido_event_types.csv (resource → label)")
+616	    parser.add_argument("--prov-out",          type=Path, dest="prov_out",
+617	                        help="prov-shared.nq output (appended, deduped)")
+618	    parser.add_argument("--parquet-out",       type=Path, dest="parquet_out",
+619	                        help="Per-sector Parquet output")
+620	    args = parser.parse_args()
+621	
+622	    if args.cmd == "regen":
+623	        logging.basicConfig(level=logging.INFO,
+624	                            format="%(asctime)s %(levelname)-8s %(message)s",
+625	                            datefmt="%Y-%m-%d %H:%M:%S")
+626	        log = logging.getLogger(__name__)
+627	        n = regenerate_prov_nq(args.prov_db, args.prov_out)
+628	        log.info("Regenerated %s: %d lines", args.prov_out, n)
+629	        return
+630	
+631	    # Validate required args for the default scan mode
+632	    missing = [f for f, v in [
+633	        ("--db", args.db), ("--prov-db", args.prov_db),
+634	        ("--concept-labels-db", args.concept_labels_db),
+635	        ("--agent-labels-db", args.agent_labels_db),
+636	        ("--lido", args.lido), ("--prov-out", args.prov_out),
+637	        ("--parquet-out", args.parquet_out),
+638	    ] if v is None]
+639	    if missing:
+640	        parser.error(f"required arguments missing: {', '.join(missing)}")
+641	
+642	    logging.basicConfig(
+643	        level=logging.INFO,
+644	        format="%(asctime)s %(levelname)-8s %(message)s",
+645	        datefmt="%Y-%m-%d %H:%M:%S",
+646	    )
+647	    log = logging.getLogger(__name__)
+648	
+649	    # Ensure all output parent directories exist and parquet path is writable
+650	    for p in (args.prov_db, args.concept_labels_db, args.agent_labels_db,
+651	              args.prov_out, args.parquet_out):
+652	        p.parent.mkdir(parents=True, exist_ok=True)
+653	    args.parquet_out.touch()
+654	
+655	    # Load LIDO event type labels
+656	    lido_labels: dict[str, str] = {}
+657	    with open(args.lido, encoding="utf-8", newline="") as f:
+658	        for row in csv.DictReader(f):
+659	            lido_labels[row["resource"]] = row["label"]
+660	    log.info("Loaded %d LIDO labels from %s", len(lido_labels), args.lido.name)
+661	
+662	    PARQUET_FLUSH = 500_000  # rows per flush
+663	
+664	    # Scan accumulators
+665	    local_emitted: dict[str, str]             = {}
+666	    new_prov_lines: list[str]                = []
+667	    concept_labels_all: dict[str, str | None] = {}
+668	    agent_labels_all:   dict[str, str | None] = {}
+669	    parquet_buf: list[dict]                  = []
+670	    parquet_writer: pq.ParquetWriter | None  = None
+671	    parquet_total = 0
+672	
+673	    def _flush_parquet() -> None:
+674	        nonlocal parquet_writer, parquet_total
+675	        if not parquet_buf:
+676	            return
+677	        arrays = {col: [r.get(col) for r in parquet_buf] for col in PARQUET_SCHEMA.names}
+678	        table  = pa.table(arrays, schema=PARQUET_SCHEMA)
+679	        if parquet_writer is None:
+680	            parquet_writer = pq.ParquetWriter(str(args.parquet_out), PARQUET_SCHEMA)
+681	        parquet_writer.write_table(table)
+682	        parquet_total += len(parquet_buf)
+683	        parquet_buf.clear()
+684	
+685	    db_conn = sqlite3.connect(str(args.db))
+686	    cur = db_conn.cursor()
+687	    cur.execute("SELECT COUNT(*) FROM objs")
+688	    total = cur.fetchone()[0]
+689	    log.info("Scanning %s (%d records)", args.db.name, total)
+690	
+691	    cur.execute("SELECT uid, bufgz FROM objs WHERE bufgz IS NOT NULL ORDER BY rowid")
+692	    processed = errors = 0
+693	
+694	    for uid, blob in cur:
+695	        try:
+696	            data = json.loads(gzip.decompress(blob))
+697	        except Exception as exc:
+698	            log.warning("uid=%s decompress/parse error: %s", uid, exc)
+699	            errors += 1
+700	            continue
+701	
+702	        props  = data.get("properties") or {}
+703	        obj_id = props.get("item-id") or uid
+704	        cho_uri = DDB_ITEM_BASE + obj_id
+```
+
+---
+
+### Assistant *(2026-05-20T14:38:12.244Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "offset": 704,
+  "limit": 50
+}
+```
+
+---
+
+### User *(2026-05-20T14:38:12.250Z)*
+
+**Tool result**
+```
+704	        cho_uri = DDB_ITEM_BASE + obj_id
+705	        cho_subj_nt = f"<{cho_uri}> "
+706	
+707	        # PROV-O: emit shared-node descriptor lines (skip per-CHO lines)
+708	        all_prov_lines = emit_prov_triples(data, cho_uri, GRAPH_PROV, local_emitted)
+709	        for line in all_prov_lines:
+710	            if not line.startswith(cho_subj_nt):
+711	                new_prov_lines.append(line)
+712	
+713	        # Parquet row + pending label dicts
+714	        try:
+715	            row, cpending, apending = extract_record(data, lido_labels)
+716	            parquet_buf.append(row)
+717	            for k, v in cpending.items():
+718	                concept_labels_all.setdefault(k, v)
+719	            for k, v in apending.items():
+720	                agent_labels_all.setdefault(k, v)
+721	        except Exception as exc:
+722	            log.warning("uid=%s extract error: %s", uid, exc)
+723	            errors += 1
+724	
+725	        processed += 1
+726	        if processed % 100_000 == 0:
+727	            log.info("  %d / %d", processed, total)
+728	        if len(parquet_buf) >= PARQUET_FLUSH:
+729	            _flush_parquet()
+730	            log.info("  Parquet flush: %d rows written so far", parquet_total)
+731	
+732	    db_conn.close()
+733	    _flush_parquet()
+734	    if parquet_writer:
+735	        parquet_writer.close()
+736	    log.info("Scan complete: %d processed, %d errors, %d Parquet rows",
+737	             processed, errors, parquet_total)
+738	
+739	    # After scan: local_emitted contains all PROV-O shared node URIs found
+740	    new_entities = dict(local_emitted)
+741	
+742	    # Lock-protected writes
+743	    log.info("Writing prov.duckdb + prov-shared.nq (%d shared nodes)", len(new_entities))
+744	    _write_prov_db(args.prov_db, args.prov_out, new_entities, new_prov_lines)
+745	
+746	    log.info("Writing concept_labels.duckdb (%d URIs)", len(concept_labels_all))
+747	    _write_labels_db(args.concept_labels_db, "concept_labels", concept_labels_all)
+748	
+749	    log.info("Writing agent_labels.duckdb (%d URIs)", len(agent_labels_all))
+750	    _write_labels_db(args.agent_labels_db, "agent_labels", agent_labels_all)
+751	
+752	    log.info("Done.")
+753	
+```
+
+---
+
+### Assistant *(2026-05-20T14:38:15.931Z)*
+
+Good. Now I have the full picture. Making all the changes:
+
+---
+
+### Assistant *(2026-05-20T14:38:55.103Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "old_string": "def _write_prov_db(\n    prov_db_path: Path,\n    prov_out_path: Path,\n    new_entities: dict[str, str],\n    new_prov_lines: list[str],\n) -> None:\n    \"\"\"Lock-protected write to prov.duckdb + idempotent append to prov-shared.nq.\n\n    prov.duckdb stores (uri, entity_type, nq_lines) so prov-shared.nq can always\n    be regenerated via: SELECT nq_lines FROM prov_entities (see regenerate_prov_nq).\n    \"\"\"\n    import duckdb\n\n    # Build per-URI NQ lines map from new_prov_lines\n    uri_to_lines: dict[str, list[str]] = {}\n    for uri in new_entities:\n        prefix = f\"<{uri}> \"\n        uri_to_lines[uri] = [l for l in new_prov_lines if l.startswith(prefix)]\n\n    with open(str(prov_db_path) + \".lock\", \"a\") as lf:\n        fcntl.flock(lf, fcntl.LOCK_EX)\n        try:\n            conn = duckdb.connect(str(prov_db_path))\n            conn.execute(\"\"\"\n                CREATE TABLE IF NOT EXISTS prov_entities (\n                    uri         VARCHAR PRIMARY KEY,\n                    entity_type VARCHAR NOT NULL,\n                    nq_lines    VARCHAR NOT NULL DEFAULT ''\n                )\n            \"\"\")\n            # Migrate existing tables that lack nq_lines\n            cols = {r[0] for r in conn.execute(\n                \"SELECT column_name FROM information_schema.columns \"\n                \"WHERE table_name='prov_entities'\"\n            ).fetchall()}\n            if \"nq_lines\" not in cols:\n                conn.execute(\"ALTER TABLE prov_entities ADD COLUMN nq_lines VARCHAR NOT NULL DEFAULT ''\")\n\n            uris = list(new_entities.keys())\n            if uris:\n                ph = \",\".join(\"?\" * len(uris))\n                existing = {r[0] for r in conn.execute(\n                    f\"SELECT uri FROM prov_entities WHERE uri IN ({ph})\", uris\n                ).fetchall()}\n            else:\n                existing = set()\n            truly_new = {u: t for u, t in new_entities.items() if u not in existing}\n            if truly_new:\n                rows = [\n                    (u, t, \"\\n\".join(uri_to_lines.get(u, [])))\n                    for u, t in truly_new.items()\n                ]\n                conn.executemany(\n                    \"INSERT OR IGNORE INTO prov_entities VALUES (?, ?, ?)\",\n                    rows,\n                )\n            conn.close()\n            # Write NQ lines for all newly inserted entities\n            if truly_new:\n                truly_new_nts = {f\"<{u}>\" for u in truly_new}\n                with open(prov_out_path, \"a\", encoding=\"utf-8\") as pf:\n                    for line in new_prov_lines:\n                        subj = line.split(\" \", 1)[0]\n                        if subj in truly_new_nts:\n                            pf.write(line + \"\\n\")\n        finally:\n            fcntl.flock(lf, fcntl.LOCK_UN)\n\n\ndef regenerate_prov_nq(prov_db_path: Path, prov_out_path: Path) -> int:\n    \"\"\"Regenerate prov-shared.nq from nq_lines stored in prov.duckdb.\n\n    Overwrites prov_out_path. Returns number of lines written.\n    Safe to call after prescan when prov-shared.nq is missing or incomplete.\n    \"\"\"\n    import duckdb\n    conn = duckdb.connect(str(prov_db_path), read_only=True)\n    rows = conn.execute(\"SELECT nq_lines FROM prov_entities WHERE nq_lines != ''\").fetchall()\n    conn.close()\n    prov_out_path.parent.mkdir(parents=True, exist_ok=True)\n    count = 0\n    with open(prov_out_path, \"w\", encoding=\"utf-8\") as f:\n        for (lines_str,) in rows:\n            for line in lines_str.splitlines():\n                if line.strip():\n                    f.write(line + \"\\n\")\n                    count += 1\n    return count",
+  "new_string": "def _write_prov_db(\n    prov_db_path: Path,\n    new_entities: dict[str, str],\n    prov_meta: dict[str, dict],\n) -> None:\n    \"\"\"Lock-protected write of PROV-O shared node URIs + metadata to prov.duckdb.\n\n    Schema: (uri, entity_type, label, url, identifier, isil, rec_type, provider_uri)\n      label        — foaf:name (provider) or rdfs:label (dataset)\n      url          — schema:url (provider)\n      identifier   — dcterms:identifier (provider)\n      isil         — mocho:isil (provider)\n      rec_type     — dcterms:type URI (dataset)\n      provider_uri — prov:wasAttributedTo target (dataset → provider)\n    \"\"\"\n    import duckdb\n    with open(str(prov_db_path) + \".lock\", \"a\") as lf:\n        fcntl.flock(lf, fcntl.LOCK_EX)\n        try:\n            conn = duckdb.connect(str(prov_db_path))\n            conn.execute(\"\"\"\n                CREATE TABLE IF NOT EXISTS prov_entities (\n                    uri          VARCHAR PRIMARY KEY,\n                    entity_type  VARCHAR NOT NULL,\n                    label        VARCHAR DEFAULT '',\n                    url          VARCHAR DEFAULT '',\n                    identifier   VARCHAR DEFAULT '',\n                    isil         VARCHAR DEFAULT '',\n                    rec_type     VARCHAR DEFAULT '',\n                    provider_uri VARCHAR DEFAULT ''\n                )\n            \"\"\")\n            # Migrate tables from older schemas\n            cols = {r[0] for r in conn.execute(\n                \"SELECT column_name FROM information_schema.columns \"\n                \"WHERE table_name='prov_entities'\"\n            ).fetchall()}\n            for col in (\"label\", \"url\", \"identifier\", \"isil\", \"rec_type\", \"provider_uri\"):\n                if col not in cols:\n                    conn.execute(f\"ALTER TABLE prov_entities ADD COLUMN {col} VARCHAR DEFAULT ''\")\n            # nq_lines column is obsolete — drop silently if present (DuckDB doesn't support DROP COLUMN easily, just ignore)\n\n            uris = list(new_entities.keys())\n            if uris:\n                ph = \",\".join(\"?\" * len(uris))\n                existing = {r[0] for r in conn.execute(\n                    f\"SELECT uri FROM prov_entities WHERE uri IN ({ph})\", uris\n                ).fetchall()}\n            else:\n                existing = set()\n            truly_new = {u: t for u, t in new_entities.items() if u not in existing}\n            if truly_new:\n                rows = []\n                for u, t in truly_new.items():\n                    m = prov_meta.get(u) or {}\n                    rows.append((\n                        u, t,\n                        m.get(\"label\",        \"\") or \"\",\n                        m.get(\"url\",          \"\") or \"\",\n                        m.get(\"identifier\",   \"\") or \"\",\n                        m.get(\"isil\",         \"\") or \"\",\n                        m.get(\"rec_type\",     \"\") or \"\",\n                        m.get(\"provider_uri\", \"\") or \"\",\n                    ))\n                conn.executemany(\n                    \"INSERT OR IGNORE INTO prov_entities(uri,entity_type,label,url,identifier,isil,rec_type,provider_uri) VALUES (?,?,?,?,?,?,?,?)\",\n                    rows,\n                )\n            conn.close()\n        finally:\n            fcntl.flock(lf, fcntl.LOCK_UN)\n\n\ndef regenerate_prov_nq(prov_db_path: Path, prov_out_path: Path) -> int:\n    \"\"\"Generate prov-shared.nq from prov.duckdb metadata columns.\n\n    Overwrites prov_out_path. Returns number of lines written.\n    Run once after all sectors' prescan completes.\n    \"\"\"\n    from .constants import (\n        GRAPH_PROV, RDF_TYPE, DDB_BASE,\n        PROV_AGENT, PROV_SW_AGENT, PROV_ENTITY, PROV_ON_BEHALF, PROV_ATTRIBUTED,\n        FOAF_ORG, FOAF_NAME, DCAT_DATASET,\n        DCTERMS_ID, DCTERMS_TYPE, DCTERMS_HAS_VER, RDFS_LABEL,\n        SCHEMA_URL, MOCHO_ISIL,\n    )\n    from .utils import make_nq\n\n    def _nq(s: str, p: str, o: str) -> str:\n        return make_nq(f\"<{s}>\", f\"<{p}>\", o, GRAPH_PROV)\n\n    import duckdb\n    conn = duckdb.connect(str(prov_db_path), read_only=True)\n    cols = {r[0] for r in conn.execute(\n        \"SELECT column_name FROM information_schema.columns WHERE table_name='prov_entities'\"\n    ).fetchall()}\n    has_meta = \"label\" in cols\n    if has_meta:\n        raw = conn.execute(\n            \"SELECT uri, entity_type, label, url, identifier, isil, rec_type, provider_uri \"\n            \"FROM prov_entities\"\n        ).fetchall()\n    else:\n        raw = [(r[0], r[1], \"\", \"\", \"\", \"\", \"\", \"\")\n               for r in conn.execute(\"SELECT uri, entity_type FROM prov_entities\").fetchall()]\n    conn.close()\n\n    lines: list[str] = []\n    for uri, etype, label, url, ident, isil, rec_type, provider_uri in raw:\n        if etype == \"prov_xslt\":\n            version = uri.rsplit(\":\", 1)[-1]\n            lines += [\n                _nq(uri, RDF_TYPE,        f\"<{PROV_SW_AGENT}>\"),\n                _nq(uri, DCTERMS_HAS_VER, f'\"{version}\"'),\n                _nq(uri, PROV_ON_BEHALF,  f\"<{DDB_BASE}>\"),\n            ]\n        elif etype == \"prov_ddb\":\n            lines += [\n                _nq(uri, RDF_TYPE,  f\"<{PROV_AGENT}>\"),\n                _nq(uri, RDF_TYPE,  f\"<{FOAF_ORG}>\"),\n                _nq(uri, FOAF_NAME, '\"Deutsche Digitale Bibliothek\"'),\n            ]\n        elif etype == \"prov_provider\":\n            lines += [\n                _nq(uri, RDF_TYPE, f\"<{PROV_AGENT}>\"),\n                _nq(uri, RDF_TYPE, f\"<{FOAF_ORG}>\"),\n            ]\n            if label:\n                lines.append(_nq(uri, FOAF_NAME, f'\"{label}\"'))\n            if url:\n                lines.append(_nq(uri, SCHEMA_URL, f\"<{url}>\"))\n            if ident:\n                lines.append(_nq(uri, DCTERMS_ID, f'\"{ident}\"'))\n            if isil:\n                lines.append(_nq(uri, MOCHO_ISIL, f'\"{isil}\"'))\n        elif etype == \"prov_dataset\":\n            dataset_id = uri.rsplit(\":\", 1)[-1]\n            lines += [\n                _nq(uri, RDF_TYPE,   f\"<{DCAT_DATASET}>\"),\n                _nq(uri, RDF_TYPE,   f\"<{PROV_ENTITY}>\"),\n                _nq(uri, DCTERMS_ID, f'\"{dataset_id}\"'),\n            ]\n            if label:\n                lines.append(_nq(uri, RDFS_LABEL, f'\"{label}\"@de'))\n            if rec_type:\n                lines.append(_nq(uri, DCTERMS_TYPE, f\"<{rec_type}>\"))\n            if provider_uri:\n                lines.append(_nq(uri, PROV_ATTRIBUTED, f\"<{provider_uri}>\"))\n\n    prov_out_path.parent.mkdir(parents=True, exist_ok=True)\n    with open(prov_out_path, \"w\", encoding=\"utf-8\") as f:\n        for line in lines:\n            f.write(line + \"\\n\")\n    return len(lines)"
+}
+```
+
+---
+
+### User *(2026-05-20T14:38:58.827Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:39:03.693Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "old_string": "    # Scan accumulators\n    local_emitted: dict[str, str]             = {}\n    new_prov_lines: list[str]                = []\n    concept_labels_all: dict[str, str | None] = {}",
+  "new_string": "    # Scan accumulators\n    local_emitted: dict[str, str]             = {}\n    prov_meta: dict[str, dict]               = {}\n    concept_labels_all: dict[str, str | None] = {}"
+}
+```
+
+---
+
+### User *(2026-05-20T14:39:07.527Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:39:17.925Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "old_string": "        # PROV-O: emit shared-node descriptor lines (skip per-CHO lines)\n        all_prov_lines = emit_prov_triples(data, cho_uri, GRAPH_PROV, local_emitted)\n        for line in all_prov_lines:\n            if not line.startswith(cho_subj_nt):\n                new_prov_lines.append(line)",
+  "new_string": "        # PROV-O: collect shared-node URIs + metadata\n        prev_keys = set(local_emitted.keys())\n        emit_prov_triples(data, cho_uri, GRAPH_PROV, local_emitted)\n        new_keys = set(local_emitted.keys()) - prev_keys\n        if new_keys:\n            prov_info = data.get(\"provider-info\") or {}\n            props_    = data.get(\"properties\") or {}\n            src_ref_  = ((data.get(\"source\") or {}).get(\"description\") or {}).get(\"record\") or {}\n            if not isinstance(src_ref_, dict):\n                src_ref_ = {}\n            for uri in new_keys:\n                etype = local_emitted[uri]\n                if etype == \"prov_provider\":\n                    prov_meta[uri] = {\n                        \"label\":      prov_info.get(\"provider-name\") or \"\",\n                        \"url\":        prov_info.get(\"provider-uri\")  or \"\",\n                        \"identifier\": prov_info.get(\"provider-id\")   or \"\",\n                        \"isil\":       prov_info.get(\"provider-isil\") or \"\",\n                    }\n                elif etype == \"prov_dataset\":\n                    ddb_id = prov_info.get(\"provider-ddb-id\") or \"\"\n                    prov_meta[uri] = {\n                        \"label\":        props_.get(\"dataset-label\") or \"\",\n                        \"rec_type\":     src_ref_.get(\"type\")        or \"\",\n                        \"provider_uri\": f\"urn:ddbedm:provider:{ddb_id}\" if ddb_id else \"\",\n                    }"
+}
+```
+
+---
+
+### User *(2026-05-20T14:40:04.450Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:40:10.906Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "old_string": "    # After scan: local_emitted contains all PROV-O shared node URIs found\n    new_entities = dict(local_emitted)\n\n    # Lock-protected writes\n    log.info(\"Writing prov.duckdb + prov-shared.nq (%d shared nodes)\", len(new_entities))\n    _write_prov_db(args.prov_db, args.prov_out, new_entities, new_prov_lines)",
+  "new_string": "    # After scan: write shared node URIs + metadata to prov.duckdb\n    new_entities = dict(local_emitted)\n    log.info(\"Writing prov.duckdb (%d shared nodes)\", len(new_entities))\n    _write_prov_db(args.prov_db, new_entities, prov_meta)"
+}
+```
+
+---
+
+### User *(2026-05-20T14:40:16.313Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:40:19.562Z)*
+
+Now fix the arg parser — remove `--prov-out` from scan mode and the required-args check:
+
+---
+
+### Assistant *(2026-05-20T14:40:35.963Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "old_string": "    # subcommand: regen — regenerate prov-shared.nq from existing prov.duckdb\n    regen = sub.add_parser(\"regen\", help=\"Regenerate prov-shared.nq from prov.duckdb nq_lines\")\n    regen.add_argument(\"--prov-db\",  type=Path, required=True, dest=\"prov_db\")\n    regen.add_argument(\"--prov-out\", type=Path, required=True, dest=\"prov_out\")\n\n    parser.add_argument(\"--db\",                type=Path,\n                        help=\"Sector SQLite file (objs table, bufgz column)\")\n    parser.add_argument(\"--prov-db\",           type=Path, dest=\"prov_db\",\n                        help=\"Shared prov.duckdb (prov_entities table); created if absent\")\n    parser.add_argument(\"--concept-labels-db\", type=Path, dest=\"concept_labels_db\",\n                        help=\"Shared concept_labels.duckdb; created if absent\")\n    parser.add_argument(\"--agent-labels-db\",   type=Path, dest=\"agent_labels_db\",\n                        help=\"Shared agent_labels.duckdb; created if absent\")\n    parser.add_argument(\"--lido\",              type=Path,\n                        help=\"lido_event_types.csv (resource → label)\")\n    parser.add_argument(\"--prov-out\",          type=Path, dest=\"prov_out\",\n                        help=\"prov-shared.nq output (appended, deduped)\")\n    parser.add_argument(\"--parquet-out\",       type=Path, dest=\"parquet_out\",\n                        help=\"Per-sector Parquet output\")\n    args = parser.parse_args()\n\n    if args.cmd == \"regen\":\n        logging.basicConfig(level=logging.INFO,\n                            format=\"%(asctime)s %(levelname)-8s %(message)s\",\n                            datefmt=\"%Y-%m-%d %H:%M:%S\")\n        log = logging.getLogger(__name__)\n        n = regenerate_prov_nq(args.prov_db, args.prov_out)\n        log.info(\"Regenerated %s: %d lines\", args.prov_out, n)\n        return\n\n    # Validate required args for the default scan mode\n    missing = [f for f, v in [\n        (\"--db\", args.db), (\"--prov-db\", args.prov_db),\n        (\"--concept-labels-db\", args.concept_labels_db),\n        (\"--agent-labels-db\", args.agent_labels_db),\n        (\"--lido\", args.lido), (\"--prov-out\", args.prov_out),\n        (\"--parquet-out\", args.parquet_out),\n    ] if v is None]\n    if missing:\n        parser.error(f\"required arguments missing: {', '.join(missing)}\")",
+  "new_string": "    # subcommand: regen — generate prov-shared.nq from prov.duckdb metadata columns\n    regen = sub.add_parser(\"regen\", help=\"Generate prov-shared.nq from prov.duckdb metadata\")\n    regen.add_argument(\"--prov-db\",  type=Path, required=True, dest=\"prov_db\")\n    regen.add_argument(\"--prov-out\", type=Path, required=True, dest=\"prov_out\")\n\n    parser.add_argument(\"--db\",                type=Path,\n                        help=\"Sector SQLite file (objs table, bufgz column)\")\n    parser.add_argument(\"--prov-db\",           type=Path, dest=\"prov_db\",\n                        help=\"Shared prov.duckdb (prov_entities table); created if absent\")\n    parser.add_argument(\"--concept-labels-db\", type=Path, dest=\"concept_labels_db\",\n                        help=\"Shared concept_labels.duckdb; created if absent\")\n    parser.add_argument(\"--agent-labels-db\",   type=Path, dest=\"agent_labels_db\",\n                        help=\"Shared agent_labels.duckdb; created if absent\")\n    parser.add_argument(\"--lido\",              type=Path,\n                        help=\"lido_event_types.csv (resource → label)\")\n    parser.add_argument(\"--parquet-out\",       type=Path, dest=\"parquet_out\",\n                        help=\"Per-sector Parquet output\")\n    args = parser.parse_args()\n\n    if args.cmd == \"regen\":\n        logging.basicConfig(level=logging.INFO,\n                            format=\"%(asctime)s %(levelname)-8s %(message)s\",\n                            datefmt=\"%Y-%m-%d %H:%M:%S\")\n        log = logging.getLogger(__name__)\n        n = regenerate_prov_nq(args.prov_db, args.prov_out)\n        log.info(\"Regenerated %s: %d lines\", args.prov_out, n)\n        return\n\n    # Validate required args for the default scan mode\n    missing = [f for f, v in [\n        (\"--db\", args.db), (\"--prov-db\", args.prov_db),\n        (\"--concept-labels-db\", args.concept_labels_db),\n        (\"--agent-labels-db\", args.agent_labels_db),\n        (\"--lido\", args.lido), (\"--parquet-out\", args.parquet_out),\n    ] if v is None]\n    if missing:\n        parser.error(f\"required arguments missing: {', '.join(missing)}\")"
+}
+```
+
+---
+
+### User *(2026-05-20T14:40:38.576Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:40:41.265Z)*
+
+Fix the `mkdir` loop that still references `args.prov_out`:
+
+---
+
+### Assistant *(2026-05-20T14:40:43.714Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "old_string": "    # Ensure all output parent directories exist and parquet path is writable\n    for p in (args.prov_db, args.concept_labels_db, args.agent_labels_db,\n              args.prov_out, args.parquet_out):\n        p.parent.mkdir(parents=True, exist_ok=True)\n    args.parquet_out.touch()",
+  "new_string": "    # Ensure all output parent directories exist and parquet path is writable\n    for p in (args.prov_db, args.concept_labels_db, args.agent_labels_db, args.parquet_out):\n        p.parent.mkdir(parents=True, exist_ok=True)\n    args.parquet_out.touch()"
+}
+```
+
+---
+
+### User *(2026-05-20T14:41:03.783Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:41:08.556Z)*
+
+Now update `regen_prov_nq.py` to delegate to `regenerate_prov_nq` in prescan:
+
+---
+
+### Assistant *(2026-05-20T14:41:15.610Z)*
+
+**Tool call:** `Write`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/gemea/scripts/py/regen_prov_nq.py",
+  "content": "\"\"\"\nPurpose:    Regenerate prov-shared.nq from prov.duckdb metadata columns.\n            Reads (uri, entity_type, label, url, identifier, isil, rec_type, provider_uri)\n            from prov.duckdb and emits complete PROV-O N-Quads.\n            Falls back to type-only triples for older DBs that lack metadata columns.\nUsage:      python scripts/py/regen_prov_nq.py \\\n                --prov-db  gemea/data/parquet/prov.duckdb \\\n                --prov-out gemea/output/20260520/prov-shared.nq\nInputs:     prov.duckdb — prov_entities table\nOutputs:    prov-shared.nq — N-Quads in graph/prov\nDeps:       duckdb; goethe-faust/scripts on PYTHONPATH\n\"\"\"\n\nfrom __future__ import annotations\n\nimport argparse\nimport sys\nfrom pathlib import Path\n\nsys.path.insert(0, str(Path(__file__).resolve().parents[3] / \"goethe-faust\" / \"scripts\"))\n\nfrom transform.prescan import regenerate_prov_nq\n\n\ndef main() -> None:\n    ap = argparse.ArgumentParser(description=__doc__.splitlines()[1].strip())\n    ap.add_argument(\"--prov-db\",  type=Path, required=True)\n    ap.add_argument(\"--prov-out\", type=Path, required=True)\n    args = ap.parse_args()\n\n    n = regenerate_prov_nq(args.prov_db, args.prov_out)\n    print(f\"Written {n} triples to {args.prov_out}\")\n\n\nif __name__ == \"__main__\":\n    main()\n"
+}
+```
+
+---
+
+### User *(2026-05-20T14:41:18.103Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/gemea/scripts/py/regen_prov_nq.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:41:20.969Z)*
+
+Now test the full chain — prescan on s7, then regen, then check output:
+
+---
+
+### Assistant *(2026-05-20T14:41:23.842Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "cd /Users/mta/Documents/claude/goethe-faust/scripts && \\\n  ../.venv/bin/python3 -m transform.prescan \\\n    --db                /Users/mta/Documents/claude/gemea/data/sqlite/s7.sqlite \\\n    --prov-db           /tmp/claude/test-prov.duckdb \\\n    --concept-labels-db /tmp/claude/test-concept.duckdb \\\n    --agent-labels-db   /tmp/claude/test-agent.duckdb \\\n    --lido              ../output/config/lido_event_types.csv \\\n    --parquet-out       /tmp/claude/test-s7.parquet \\\n  2>&1 | tail -8",
+  "description": "Run prescan on s7 with new code",
+  "timeout": 300000
+}
+```
+
+---
+
+### User *(2026-05-20T14:41:45.860Z)*
+
+**Tool result**
+```
+/Users/runner/work/crossbow/crossbow/arrow/cpp/src/arrow/util/cpu_info.cc:239: IOError: sysctlbyname failed for 'hw.l2cachesize'. Detail: [errno 1] Operation not permitted
+/Users/runner/work/crossbow/crossbow/arrow/cpp/src/arrow/util/cpu_info.cc:239: IOError: sysctlbyname failed for 'hw.l3cachesize'. Detail: [errno 1] Operation not permitted
+/Users/runner/work/crossbow/crossbow/arrow/cpp/src/arrow/util/cpu_info.cc:239: IOError: sysctlbyname failed for 'hw.optional.neon'. Detail: [errno 1] Operation not permitted
+2026-05-20 16:41:42 INFO     Scan complete: 89904 processed, 0 errors, 89904 Parquet rows
+2026-05-20 16:41:42 INFO     Writing prov.duckdb (61 shared nodes)
+2026-05-20 16:41:42 INFO     Writing concept_labels.duckdb (970 URIs)
+2026-05-20 16:41:42 INFO     Writing agent_labels.duckdb (6323 URIs)
+2026-05-20 16:41:45 INFO     Done.
+```
+
+---
+
+### Assistant *(2026-05-20T14:41:49.771Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "\\\n  ../.venv/bin/python3 -m transform.prescan regen \\\n    --prov-db  /tmp/claude/test-prov.duckdb \\\n    --prov-out /tmp/claude/test-prov-shared.nq \\\n  2>&1\n\necho \"---\"\nwc -l /tmp/claude/test-prov-shared.nq\nhead -15 /tmp/claude/test-prov-shared.nq",
+  "description": "Test regen subcommand and check output"
+}
+```
+
+---
+
+### User *(2026-05-20T14:42:02.366Z)*
+
+**Tool result**
+```
+2026-05-20 16:42:02 INFO     Regenerated /tmp/claude/test-prov-shared.nq: 319 lines
+---
+     319 /tmp/claude/test-prov-shared.nq
+<urn:ddbedm:dataset:38805008320952248dAdQ> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Dataset> <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<urn:ddbedm:dataset:38805008320952248dAdQ> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/prov#Entity> <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<urn:ddbedm:dataset:38805008320952248dAdQ> <http://purl.org/dc/terms/identifier> "38805008320952248dAdQ" <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<urn:ddbedm:dataset:38805008320952248dAdQ> <http://www.w3.org/2000/01/rdf-schema#label> "Gesamtlieferung: Stiftung Brandenburg (D-Bestand) - LIDO"@de <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<urn:ddbedm:dataset:38805008320952248dAdQ> <http://purl.org/dc/terms/type> <http://www.lido-schema.org/> <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<urn:ddbedm:dataset:38805008320952248dAdQ> <http://www.w3.org/ns/prov#wasAttributedTo> <urn:ddbedm:provider:7Z5TZEWOAPUNRUPB4J5AHFBU4FF5IPEB> <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<urn:ddbedm:xslt:6.3> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/prov#SoftwareAgent> <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<urn:ddbedm:xslt:6.3> <http://purl.org/dc/terms/hasVersion> "6.3" <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<urn:ddbedm:xslt:6.3> <http://www.w3.org/ns/prov#actedOnBehalfOf> <http://www.deutsche-digitale-bibliothek.de> <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<http://www.deutsche-digitale-bibliothek.de> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/prov#Agent> <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<http://www.deutsche-digitale-bibliothek.de> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://xmlns.com/foaf/0.1/Organization> <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<http://www.deutsche-digitale-bibliothek.de> <http://xmlns.com/foaf/0.1/name> "Deutsche Digitale Bibliothek" <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<urn:ddbedm:provider:7Z5TZEWOAPUNRUPB4J5AHFBU4FF5IPEB> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/prov#Agent> <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<urn:ddbedm:provider:7Z5TZEWOAPUNRUPB4J5AHFBU4FF5IPEB> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://xmlns.com/foaf/0.1/Organization> <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<urn:ddbedm:provider:7Z5TZEWOAPUNRUPB4J5AHFBU4FF5IPEB> <http://xmlns.com/foaf/0.1/name> "Stiftung Brandenburg" <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+```
+
+---
+
+### Assistant *(2026-05-20T14:42:07.224Z)*
+
+Full triples — datasets have labels, providers have names. Let me also verify the DB columns and run the existing unit tests:
+
+---
+
+### Assistant *(2026-05-20T14:42:11.430Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "\\\n  ../.venv/bin/python3 - <<'EOF'\nimport duckdb\nconn = duckdb.connect(\"/tmp/claude/test-prov.duckdb\", read_only=True)\nprint(conn.execute(\"SELECT entity_type, COUNT(*) FROM prov_entities GROUP BY entity_type\").fetchall())\nprint()\n# sample provider with label\nprint(conn.execute(\"\"\"\n  SELECT uri, entity_type, label, url, identifier, isil\n  FROM prov_entities WHERE entity_type='prov_provider' AND label != '' LIMIT 3\n\"\"\").fetchall())\nprint()\n# sample dataset with label\nprint(conn.execute(\"\"\"\n  SELECT uri, label, rec_type, provider_uri\n  FROM prov_entities WHERE entity_type='prov_dataset' AND label != '' LIMIT 3\n\"\"\").fetchall())\nconn.close()\nEOF",
+  "description": "Verify metadata columns populated in prov.duckdb"
+}
+```
+
+---
+
+### User *(2026-05-20T14:42:17.354Z)*
+
+**Tool result** *(error)*
+```
+Exit code 1
+[('prov_xslt', 13), ('prov_dataset', 28), ('prov_provider', 19), ('prov_ddb', 1)]
+
+Traceback (most recent call last):
+  File "<stdin>", line 6, in <module>
+_duckdb.ParserException: Parser Error: syntax error at or near "\"
+
+LINE 3: ... prov_entities WHERE entity_type='prov_provider' AND label \!= '' LIMIT 3
+                                                                      ^
+```
+
+---
+
+### Assistant *(2026-05-20T14:42:22.497Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "\\\n  ../.venv/bin/python3 - <<'EOF'\nimport duckdb\nconn = duckdb.connect(\"/tmp/claude/test-prov.duckdb\", read_only=True)\nprint(conn.execute(\"SELECT uri, label, url FROM prov_entities WHERE entity_type='prov_provider' AND label <> '' LIMIT 3\").fetchall())\nprint(conn.execute(\"SELECT uri, label, rec_type, provider_uri FROM prov_entities WHERE entity_type='prov_dataset' AND label <> '' LIMIT 3\").fetchall())\nconn.close()\nEOF",
+  "description": "Verify metadata columns in prov.duckdb"
+}
+```
+
+---
+
+### User *(2026-05-20T14:42:23.961Z)*
+
+**Tool result**
+```
+[('urn:ddbedm:provider:7Z5TZEWOAPUNRUPB4J5AHFBU4FF5IPEB', 'Stiftung Brandenburg', 'http://www.stiftung-brandenburg.de'), ('urn:ddbedm:provider:DWIVLJW5JBO7X4XRO2Y7PCGZSHLTUS6F', 'Digitales Kunst- und Kulturarchiv Düsseldorf - Kulturamt der Landeshauptstadt Düsseldorf', 'https://emuseum.duesseldorf.de'), ('urn:ddbedm:provider:5BYG5MI7BCV4DK2LSW22HPPJC6MGBDQO', 'Kulturamt der Landeshauptstadt Düsseldorf', 'http://www.duesseldorf.de/kulturamt')]
+[('urn:ddbedm:dataset:38805008320952248dAdQ', 'Gesamtlieferung: Stiftung Brandenburg (D-Bestand) - LIDO', 'http://www.lido-schema.org/', 'urn:ddbedm:provider:7Z5TZEWOAPUNRUPB4J5AHFBU4FF5IPEB'), ('urn:ddbedm:dataset:38805900256875424dGtT', 'Gesamtlieferung: Stiftung Brandenburg (PK-Bestand) - LIDO', 'http://www.lido-schema.org/', 'urn:ddbedm:provider:7Z5TZEWOAPUNRUPB4J5AHFBU4FF5IPEB'), ('urn:ddbedm:dataset:4931757708775042zWPm', 'Gesamtlieferung - LIDO', 'http://www.lido-schema.org/', 'urn:ddbedm:provider:DWIVLJW5JBO7X4XRO2Y7PCGZSHLTUS6F')]
+```
+
+---
+
+### Assistant *(2026-05-20T14:42:27.884Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "cd /Users/mta/Documents/claude/goethe-faust && \\\n  .venv/bin/python3 -m pytest scripts/transform/tests/test_prescan.py -q 2>&1 | tail -15",
+  "description": "Run prescan unit tests"
+}
+```
+
+---
+
+### User *(2026-05-20T14:42:30.686Z)*
+
+**Tool result**
+```
+        records = [_rec("OBJ001", xslt="v1.0", provider_ddb_id="prov001")]
+        prov_db = tmp_path / "prov.duckdb"
+        prov_nq = tmp_path / "prov-shared.nq"
+    
+        for _ in range(2):
+            emitted, lines = _scan_prov(records)
+>           _write_prov_db(prov_db, prov_nq, dict(emitted), lines)
+E           TypeError: _write_prov_db() takes 3 positional arguments but 4 were given
+
+scripts/transform/tests/test_prescan.py:108: TypeError
+=========================== short test summary info ============================
+FAILED scripts/transform/tests/test_prescan.py::TestPrescanProv::test_prov_entities_count_and_types
+FAILED scripts/transform/tests/test_prescan.py::TestPrescanProv::test_prov_nq_line_count
+FAILED scripts/transform/tests/test_prescan.py::TestPrescanProv::test_prov_nq_idempotent
+3 failed, 14 passed in 0.54s
+```
+
+---
+
+### Assistant *(2026-05-20T14:42:53.867Z)*
+
+Three tests call `_write_prov_db` with the old signature. I need to update the test helper and those tests to use the new signature plus `regenerate_prov_nq`:
+
+---
+
+### Assistant *(2026-05-20T14:42:54.971Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/tests/test_prescan.py",
+  "old_string": "from transform.prescan import (\n    _write_labels_db,\n    _write_prov_db,\n    extract_record,\n)",
+  "new_string": "from transform.prescan import (\n    _write_labels_db,\n    _write_prov_db,\n    extract_record,\n    regenerate_prov_nq,\n)"
+}
+```
+
+---
+
+### User *(2026-05-20T14:43:25.201Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/tests/test_prescan.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:43:37.923Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/tests/test_prescan.py",
+  "old_string": "def _scan_prov(records):\n    \"\"\"Simulate prescan's PROV-O emission: collect shared-node lines only.\"\"\"\n    local_emitted: dict[str, str] = {}\n    new_prov_lines: list[str]     = []\n    for rec in records:\n        obj_id  = rec[\"properties\"][\"item-id\"]\n        cho_uri = DDB_ITEM_BASE + obj_id\n        cho_sfx = f\"<{cho_uri}> \"\n        for line in emit_prov_triples(rec, cho_uri, GRAPH_PROV, local_emitted):\n            if not line.startswith(cho_sfx):\n                new_prov_lines.append(line)\n    return local_emitted, new_prov_lines",
+  "new_string": "def _scan_prov(records):\n    \"\"\"Simulate prescan's PROV-O emission: collect shared-node URIs + metadata.\"\"\"\n    local_emitted: dict[str, str] = {}\n    prov_meta: dict[str, dict]    = {}\n    for rec in records:\n        obj_id   = rec[\"properties\"][\"item-id\"]\n        cho_uri  = DDB_ITEM_BASE + obj_id\n        prev     = set(local_emitted.keys())\n        emit_prov_triples(rec, cho_uri, GRAPH_PROV, local_emitted)\n        for uri in set(local_emitted.keys()) - prev:\n            etype     = local_emitted[uri]\n            prov_info = rec.get(\"provider-info\") or {}\n            props_    = rec.get(\"properties\") or {}\n            if etype == \"prov_provider\":\n                prov_meta[uri] = {\n                    \"label\":      prov_info.get(\"provider-name\") or \"\",\n                    \"url\":        prov_info.get(\"provider-uri\")  or \"\",\n                    \"identifier\": prov_info.get(\"provider-id\")   or \"\",\n                    \"isil\":       prov_info.get(\"provider-isil\") or \"\",\n                }\n            elif etype == \"prov_dataset\":\n                ddb_id = prov_info.get(\"provider-ddb-id\") or \"\"\n                prov_meta[uri] = {\n                    \"label\":        props_.get(\"dataset-label\") or \"\",\n                    \"rec_type\":     \"\",\n                    \"provider_uri\": f\"urn:ddbedm:provider:{ddb_id}\" if ddb_id else \"\",\n                }\n    return local_emitted, prov_meta"
+}
+```
+
+---
+
+### User *(2026-05-20T14:43:40.145Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/tests/test_prescan.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:43:58.056Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/tests/test_prescan.py",
+  "old_string": "    def test_prov_entities_count_and_types(self, tmp_path):\n        duckdb = pytest.importorskip(\"duckdb\")\n        emitted, lines = _scan_prov(self._RECORDS)\n        prov_db = tmp_path / \"prov.duckdb\"\n        prov_nq = tmp_path / \"prov-shared.nq\"\n        _write_prov_db(prov_db, prov_nq, dict(emitted), lines)\n\n        conn = duckdb.connect(str(prov_db))\n        rows = conn.execute(\"SELECT entity_type FROM prov_entities\").fetchall()\n        conn.close()\n\n        c = Counter(r[0] for r in rows)\n        assert len(rows) == 4\n        assert c[\"prov_xslt\"]     == 1\n        assert c[\"prov_provider\"] == 2\n        assert c[\"prov_ddb\"]      == 1\n\n    def test_prov_nq_line_count(self, tmp_path):\n        # xslt: 3 lines, ddb_agent: 3 lines, prov001: 2 lines, prov002: 2 lines = 10\n        pytest.importorskip(\"duckdb\")\n        emitted, lines = _scan_prov(self._RECORDS)\n        prov_db = tmp_path / \"prov.duckdb\"\n        prov_nq = tmp_path / \"prov-shared.nq\"\n        _write_prov_db(prov_db, prov_nq, dict(emitted), lines)\n\n        nq_lines = [l for l in prov_nq.read_text().splitlines() if l.strip()]\n        assert len(nq_lines) == 10\n\n    def test_prov_nq_idempotent(self, tmp_path):\n        \"\"\"Second run with same records must not append duplicate lines.\"\"\"\n        pytest.importorskip(\"duckdb\")\n        records = [_rec(\"OBJ001\", xslt=\"v1.0\", provider_ddb_id=\"prov001\")]\n        prov_db = tmp_path / \"prov.duckdb\"\n        prov_nq = tmp_path / \"prov-shared.nq\"\n\n        for _ in range(2):\n            emitted, lines = _scan_prov(records)\n            _write_prov_db(prov_db, prov_nq, dict(emitted), lines)\n\n        nq_lines = [l for l in prov_nq.read_text().splitlines() if l.strip()]\n        # xslt(3) + ddb_agent(3) + prov001(2) = 8; second run adds 0\n        assert len(nq_lines) == 8",
+  "new_string": "    def test_prov_entities_count_and_types(self, tmp_path):\n        duckdb = pytest.importorskip(\"duckdb\")\n        emitted, prov_meta = _scan_prov(self._RECORDS)\n        prov_db = tmp_path / \"prov.duckdb\"\n        _write_prov_db(prov_db, dict(emitted), prov_meta)\n\n        conn = duckdb.connect(str(prov_db))\n        rows = conn.execute(\"SELECT entity_type FROM prov_entities\").fetchall()\n        conn.close()\n\n        c = Counter(r[0] for r in rows)\n        assert len(rows) == 4\n        assert c[\"prov_xslt\"]     == 1\n        assert c[\"prov_provider\"] == 2\n        assert c[\"prov_ddb\"]      == 1\n\n    def test_prov_nq_line_count(self, tmp_path):\n        # xslt: 3 lines, ddb_agent: 3 lines, prov001: 2 lines, prov002: 2 lines = 10\n        # (provider type-only: no names in test fixtures)\n        pytest.importorskip(\"duckdb\")\n        emitted, prov_meta = _scan_prov(self._RECORDS)\n        prov_db = tmp_path / \"prov.duckdb\"\n        prov_nq = tmp_path / \"prov-shared.nq\"\n        _write_prov_db(prov_db, dict(emitted), prov_meta)\n        regenerate_prov_nq(prov_db, prov_nq)\n\n        nq_lines = [l for l in prov_nq.read_text().splitlines() if l.strip()]\n        assert len(nq_lines) == 10\n\n    def test_prov_nq_idempotent(self, tmp_path):\n        \"\"\"Second write + regen must produce the same line count as the first.\"\"\"\n        pytest.importorskip(\"duckdb\")\n        records = [_rec(\"OBJ001\", xslt=\"v1.0\", provider_ddb_id=\"prov001\")]\n        prov_db = tmp_path / \"prov.duckdb\"\n        prov_nq = tmp_path / \"prov-shared.nq\"\n\n        for _ in range(2):\n            emitted, prov_meta = _scan_prov(records)\n            _write_prov_db(prov_db, dict(emitted), prov_meta)\n\n        regenerate_prov_nq(prov_db, prov_nq)\n        nq_lines = [l for l in prov_nq.read_text().splitlines() if l.strip()]\n        # xslt(3) + ddb_agent(3) + prov001(2) = 8\n        assert len(nq_lines) == 8"
+}
+```
+
+---
+
+### User *(2026-05-20T14:44:01.374Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/tests/test_prescan.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:44:04.991Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "\\\n  .venv/bin/python3 -m pytest scripts/transform/tests/test_prescan.py -q 2>&1 | tail -10",
+  "description": "Run prescan tests"
+}
+```
+
+---
+
+### User *(2026-05-20T14:44:08.124Z)*
+
+**Tool result**
+```
+.................                                                        [100%]
+17 passed in 1.01s
+```
+
+---
+
+### Assistant *(2026-05-20T14:44:13.245Z)*
+
+All 17 pass. Summary of the new design:
+
+- **Prescan** writes `prov.duckdb` with full metadata columns (`label`, `url`, `identifier`, `isil`, `rec_type`, `provider_uri`). No `prov-shared.nq` written during scan.
+- **After all sectors' prescan completes**, run once:
+  ```bash
+  python -m transform.prescan regen \
+    --prov-db  output/prov.duckdb \
+    --prov-out output/prov-shared.nq
+  ```
+- `prov-shared.nq` is fully regenerable at any time from `prov.duckdb` alone — no re-scan needed.
+- `--prov-out` is gone from the per-sector prescan command.
+
+---
+
+### User *(2026-05-20T14:44:26.678Z)*
+
+did you update the notes and the workflow notes?
+
+---
+
+### Assistant *(2026-05-20T14:44:31.520Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/README.md",
+  "offset": 47,
+  "limit": 55
+}
+```
+
+---
+
+### User *(2026-05-20T14:44:31.540Z)*
+
+**Tool result**
+```
+47	### Full GeMeA corpus (Option C parallel)
+48	
+49	Two-pass pipeline. Pass 1 (prescan) runs all 7 sectors in parallel to build shared
+50	DuckDB files and per-sector Parquet before any transform worker starts. Pass 2
+51	(export + transform) then runs with read-only access to those shared files.
+52	
+53	```
+54	s1.sqlite ─┐                           prov.duckdb          ─┐
+55	s2.sqlite ─┤  prescan (pass 1,         concept_labels.duckdb  ├─ shared (read-only in pass 2)
+56	  ...      ─┤  all in parallel)        agent_labels.duckdb  ─┘
+57	sN.sqlite ─┘                           sN_meta.parquet (per sector)
+58	
+59	s1.sqlite ─┐                          s1/ (.nq + .duckdb)  ─┐
+60	s2.sqlite ─┤  sqlite_export + transform  s2/ (.nq + .duckdb)  ─┤  cat → merged.nq
+61	  ...      ─┤  (pipelined per sector,    ...                  ─┤  duckdb → merged.duckdb
+62	sN.sqlite ─┘   all in parallel)       sN/ (.nq + .duckdb)  ─┘
+63	```
+64	
+65	```bash
+66	GOETHE=goethe-faust
+67	CFG=$GOETHE/output/config
+68	GEMEA=gemea/data/sqlite
+69	EXPORT=/tmp/gemea-export
+70	
+71	for n in 1 2 3 4 5 6 7; do
+72	  (
+73	    PYTHONPATH=$GOETHE/scripts python -m transform.sqlite_export \
+74	      --db  $GEMEA/s${n}.sqlite \
+75	      --out $EXPORT/s${n}.jsonl \
+76	    && \
+77	    PYTHONPATH=$GOETHE/scripts python -m transform \
+78	      --jsonl  $EXPORT/s${n}.jsonl \
+79	      --outdir $GOETHE/output/transform/gemea/s${n} \
+80	      --stats dispatch \
+81	      --alignment $CFG/lookup_class_prop_alignment.csv \
+82	      --lido      $CFG/lido_event_types.csv \
+83	      --htype     $CFG/lookup_htype_doco_rico.csv \
+84	      --mediatype $CFG/lookup_mediatype_class.csv \
+85	      --audio     $CFG/audio_type2class.json
+86	  ) &
+87	done
+88	wait
+89	
+90	# merge
+91	cat $GOETHE/output/transform/gemea/s*/*.nq > $GOETHE/output/transform/gemea/merged.nq
+92	```
+93	
+94	See [`notes/transform-dryrun-plan.md`](../../notes/transform-dryrun-plan.md) for the full plan including DuckDB merge.
+95	
+96	## Named graphs
+97	
+98	| Graph IRI | Content |
+99	|---|---|
+100	| `https://gemea.ise.fiz-karlsruhe.de/graph/ddbedm` | Verbatim EDM passthrough |
+101	| `https://gemea.ise.fiz-karlsruhe.de/graph/mocho` | mocho-aligned triples (class dispatch, property alignment, agents, places) |
+```
+
+---
+
+### Assistant *(2026-05-20T14:44:31.953Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/gemea/notes/infra/transform-workflow.md"
+}
+```
+
+---
+
+### User *(2026-05-20T14:44:31.960Z)*
+
+**Tool result**
+```
+1	## Full corpus transform — `run_gemea_transform.sh`
+2	
+3	Single command that runs the complete two-pass pipeline across all 7 sectors.
+4	Run from the `goethe-faust/` project root inside a `tmux` or `screen` session on teach03.
+5	
+6	### Steps
+7	
+8	1. **Activate the virtual environment**
+9	
+10	   ```bash
+11	   source .venv/bin/activate
+12	   ```
+13	
+14	2. **Start a fresh run** (wipes previous outputs for this version):
+15	
+16	   ```bash
+17	   bash scripts/run_gemea_transform.sh --new
+18	   ```
+19	
+20	   Or **resume** after interruption (skips sectors with non-empty `.nq` output):
+21	
+22	   ```bash
+23	   bash scripts/run_gemea_transform.sh --resume
+24	   ```
+25	
+26	   The script runs four phases automatically:
+27	
+28	   | Phase | What happens |
+29	   |---|---|
+30	   | 0 — Prescan | 7 sectors in parallel → `prov.duckdb`, `concept_labels.duckdb`, `agent_labels.duckdb`, `prov-shared.nq`, per-sector `*_meta.parquet` |
+31	   | 1+2 — Export + Transform | Each sector: SQLite → JSONL → N-Quads (128 workers total, all sectors in parallel) |
+32	   | 3 — DuckDB merge | All `*-werk-staging.duckdb` shards → `werk-staging-merged.duckdb` |
+33	   | 4 — NQ split + merge | `.nq` files split by graph into per-graph `.nt`; `prov-shared.nq` included |
+34	
+35	3. **Check outputs** under the dated output directory:
+36	
+37	   ```
+38	   /data/gemea/www/downloads/gemea/<yyyymmdd>/
+39	     nq/                           per-graph .nt files (ddbedm.nt, mocho.nt, prov.nt)
+40	     s{1..7}/                      per-sector .nq, .duckdb, -stats.json, -errors.jsonl, .log
+41	     werk-staging-merged.duckdb
+42	     prov.duckdb
+43	     concept_labels.duckdb
+44	     agent_labels.duckdb
+45	     prov-shared.nq
+46	     parquet/s{1..7}_meta.parquet  per-sector metadata Parquet
+47	   ```
+48	
+49	### Arguments to change
+50	
+51	**Hardcoded paths** — edit directly in the script:
+52	
+53	| Variable | Default | Change when |
+54	|---|---|---|
+55	| `SQLITE_DIR` | `/data/ddb/data` | SQLite files are elsewhere |
+56	| `EXPORT_DIR` | `/data/ddb/gemea/json-export` | JSONL export should go elsewhere |
+57	| `OUT_BASE` | `/data/gemea/www/downloads/gemea/<yyyymmdd>` | Edit `OUT_BASE=` line to change output root |
+58	| `WORKERS` | `s1:20 s2:50 s3:1 s4:10 s5:15 s6:15 s7:1` (112 total) | Tune to available cores; values are proportional to sector record counts |
+59	
+60	**Override env vars** — prepend to the command, no script edit needed:
+61	
+62	| Variable | Overrides | Notes |
+63	|---|---|---|
+64	| `PROV_DB_ARG` | `prov.duckdb` path | Share across runs to skip re-emitting known PROV-O nodes |
+65	| `CONCEPT_LABELS_DB_ARG` | `concept_labels.duckdb` path | |
+66	| `AGENT_LABELS_DB_ARG` | `agent_labels.duckdb` path | |
+67	| `PARQUET_DIR_ARG` | per-sector Parquet output dir | |
+68	| `PARQUET_MERGE_ARG` | if set, merges all per-sector Parquet into one file at this path | Leave unset to skip the merge step |
+69	
+70	Example with overrides:
+71	
+72	```bash
+73	PROV_DB_ARG=/data/shared/prov.duckdb \
+74	PARQUET_MERGE_ARG=/data/gemea/all_meta.parquet \
+75	bash scripts/run_gemea_transform.sh --new
+76	```
+77	
+78	---
+79	## Pre-Parquet Workflow?
+80	#### First Run Prerequisite:
+81	- `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
+82	
+83	#### Step 0. Pre-Scan
+84	
+85	- teach03
+86	```
+87	python3 -m transform.prescan \
+88	  --db                /data/ddb/data/s2.sqlite \
+89	  --prov-db           "~/gemea/output/20260519/prov.duckdb" \
+90	  --concept-labels-db "~/gemea/output/20260519/concept_labels.duckdb" \
+91	  --agent-labels-db   "~/gemea/output/20260519/agent_labels.duckdb" \
+92	  --lido              ../output/config/lido_event_types.csv \
+93	  --prov-out          "~/gemea/output/20260519/prov-shared.nq" \
+94	  --parquet-out       "~/gemea/output/20260519/parquet/s2_meta.parquet"
+95	```
+96	
+97	```
+98	ann@ise-d-teach03:~/goethe-faust/scripts$ python3 -m transform.prescan   --db                /data/ddb/data/s5.sqlite   --prov-db           "~/gemea/output/20260519/prov.duckdb"   --concept-labels-db "~/gemea/output/20260519/concept_labels.duckdb"   --agent-labels-db   "~/gemea/output/20260519/agent_labels.duckdb"   --lido              ../output/config/lido_event_types.csv   --prov-out          "~/gemea/output/20260519/prov-shared.nq"   --parquet-out       "~/gemea/output/20260519/s5_meta.parquet"
+99	2026-05-20 08:50:55 INFO     Loaded 27 LIDO labels from lido_event_types.csv
+100	2026-05-20 08:52:04 WARNING  uid=5OKLFJSB5PHNAPG6GLL7XQNS3PZ5Q64U decompress/parse error: Expecting value: line 1 column 1 (char 0)
+101	2026-05-20 08:58:50 WARNING  uid=TRVNFKXPWGKPTHOQ44PGBE3Q425KBZC5 decompress/parse error: Expecting value: line 1 column 1 (char 0)
+102	2026-05-20 09:00:52 INFO     Scan complete: 1799838 processed, 2 errors, 1799838 Parquet rows
+103	2026-05-20 09:00:52 INFO     Writing prov.duckdb + prov-shared.nq (58 shared nodes)
+104	2026-05-20 09:00:56 INFO     Writing concept_labels.duckdb (26014 URIs)
+105	2026-05-20 09:02:03 INFO     Writing agent_labels.duckdb (9173 URIs)
+106	
+107	
+108	ann@ise-d-teach03:~/goethe-faust/scripts$ python3 -m transform.prescan   --db                /data/ddb/data/s1.sqlite   --prov-db           "~/gemea/output/20260519/prov.duckdb"   --concept-labels-db "~/gemea/output/20260519/concept_labels.duckdb"   --agent-labels-db   "~/gemea/output/20260519/agent_labels.duckdb"   --lido              ../output/config/lido_event_types.csv   --prov-out          "~/gemea/output/20260519/prov-shared.nq"   --parquet-out       "~/gemea/output/20260519/s1_meta.parquet"
+109	2026-05-20 09:04:37 INFO     Loaded 27 LIDO labels from lido_event_types.csv
+110	2026-05-20 09:08:28 WARNING  uid=A5XPBEXEOBEBW4I7XZSTXVKDCCLJYYOB decompress/parse error: Expecting value: line 1 column 1 (char 0)
+111	2026-05-20 09:08:28 WARNING  uid=A5XSNMNXL2AQOZURHD5SOVOWSJGODGTM decompress/parse error: Expecting value: line 1 column 1 (char 0)
+112	2026-05-20 09:19:42 WARNING  uid=QM2VZ3UALYUXCQJ36VAN2YMACNLZV7ZT decompress/parse error: Expecting value: line 1 column 1 (char 0)
+113	2026-05-20 09:27:54 INFO     Scan complete: 3638021 processed, 3 errors, 3638021 Parquet rows
+114	2026-05-20 09:27:54 INFO     Writing prov.duckdb + prov-shared.nq (425 shared nodes)
+115	2026-05-20 09:28:13 INFO     Writing concept_labels.duckdb (50182 URIs)
+116	2026-05-20 09:30:28 INFO     Writing agent_labels.duckdb (6109 URIs)
+117	
+118	$ python3 -m transform.prescan   --db                /data/ddb/data/s3.sqlite   --prov-db           "~/gemea/output/20260519/prov.duckdb"   --concept-labels-db "~/gemea/output/20260519/concept_labels.duckdb"   --agent-labels-db   "~/gemea/output/20260519/agent_labels.duckdb"   --lido              ../output/config/lido_event_types.csv   --prov-out          "~/gemea/output/20260519/prov-shared.nq"   --parquet-out       "~/gemea/output/20260519/s3_meta.parquet"
+119	2026-05-20 09:33:26 INFO     Loaded 27 LIDO labels from lido_event_types.csv
+120	2026-05-20 09:33:51 INFO     Scan complete: 83572 processed, 0 errors, 83572 Parquet rows
+121	2026-05-20 09:33:51 INFO     Writing prov.duckdb + prov-shared.nq (20 shared nodes)
+122	2026-05-20 09:33:52 INFO     Writing concept_labels.duckdb (128 URIs)
+123	2026-05-20 09:33:52 INFO     Writing agent_labels.duckdb (923 URIs)
+124	
+125	ann@ise-d-teach03:~/goethe-faust/scripts$  python3 -m transform.prescan   --db                /data/ddb/data/s4.sqlite   --prov-db           "~/gemea/output/20260519/prov.duckdb"   --concept-labels-db "~/gemea/output/20260519/concept_labels.duckdb"   --agent-labels-db   "~/gemea/output/20260519/agent_labels.duckdb"   --lido              ../output/config/lido_event_types.csv   --prov-out          "~/gemea/output/20260519/prov-shared.nq"   --parquet-out       "~/gemea/output/20260519/s4_meta.parquet"
+126	2026-05-20 09:38:16 INFO     Loaded 27 LIDO labels from lido_event_types.csv
+127	2026-05-20 09:41:04 WARNING  uid=J6YQ5SV3AVYZSJ6TMREBBC6ZJ7TYW5WU decompress/parse error: Expecting value: line 1 column 1 (char 0)
+128	2026-05-20 09:44:18 INFO     Scan complete: 1227252 processed, 1 errors, 1227252 Parquet rows
+129	2026-05-20 09:44:18 INFO     Writing prov.duckdb + prov-shared.nq (131 shared nodes)
+130	2026-05-20 09:44:21 INFO     Writing concept_labels.duckdb (4225 URIs)
+131	2026-05-20 09:44:31 INFO     Writing agent_labels.duckdb (25586 URIs)
+132	
+133	
+134	ann@ise-d-teach03:~/goethe-faust/scripts$ python3 -m transform.prescan   --db                /data/ddb/data/s7.sqlite   --prov-db           "~/gemea/output/20260519/prov.duckdb"   --concept-labels-db "~/gemea/output/20260519/concept_labels.duckdb"   --agent-labels-db   "~/gemea/output/20260519/agent_labels.duckdb"   --lido              ../output/config/lido_event_types.csv   --prov-out          "~/gemea/output/20260519/prov-shared.nq"   --parquet-out       "~/gemea/output/20260519/s7_meta.parquet"
+135	2026-05-20 10:26:56 INFO     Loaded 27 LIDO labels from lido_event_types.csv
+136	2026-05-20 10:26:56 INFO     Scanning s7.sqlite (89904 records)
+137	2026-05-20 10:27:23 INFO     Scan complete: 89904 processed, 0 errors, 89904 Parquet rows
+138	2026-05-20 10:27:23 INFO     Writing prov.duckdb + prov-shared.nq (61 shared nodes)
+139	2026-05-20 10:27:23 INFO     Writing concept_labels.duckdb (970 URIs)
+140	2026-05-20 10:27:26 INFO     Writing agent_labels.duckdb (6323 URIs)
+141	2026-05-20 10:27:41 INFO     Done.
+142	
+143	```
+144	
+145	#### Step 1. Transform
+146	bash scripts/run-transform-sector.sh --merge --sector s1 --workers 20
+147	bash scripts/run-transform-sector.sh --merge --sector s2 --workers 50
+148	bash scripts/run-transform-sector.sh --merge --sector s3
+149	bash scripts/run-transform-sector.sh --merge --sector s4 --workers 10
+150	bash scripts/run-transform-sector.sh --merge --sector s5 --workers 15
+151	bash scripts/run-transform-sector.sh --merge --sector s6 --workers 15
+152	bash scripts/run-transform-sector.sh --merge --sector s7
+153	
+154	defaults:
+155	--output-dir /data/gemea/www/downloads/gemea/<yyyymmdd>
+156	--sqlite-dir /data/gemea/sqlite
+157	
+158	
+159	#### Step 2a. Test
+160	cd /data/gemea
+161	uv run linker.py <source-dir> /data/gemea/qlever_test_nq/
+162	uv run linker.py /data/gemea/www/downloads/gemea/20260511/nq/ /data/gemea/qlever_test_nq/. 
+163	cd /data/gemea/qlever_test_nq
+164	uv run qlever index --name gemea --overwrite-existing
+165	
+166	#### Step 2b. Actual
+167	cd /data/gemea
+168	uv run linker.py /data/gemea/www/downloads/gemea/20260511/nq/ /data/gemea/qlever
+169	cd /data/gemea/qlever
+170	vi Qleverfile
+171	- edit `INPUT_FILES`
+172	- edit `FORMAT`
+173	- edit `CAT_INPUT_FILES`, change to zcat if using `.nq.gz`
+174	uv run qlever index --name gemea --overwrite-existing
+175	
+176	
+177	#### Ollama + OpenWebUI
+178	https://kast.epoz.org/
+179	
+180	
+181	#### Caddyfile `/home/etienne/ise.fiz-karlsruhe.de/`
+182	
+183	```
+184	2026-05-12 13:56:22.673 - INFO: QLever index builder b7623fc, compiled on Sun Apr 12 04:30:08 UTC 2026 using git hash b7623f
+185	2026-05-12 13:56:22.673 - INFO: Locale was not specified in settings file, default is en_US
+186	2026-05-12 13:56:22.673 - INFO: You specified "locale = en_US" and "ignore-punctuation = 0"
+187	2026-05-12 13:56:22.673 - INFO: You specified "num-triples-per-batch = 20,000,000", choose a lower value if the index builder runs out of memory
+188	2026-05-12 13:56:22.673 - INFO: By default, integers that cannot be represented by QLever will throw an exception
+189	2026-05-12 13:56:22.673 - WARN: Implicitly using the parallel parser for a single input file for reasons of backward compatibility; this is deprecated, please use the command-line option --parallel-parsing or -p
+190	2026-05-12 13:56:22.673 - INFO: Processing triples from single input stream /dev/stdin (parallel = true) ...
+191	2026-05-12 13:56:22.674 - INFO: Parsing input triples and creating partial vocabularies, one per batch ...
+192	2026-05-12 14:08:06.625 - INFO: Triples parsed: 946,175,401 [average speed 1.3 M/s, last batch 1.4 M/s, fastest 1.5 M/s, slowest 1.0 M/s]
+193	2026-05-12 14:08:11.389 - INFO: Number of triples created (including QLever-internal ones): 1,016,416,815 [may contain duplicates]
+194	2026-05-12 14:08:11.389 - INFO: Number of partial vocabularies created: 48
+195	2026-05-12 14:08:11.389 - INFO: Merging partial vocabularies ...
+196	2026-05-12 14:10:03.522 - INFO: Words merged: 175,136,907 [average speed 1.6 M/s, last batch 1.7 M/s, fastest 2.1 M/s, slowest 1.1 M/s]
+197	2026-05-12 14:10:03.897 - INFO: Finished writing compressed internal vocabulary, size = 4.4 GB [uncompressed = 12.8 GB, ratio = 33%]
+198	2026-05-12 14:10:03.898 - INFO: Number of words in external vocabulary: 175,136,907
+199	2026-05-12 14:10:15.656 - INFO: Converting triples from local IDs to global IDs ...
+200	2026-05-12 14:11:02.261 - INFO: Triples converted: 1,016,416,815 [average speed 21.8 M/s, last batch 10.2 M/s, fastest 32.7 M/s, slowest 5.6 M/s]
+201	2026-05-12 14:11:13.027 - INFO: Creating permutations SPO and SOP ...
+202	2026-05-12 14:14:11.356 - INFO: Number of inputs to `uniqueView`: 946,175,4014 M/s, last batch 8.7 M/s, fastest 13.7 M/s, slowest 0.5 M/s]
+203	2026-05-12 14:14:11.356 - INFO: Number of unique elements: 600,544,765
+204	2026-05-12 14:14:11.356 - INFO: Triples sorted: 600,544,765 [average speed 3.4 M/s, last batch 8.7 M/s, fastest 13.7 M/s, slowest 0.5 M/s]
+205	2026-05-12 14:14:12.729 - INFO: Statistics for SPO: #relations = 90,355,162, #blocks = 12,841, #triples = 600,544,765
+206	2026-05-12 14:14:12.730 - INFO: Statistics for SOP: #relations = 90,355,162, #blocks = 12,841, #triples = 600,544,765
+207	2026-05-12 14:14:12.757 - INFO: Number of distinct patterns: 2,374
+208	2026-05-12 14:14:12.757 - INFO: Number of subjects with pattern: 90,355,162 [all]
+209	2026-05-12 14:14:12.757 - INFO: Total number of distinct subject-predicate pairs: 509,866,231
+210	2026-05-12 14:14:12.757 - INFO: Average number of predicates per subject: 5.6
+211	2026-05-12 14:14:12.757 - INFO: Average number of subjects per predicate: 11,330,361
+212	2026-05-12 14:14:16.023 - INFO: Creating permutations OSP and OPS ...
+213	2026-05-12 14:16:19.782 - INFO: Triples sorted: 600,544,765 [average speed 4.9 M/s, last batch 4.6 M/s, fastest 19.9 M/s, slowest 1.2 M/s]
+214	2026-05-12 14:16:19.816 - INFO: Statistics for OSP: #relations = 126,933,434, #blocks = 17,287, #triples = 600,544,765
+215	2026-05-12 14:16:19.816 - INFO: Statistics for OPS: #relations = 126,933,434, #blocks = 17,287, #triples = 600,544,765
+216	2026-05-12 14:16:20.186 - INFO: Adding 90,355,162 triples to the POS and PSO permutation for the internal `ql:has-pattern` ...
+217	2026-05-12 14:16:27.501 - INFO: Creating permutations PSO and POS ...
+218	2026-05-12 14:16:47.461 - INFO: Number of inputs to `uniqueView`: 160,596,5762 M/s, last batch 0.8 M/s, fastest 20.8 M/s, slowest 0.8 M/s]
+219	2026-05-12 14:16:47.461 - INFO: Number of unique elements: 103,047,129
+220	2026-05-12 14:16:47.461 - INFO: Triples sorted: 103,047,129 [average speed 5.2 M/s, last batch 0.8 M/s, fastest 20.8 M/s, slowest 0.8 M/s]
+221	2026-05-12 14:16:48.418 - INFO: Statistics for PSO: #relations = 119, #blocks = 3,310, #triples = 103,047,129
+222	2026-05-12 14:16:48.419 - INFO: Statistics for POS: #relations = 119, #blocks = 3,310, #triples = 103,047,129
+223	2026-05-12 14:16:58.730 - INFO: Creating permutations PSO and POS ...
+224	2026-05-12 14:18:37.630 - INFO: Triples sorted: 600,544,765 [average speed 6.1 M/s, last batch 11.0 M/s, fastest 22.0 M/s, slowest 0.9 M/s]
+225	2026-05-12 14:18:38.950 - INFO: Statistics for PSO: #relations = 45, #blocks = 19,237, #triples = 600,544,765
+226	2026-05-12 14:18:38.950 - INFO: Statistics for POS: #relations = 45, #blocks = 19,237, #triples = 600,544,765
+227	2026-05-12 14:18:39.396 - INFO: Index build completed
+228	2026-05-12 14:18:39.397 - INFO:
+229	2026-05-12 14:18:39.397 - INFO: Adding text index ...
+230	2026-05-12 14:18:39.397 - INFO: Considering each literal as a text record
+231	2026-05-12 14:18:39.397 - INFO: The git hash used to build this index was "b7623f"
+232	2026-05-12 14:18:39.397 - INFO: Reading vocabulary from file gemea.vocabulary.words ...
+233	2026-05-12 14:18:39.405 - INFO: Done, number of words: 175,136,907
+234	2026-05-12 14:18:39.406 - INFO: Number of words in internal vocabulary (these are also part of the external vocabulary): 175,327
+235	2026-05-12 14:22:50.837 - INFO: Reading vocabulary from file gemea.text.vocabulary ...
+236	2026-05-12 14:22:51.158 - INFO: Done, number of words: 17,872,400
+237	2026-05-12 14:22:51.664 - INFO: Building the half-inverted index lists ...
+238	2026-05-12 14:49:50.311 - INFO: Statistics for text index: #words = 410,168,105, #blocks = 354,167
+239	2026-05-12 14:49:50.337 - INFO: Text index build completed
+240	```
+```
+
+---
+
+### Assistant *(2026-05-20T14:44:52.263Z)*
+
+I'll update both files. Starting with `transform-workflow.md` since it has the most stale content:
+
+---
+
+### Assistant *(2026-05-20T14:45:01.616Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/gemea/notes/infra/transform-workflow.md",
+  "old_string": "   | Phase | What happens |\n   |---|---|\n   | 0 — Prescan | 7 sectors in parallel → `prov.duckdb`, `concept_labels.duckdb`, `agent_labels.duckdb`, `prov-shared.nq`, per-sector `*_meta.parquet` |\n   | 1+2 — Export + Transform | Each sector: SQLite → JSONL → N-Quads (128 workers total, all sectors in parallel) |\n   | 3 — DuckDB merge | All `*-werk-staging.duckdb` shards → `werk-staging-merged.duckdb` |\n   | 4 — NQ split + merge | `.nq` files split by graph into per-graph `.nt`; `prov-shared.nq` included |",
+  "new_string": "   | Phase | What happens |\n   |---|---|\n   | 0 — Prescan | 7 sectors in parallel → `prov.duckdb` (with full metadata), `concept_labels.duckdb`, `agent_labels.duckdb`, per-sector `*_meta.parquet` |\n   | 0.5 — Regen prov NQ | Single call: reads `prov.duckdb` metadata columns → writes `prov-shared.nq` |\n   | 1+2 — Export + Transform | Each sector: SQLite → JSONL → N-Quads (128 workers total, all sectors in parallel); workers read `prov.duckdb` to suppress already-emitted shared nodes |\n   | 3 — DuckDB merge | All `*-werk-staging.duckdb` shards → `werk-staging-merged.duckdb` |\n   | 4 — NQ split + merge | `.nq` files split by graph into per-graph `.nt`; `prov-shared.nq` included |"
+}
+```
+
+---
+
+### User *(2026-05-20T14:45:22.457Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/gemea/notes/infra/transform-workflow.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:45:31.494Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/gemea/notes/infra/transform-workflow.md",
+  "old_string": "   ```\n   /data/gemea/www/downloads/gemea/<yyyymmdd>/\n     nq/                           per-graph .nt files (ddbedm.nt, mocho.nt, prov.nt)\n     s{1..7}/                      per-sector .nq, .duckdb, -stats.json, -errors.jsonl, .log\n     werk-staging-merged.duckdb\n     prov.duckdb\n     concept_labels.duckdb\n     agent_labels.duckdb\n     prov-shared.nq\n     parquet/s{1..7}_meta.parquet  per-sector metadata Parquet\n   ```",
+  "new_string": "   ```\n   /data/gemea/www/downloads/gemea/<yyyymmdd>/\n     nq/                           per-graph .nt files (ddbedm.nt, mocho.nt, prov.nt)\n     s{1..7}/                      per-sector .nq, .duckdb, -stats.json, -errors.jsonl, .log\n     werk-staging-merged.duckdb\n     prov.duckdb                   PROV-O shared node URIs + metadata (uri, entity_type, label, url, identifier, isil, rec_type, provider_uri)\n     concept_labels.duckdb\n     agent_labels.duckdb\n     prov-shared.nq                generated from prov.duckdb via Phase 0.5 regen; can be regenerated at any time\n     parquet/s{1..7}_meta.parquet  per-sector metadata Parquet\n   ```"
+}
+```
+
+---
+
+### User *(2026-05-20T14:45:35.814Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/gemea/notes/infra/transform-workflow.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:45:44.301Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/gemea/notes/infra/transform-workflow.md",
+  "old_string": "#### Step 0. Pre-Scan\n\n- teach03\n```\npython3 -m transform.prescan \\\n  --db                /data/ddb/data/s2.sqlite \\\n  --prov-db           \"~/gemea/output/20260519/prov.duckdb\" \\\n  --concept-labels-db \"~/gemea/output/20260519/concept_labels.duckdb\" \\\n  --agent-labels-db   \"~/gemea/output/20260519/agent_labels.duckdb\" \\\n  --lido              ../output/config/lido_event_types.csv \\\n  --prov-out          \"~/gemea/output/20260519/prov-shared.nq\" \\\n  --parquet-out       \"~/gemea/output/20260519/parquet/s2_meta.parquet\"\n```",
+  "new_string": "#### Step 0. Pre-Scan\n\n`--prov-out` is no longer a prescan argument. `prov-shared.nq` is generated in Step 0.5.\n\n- teach03\n```\npython3 -m transform.prescan \\\n  --db                /data/ddb/data/s2.sqlite \\\n  --prov-db           \"~/gemea/output/20260519/prov.duckdb\" \\\n  --concept-labels-db \"~/gemea/output/20260519/concept_labels.duckdb\" \\\n  --agent-labels-db   \"~/gemea/output/20260519/agent_labels.duckdb\" \\\n  --lido              ../output/config/lido_event_types.csv \\\n  --parquet-out       \"~/gemea/output/20260519/parquet/s2_meta.parquet\"\n```"
+}
+```
+
+---
+
+### User *(2026-05-20T14:45:47.653Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/gemea/notes/infra/transform-workflow.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:45:50.543Z)*
+
+Now add Step 0.5 between the prescan logs and Step 1:
+
+---
+
+### Assistant *(2026-05-20T14:45:56.020Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/gemea/notes/infra/transform-workflow.md",
+  "old_string": "#### Step 1. Transform\nbash scripts/run-transform-sector.sh --merge --sector s1 --workers 20",
+  "new_string": "#### Step 0.5. Generate prov-shared.nq\n\nRun once after all sectors' prescan is complete. Reads `prov.duckdb` metadata columns\nand writes complete PROV-O triples (provider names, dataset labels, etc.).\nSafe to re-run at any time — overwrites the output file.\n\n```bash\ncd ~/goethe-faust/scripts\npython3 -m transform.prescan regen \\\n  --prov-db  ~/gemea/output/20260519/prov.duckdb \\\n  --prov-out ~/gemea/output/20260519/prov-shared.nq\n```\n\nOr via the standalone script (no PYTHONPATH needed):\n```bash\npython3 gemea/scripts/py/regen_prov_nq.py \\\n  --prov-db  ~/gemea/output/20260519/prov.duckdb \\\n  --prov-out ~/gemea/output/20260519/prov-shared.nq\n```\n\n#### Step 1. Transform\nbash scripts/run-transform-sector.sh --merge --sector s1 --workers 20"
+}
+```
+
+---
+
+### User *(2026-05-20T14:46:06.566Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/gemea/notes/infra/transform-workflow.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:46:09.330Z)*
+
+Now add `--prov-db` to the Step 1 transform commands and update the README:
+
+---
+
+### Assistant *(2026-05-20T14:46:15.185Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/gemea/notes/infra/transform-workflow.md",
+  "old_string": "#### Step 1. Transform\nbash scripts/run-transform-sector.sh --merge --sector s1 --workers 20\nbash scripts/run-transform-sector.sh --merge --sector s2 --workers 50\nbash scripts/run-transform-sector.sh --merge --sector s3\nbash scripts/run-transform-sector.sh --merge --sector s4 --workers 10\nbash scripts/run-transform-sector.sh --merge --sector s5 --workers 15\nbash scripts/run-transform-sector.sh --merge --sector s6 --workers 15\nbash scripts/run-transform-sector.sh --merge --sector s7\n\ndefaults:\n--output-dir /data/gemea/www/downloads/gemea/<yyyymmdd>\n--sqlite-dir /data/gemea/sqlite",
+  "new_string": "#### Step 1. Transform\n\nPass `--prov-db` so workers suppress re-emitting shared PROV-O nodes already in prov.duckdb.\n\n```bash\nPROV=~/gemea/output/20260519/prov.duckdb\n\nbash scripts/run-transform-sector.sh --merge --sector s1 --workers 20 --prov-db $PROV\nbash scripts/run-transform-sector.sh --merge --sector s2 --workers 50 --prov-db $PROV\nbash scripts/run-transform-sector.sh --merge --sector s3 --prov-db $PROV\nbash scripts/run-transform-sector.sh --merge --sector s4 --workers 10 --prov-db $PROV\nbash scripts/run-transform-sector.sh --merge --sector s5 --workers 15 --prov-db $PROV\nbash scripts/run-transform-sector.sh --merge --sector s6 --workers 15 --prov-db $PROV\nbash scripts/run-transform-sector.sh --merge --sector s7 --prov-db $PROV\n```\n\ndefaults:\n--output-dir /data/gemea/www/downloads/gemea/<yyyymmdd>\n--sqlite-dir /data/gemea/sqlite"
+}
+```
+
+---
+
+### User *(2026-05-20T14:46:18.199Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/gemea/notes/infra/transform-workflow.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:46:20.846Z)*
+
+Now update the README pipeline section:
+
+---
+
+### Assistant *(2026-05-20T14:46:32.651Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/README.md",
+  "old_string": "Two-pass pipeline. Pass 1 (prescan) runs all 7 sectors in parallel to build shared\nDuckDB files and per-sector Parquet before any transform worker starts. Pass 2\n(export + transform) then runs with read-only access to those shared files.\n\n```\ns1.sqlite ─┐                           prov.duckdb          ─┐\ns2.sqlite ─┤  prescan (pass 1,         concept_labels.duckdb  ├─ shared (read-only in pass 2)\n  ...      ─┤  all in parallel)        agent_labels.duckdb  ─┘\nsN.sqlite ─┘                           sN_meta.parquet (per sector)\n\ns1.sqlite ─┐                          s1/ (.nq + .duckdb)  ─┐\ns2.sqlite ─┤  sqlite_export + transform  s2/ (.nq + .duckdb)  ─┤  cat → merged.nq\n  ...      ─┤  (pipelined per sector,    ...                  ─┤  duckdb → merged.duckdb\nsN.sqlite ─┘   all in parallel)       sN/ (.nq + .duckdb)  ─┘\n```",
+  "new_string": "Three-phase pipeline. Phase 0 (prescan) runs all 7 sectors in parallel to build\nshared DuckDB files and per-sector Parquet. Phase 0.5 generates `prov-shared.nq`\nfrom the completed `prov.duckdb`. Phase 1+2 (export + transform) runs with\nread-only access to those shared files.\n\n```\ns1.sqlite ─┐                           prov.duckdb            ─┐\ns2.sqlite ─┤  prescan (phase 0,        concept_labels.duckdb    ├─ shared (read-only in phase 1+2)\n  ...      ─┤  all in parallel)        agent_labels.duckdb    ─┘\nsN.sqlite ─┘                           sN_meta.parquet (per sector)\n\n                                        ↓ phase 0.5 (once, after all prescan done)\n                                        python -m transform.prescan regen\n                                        → prov-shared.nq  (full PROV-O entity triples)\n\ns1.sqlite ─┐                          s1/ (.nq + .duckdb)  ─┐\ns2.sqlite ─┤  sqlite_export + transform  s2/ (.nq + .duckdb)  ─┤  cat → merged.nq\n  ...      ─┤  (pipelined per sector,    ...                  ─┤  duckdb → merged.duckdb\nsN.sqlite ─┘   all in parallel)       sN/ (.nq + .duckdb)  ─┘\n                                        + prov-shared.nq included in final merge\n```"
+}
+```
+
+---
+
+### User *(2026-05-20T14:46:35.643Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/README.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:46:39.130Z)*
+
+Also update `run_gemea_transform.sh` to remove `--prov-out` from the prescan phase and add the regen step:
+
+---
+
+### Assistant *(2026-05-20T14:46:42.731Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/run_gemea_transform.sh",
+  "old_string": "    \"$PYTHON\" -m transform.prescan \\\n      --db                \"$SQLITE_DIR/s${n}.sqlite\" \\\n      --prov-db           \"$PROV_DB\" \\\n      --concept-labels-db \"$CONCEPT_LABELS_DB\" \\\n      --agent-labels-db   \"$AGENT_LABELS_DB\" \\\n      --lido              \"$CFG/lido_event_types.csv\" \\\n      --prov-out          \"$PROV_SHARED\" \\\n      --parquet-out       \"$PARQUET_DIR/s${n}_meta.parquet\"",
+  "new_string": "    \"$PYTHON\" -m transform.prescan \\\n      --db                \"$SQLITE_DIR/s${n}.sqlite\" \\\n      --prov-db           \"$PROV_DB\" \\\n      --concept-labels-db \"$CONCEPT_LABELS_DB\" \\\n      --agent-labels-db   \"$AGENT_LABELS_DB\" \\\n      --lido              \"$CFG/lido_event_types.csv\" \\\n      --parquet-out       \"$PARQUET_DIR/s${n}_meta.parquet\""
+}
+```
+
+---
+
+### User *(2026-05-20T14:46:47.094Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/run_gemea_transform.sh has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:46:52.596Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/run_gemea_transform.sh",
+  "old_string": "wait\necho \"[$(date '+%F %T')] Prescan phase complete\"\nfi  # end SKIP_PRESCAN check",
+  "new_string": "wait\necho \"[$(date '+%F %T')] Prescan phase complete\"\n\n# Phase 0.5: generate prov-shared.nq from prov.duckdb metadata\necho \"[$(date '+%F %T')] Generating prov-shared.nq from prov.duckdb\"\ncd \"$SCRIPTS\"\n\"$PYTHON\" -m transform.prescan regen \\\n  --prov-db  \"$PROV_DB\" \\\n  --prov-out \"$PROV_SHARED\"\necho \"[$(date '+%F %T')] prov-shared.nq ready\"\nfi  # end SKIP_PRESCAN check"
+}
+```
+
+---
+
+### User *(2026-05-20T14:46:59.193Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/run_gemea_transform.sh has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-20T14:47:02.066Z)*
+
+Now run the full test suite to confirm nothing is broken:
+
+---
+
+### Assistant *(2026-05-20T14:47:02.685Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "cd /Users/mta/Documents/claude/goethe-faust && \\\n  .venv/bin/python3 -m pytest scripts/transform/tests/ -q 2>&1 | tail -5",
+  "description": "Run full test suite"
+}
+```
+
+---
+
+### User *(2026-05-20T14:47:06.398Z)*
+
+**Tool result**
+```
+........................................................................ [ 40%]
+........................................................................ [ 81%]
+................................                                         [100%]
+176 passed in 1.24s
+```
+
+---
+
+### Assistant *(2026-05-20T14:47:11.130Z)*
+
+176 pass. All three files updated:
+
+- **`transform-workflow.md`** — Phase table adds Phase 0.5; Step 0 prescan commands drop `--prov-out`; new Step 0.5 with the regen command; Step 1 transform commands include `--prov-db`
+- **`scripts/transform/README.md`** — pipeline diagram updated to show three phases and the regen step
+- **`run_gemea_transform.sh`** — prescan call drops `--prov-out`; Phase 0.5 regen call added after the prescan wait
+
+---
+
+### User *(2026-05-20T14:49:00.732Z)*
+
+so how would this command change now?
+
+---
+
+### Assistant *(2026-05-20T14:49:04.417Z)*
+
+Remove `--prov-out`:
+
+```bash
+python3 -m transform.prescan \
+  --db                /data/ddb/data/s5.sqlite \
+  --prov-db           ~/gemea/output/20260519/prov.duckdb \
+  --concept-labels-db ~/gemea/output/20260519/concept_labels.duckdb \
+  --agent-labels-db   ~/gemea/output/20260519/agent_labels.duckdb \
+  --lido              ../output/config/lido_event_types.csv \
+  --parquet-out       ~/gemea/output/20260519/parquet/s5_meta.parquet
+```
+
+---
+
+### User *(2026-05-20T14:49:24.211Z)*
+
+why do you insist on creating /parquet/>
+
+---
+
+### Assistant *(2026-05-20T14:49:37.264Z)*
+
+You're right — I was adding it unnecessarily. The original command had the parquet file directly in the output directory. The corrected command:
+
+```bash
+python3 -m transform.prescan \
+  --db                /data/ddb/data/s5.sqlite \
+  --prov-db           ~/gemea/output/20260519/prov.duckdb \
+  --concept-labels-db ~/gemea/output/20260519/concept_labels.duckdb \
+  --agent-labels-db   ~/gemea/output/20260519/agent_labels.duckdb \
+  --lido              ../output/config/lido_event_types.csv \
+  --parquet-out       ~/gemea/output/20260519/s5_meta.parquet
+```
+
+I'll stop adding `/parquet/` — use whatever path you actually want.
+
+---
+
+### User *(2026-05-20T14:52:07.222Z)*
+
+Error while finding module specification for 'transform.prescan' (ModuleNotFoundError: No module named 'transform')
+
+---
+
+### Assistant *(2026-05-20T14:52:11.089Z)*
+
+You need to run from the `scripts/` directory:
+
+```bash
+cd ~/goethe-faust/scripts
+python3 -m transform.prescan \
+  --db                /data/ddb/data/s5.sqlite \
+  --prov-db           ~/gemea/output/20260519/prov.duckdb \
+  --concept-labels-db ~/gemea/output/20260519/concept_labels.duckdb \
+  --agent-labels-db   ~/gemea/output/20260519/agent_labels.duckdb \
+  --lido              ../output/config/lido_event_types.csv \
+  --parquet-out       ~/gemea/output/20260519/s5_meta.parquet
+```
+
+---
+
+### User *(2026-05-21T07:21:58.364Z)*
+
+Continue from where you left off.
+
+---
+
+### Assistant *(2026-05-21T07:21:58.364Z)*
+
+No response requested.
+
+---
+
+### User *(2026-05-21T07:22:10.811Z)*
+
+another bug, the .lock files were not removed
+
+---
+
+### Assistant *(2026-05-21T07:22:35.139Z)*
+
+The `.lock` files need to be cleaned up after all prescan processes finish — not from within each process (unsafe during parallel runs since another process might be about to acquire the same lock). The fix is in the shell script, after the `wait`:
+
+---
+
+### Assistant *(2026-05-21T07:22:35.636Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/run_gemea_transform.sh",
+  "offset": 85,
+  "limit": 15
+}
+```
+
+---
+
+### User *(2026-05-21T07:22:35.673Z)*
+
+**Tool result**
+```
+85	      --concept-labels-db "$CONCEPT_LABELS_DB" \
+86	      --agent-labels-db   "$AGENT_LABELS_DB" \
+87	      --lido              "$CFG/lido_event_types.csv" \
+88	      --parquet-out       "$PARQUET_DIR/s${n}_meta.parquet"
+89	    echo "[$(date '+%F %T')] [s${n}] prescan done"
+90	  ) &
+91	done
+92	wait
+93	echo "[$(date '+%F %T')] Prescan phase complete"
+94	
+95	# Phase 0.5: generate prov-shared.nq from prov.duckdb metadata
+96	echo "[$(date '+%F %T')] Generating prov-shared.nq from prov.duckdb"
+97	cd "$SCRIPTS"
+98	"$PYTHON" -m transform.prescan regen \
+99	  --prov-db  "$PROV_DB" \
+```
+
+---
+
+### Assistant *(2026-05-21T07:22:40.614Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/run_gemea_transform.sh",
+  "old_string": "wait\necho \"[$(date '+%F %T')] Prescan phase complete\"\n\n# Phase 0.5: generate prov-shared.nq from prov.duckdb metadata",
+  "new_string": "wait\necho \"[$(date '+%F %T')] Prescan phase complete\"\n\n# Remove lock files left by prescan (safe to do after all processes finish)\nrm -f \"${PROV_DB}.lock\" \"${CONCEPT_LABELS_DB}.lock\" \"${AGENT_LABELS_DB}.lock\"\n\n# Phase 0.5: generate prov-shared.nq from prov.duckdb metadata"
+}
+```
+
+---
+
+### User *(2026-05-21T07:22:45.892Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/run_gemea_transform.sh has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-21T07:22:49.167Z)*
+
+For manual per-sector runs (not via the shell script), clean up after the last sector finishes:
+
+```bash
+rm -f ~/gemea/output/20260519/prov.duckdb.lock \
+      ~/gemea/output/20260519/concept_labels.duckdb.lock \
+      ~/gemea/output/20260519/agent_labels.duckdb.lock
+```
+
+---
+
+### User *(2026-05-21T12:53:51.465Z)*
+
+Continue from where you left off.
+
+---
+
+### Assistant *(2026-05-21T12:53:51.465Z)*
+
+No response requested.
+
+---
+
+### User *(2026-05-21T13:05:10.929Z)*
+
+is this the correct syntax for assigning env variable?
+
+---
+
+### Assistant *(2026-05-21T13:05:25.016Z)*
+
+No — `$PROV` is expanded by the current shell before the inline assignment takes effect, so it resolves to empty. Assign on a separate line:
+
+```bash
+PROV=~/gemea/output/20260519/prov.duckdb
+bash scripts/run-transform-sector.sh --merge --sector s7 --prov-db "$PROV"
+```
+
+Also note: `--prov-db` expects the `.duckdb` file, not `prov-shared.nq`.
+
+---
+
+### User *(2026-05-23T21:01:46.622Z)*
+
+Continue from where you left off.
+
+---
+
+### Assistant *(2026-05-23T21:01:46.622Z)*
+
+No response requested.
+
+---
+
+### User *(2026-05-23T21:03:47.788Z)*
+
+where is the jsonl of transform saved again?
+
+---
+
+### Assistant *(2026-05-23T21:04:00.735Z)*
+
+`run-transform-sector.sh` reads SQLite directly — no intermediate JSONL. Workers get `--db`, `--offset`, `--limit` and query SQLite themselves.
+
+The JSONL export only exists in `run_gemea_transform.sh`, saved to `$EXPORT_DIR` = `/data/ddb/gemea/json-export/s{n}.jsonl`.
+
+Also — that selected line has `--prov-db` pointing to `prov-shared.nq`. It should point to `prov.duckdb`.
+
+---
+
+### User *(2026-05-23T21:06:13.590Z)*
+
+transform is hanging, after terminating the previous run. why?
+
+[2026-05-23 21:05:08] All 1 workers launched — waiting...
+
+---
+
+### Assistant *(2026-05-23T21:06:45.227Z)*
+
+Most likely cause: **stale DuckDB WAL file** left by the terminated process. When a DuckDB connection is killed mid-write, it leaves a `.wal` file that blocks new connections (even read-only ones) until it's checkpointed.
+
+Check for and remove stale files:
+
+```bash
+# Check for leftover DuckDB WAL files
+ls *.wal *.tmp 2>/dev/null
+ls /path/to/prov.duckdb.wal 2>/dev/null
+
+# Kill any lingering python transform processes
+ps aux | grep "transform" | grep -v grep
+```
+
+If there's a `.wal` file alongside `prov.duckdb`:
+
+```bash
+# Force checkpoint by opening without read_only
+python3 - <<'EOF'
+import duckdb
+conn = duckdb.connect("/path/to/prov.duckdb")
+conn.execute("CHECKPOINT")
+conn.close()
+EOF
+```
+
+Also check the werk_staging DuckDB output from the previous partial run — if it's in the same `--outdir`, a stale `.wal` there would also hang the new worker on open.
+
+What's the exact `--outdir` you're using, and are there any `.wal` files in or near it?
+
+---
+
+### User *(2026-05-23T21:08:32.539Z)*
+
+duckdb.duckdb.IOException: IO Error: The file "/data/gemea/www/downloads/gemea/20260522/prov/prov-shared.nq" exists, but it is not a valid DuckDB database file!
+
+---
+
+### Assistant *(2026-05-23T21:08:38.856Z)*
+
+That's the hang cause — `--prov-db` is getting the `.nq` file instead of `prov.duckdb`. Pass the DuckDB file:
+
+```bash
+--prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov.duckdb
+```
+
+---
+
+### User *(2026-05-23T21:42:18.331Z)*
+
+Continue from where you left off.
+
+---
+
+### Assistant *(2026-05-23T21:42:18.331Z)*
+
+No response requested.
+
+---
+
+### User *(2026-05-23T21:43:30.067Z)*
+
+replace the order: s5, s2, s6, s1, s3, s4, s7
+change the prov-db to /data/gemea/www/downloads/gemea/20260524/duckdb/prov.duckdb
+
+---
+
+### User *(2026-05-23T21:45:08.235Z)*
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   The session continued from a previous conversation covering the GeMeA two-pass transform pipeline. Key work included:
+   - Providing workflow for running transform after prescan completed on teach03
+   - Running transform on s7.sqlite locally (89,904 records, 7.07M triples)
+   - Discovering and fixing a fundamental design flaw: prov-shared.nq was never created because prov.duckdb only stored URIs with no NQ content
+   - Refactoring prescan.py to store full metadata in prov.duckdb and generate prov-shared.nq separately via a `regen` subcommand
+   - Fixing .lock file cleanup, removing `--prov-out` from prescan scan mode, adding `--prov-db` to run-transform-sector.sh
+   - Updating workflow notes and README
+   - **Most recent request**: Reorder and update the transform commands in transform-workflow.md: order s5, s2, s6, s1, s3, s4, s7; change `--prov-db` path to `/data/gemea/www/downloads/gemea/20260524/duckdb/prov.duckdb`
+
+2. Key Technical Concepts:
+   - Two-pass (now three-phase) pipeline: Phase 0 (prescan) → Phase 0.5 (regen prov NQ) → Phase 1+2 (transform)
+   - prov.duckdb stores PROV-O shared node URIs + metadata: `(uri, entity_type, label, url, identifier, isil, rec_type, provider_uri)`
+   - prov-shared.nq generated from prov.duckdb via `python -m transform.prescan regen` — fully regenerable at any time
+   - Transform workers read prov.duckdb read-only to suppress re-emitting shared nodes
+   - `fcntl.flock` for concurrent DuckDB writes; `.lock` sidecar files cleaned up after all sectors finish
+   - `CONCEPT_STRUCT`/`AGENT_STRUCT`/`DATE_STRUCT` Parquet schema
+   - `run-transform-sector.sh` uses SQLite directly (no JSONL); `run_gemea_transform.sh` exports SQLite → JSONL → split → parallel workers
+
+3. Files and Code Sections:
+   - **`/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py`**
+     - `_write_prov_db` new signature: `(prov_db_path, new_entities: dict[str,str], prov_meta: dict[str,dict])` — no prov_out_path, no nq_lines
+     - prov.duckdb schema: `(uri, entity_type, label, url, identifier, isil, rec_type, provider_uri)`
+     - Migration code adds missing columns to old DBs
+     - Scan loop snapshots `local_emitted` before/after `emit_prov_triples`, extracts metadata for new `prov_provider` and `prov_dataset` entries
+     - `regenerate_prov_nq(prov_db_path, prov_out_path)` reads all columns, emits full triples including foaf:name, schema:url, mocho:isil, rdfs:label, dcterms:type, prov:wasAttributedTo
+     - `regen` CLI subcommand: `python -m transform.prescan regen --prov-db X --prov-out Y`
+     - `--prov-out` removed from scan mode args; `new_prov_lines` accumulator removed
+     - `prov_meta: dict[str, dict]` replaces `new_prov_lines: list[str]`
+
+   - **`/Users/mta/Documents/claude/goethe-faust/scripts/transform/tests/test_prescan.py`**
+     - `_scan_prov` updated: returns `(local_emitted, prov_meta)` instead of `(local_emitted, new_prov_lines)`
+     - `TestPrescanProv` tests updated to use new `_write_prov_db` signature + `regenerate_prov_nq`
+     - Added `regenerate_prov_nq` import
+     - 176 tests pass
+
+   - **`/Users/mta/Documents/claude/goethe-faust/scripts/run_gemea_transform.sh`**
+     - `--prov-out` removed from prescan call
+     - Phase 0.5 regen step added after prescan `wait`
+     - Lock file cleanup: `rm -f "${PROV_DB}.lock" "${CONCEPT_LABELS_DB}.lock" "${AGENT_LABELS_DB}.lock"` after prescan wait
+     - `--skip-prescan` flag added
+
+   - **`/Users/mta/Documents/claude/goethe-faust/scripts/run-transform-sector.sh`**
+     - `--prov-db FILE` argument added
+     - `PROV_ARG=(); [[ -n "$PROV_DB" ]] && PROV_ARG=(--prov-db "$PROV_DB")` passed to all transform invocations
+     - `"${PROV_ARG[@]}"` appended to both single-worker and multi-worker transform commands
+
+   - **`/Users/mta/Documents/claude/gemea/scripts/py/regen_prov_nq.py`**
+     - Standalone script that imports and calls `regenerate_prov_nq` from prescan
+     - Usage: `python3 gemea/scripts/py/regen_prov_nq.py --prov-db X --prov-out Y`
+     - sys.path insert for goethe-faust/scripts
+
+   - **`/Users/mta/Documents/claude/gemea/notes/infra/transform-workflow.md`**
+     - Phase table: Phase 0.5 (regen) added; Phase 0 no longer produces prov-shared.nq
+     - Step 0 prescan commands: `--prov-out` removed
+     - Step 0.5 added with regen commands
+     - Step 1 transform commands: `--prov-db` added
+     - Output dir tree: prov.duckdb annotated with column names; prov-shared.nq noted as generated from prov.duckdb
+
+   - **`/Users/mta/Documents/claude/goethe-faust/scripts/transform/README.md`**
+     - Pipeline section updated to three-phase diagram showing regen step
+
+4. Errors and Fixes:
+   - **prov-shared.nq never created**: `_write_prov_db` only wrote NQ for `truly_new` entities; on re-run all entities already in DB so nothing written. Fix: store metadata in prov.duckdb, generate NQ separately via regen.
+   - **nq_lines approach (intermediate)**: Added `nq_lines` column to store raw NQ in DB — replaced by metadata columns approach which is cleaner and queryable.
+   - **`--prov-db` passed prov-shared.nq instead of prov.duckdb**: Caused `IOException: not a valid DuckDB database file` and hanging. User had wrong path in workflow notes.
+   - **`PROV=value cmd --arg $PROV` syntax**: `$PROV` expanded before inline assignment — fix: assign on separate line.
+   - **Transform hanging**: Caused by passing prov-shared.nq as --prov-db; DuckDB tried to open NQ file.
+   - **.lock files not removed**: Added `rm -f` cleanup in run_gemea_transform.sh after prescan wait.
+   - **`/parquet/` subdir added unnecessarily**: User corrected — don't add subdir not in original command.
+   - **`--prov-out` still in required args list**: Removed from scan mode validation.
+   - **Test failures after _write_prov_db signature change**: Updated test helper `_scan_prov` and test cases.
+   - **`ModuleNotFoundError: No module named 'transform'`**: Must run from `scripts/` directory.
+
+5. Problem Solving:
+   - Core design fix: prov.duckdb now self-contained — all data needed to regenerate prov-shared.nq is stored in metadata columns. No more fragile append-and-deduplicate NQ logic.
+   - For the existing teach03 prov.duckdb (old format, no metadata columns): regen will produce partial triples (type-only for providers/datasets). Full labels require re-running prescan with new code.
+   - Lock file safety: cleanup only after all parallel prescan processes finish (in the orchestrating shell script's `wait`), not from within individual processes.
+
+6. All User Messages:
+   - "Continue the conversation from where it left off without asking the user any further questions."
+   - "why do i need the CONCEPT and AGENT_LABELS?"
+   - "how about the number of workers and also the only for specific sector, say s7"
+   - "i dont want to merge all, just the stats, logs, and errors"
+   - "how about to specify the output dir?"
+   - "what happens if the output-dir does not exist yet?"
+   - "Unknown argument: --prov-db"
+   - "i want you to check why there are now more s7 objects (89,904, from 85,408). check gemea/data/sqlite/s7.sqlite. Run transform on it, put the output files in gemea/output/20260520. the prov.duckdb is in gemea/data/parquet/prov.duckdb"
+   - "can you check that the prov.nq is correct?"
+   - "there was a misunderstanding. the point of the prov.duckdb is that we do not create new entities of Software agent but these should still be in the .nq. is this how is it done now? ask for clarification if specifications are not clear"
+   - "it should be 'b' but prov-shared.nq was not there?"
+   - "prov-shared.nq was never created."
+   - "i'll copy the prov.duckdb from teach03 to here, then can you create an adhoc script that reads the duckdb and recreate the nq lines?"
+   - "how can i recover tha labels without running prescan again?"
+   - "should it have labels as well? so we can recreate the triples without having to rerun stuff?"
+   - "ok"
+   - "please test all this, i keep wasting time generating over and over."
+   - "did you update the notes and the workflow notes?"
+   - "so how would this command change now?" [selected prescan command with --prov-out]
+   - "why do you insist on creating /parquet/>"
+   - "Error while finding module specification for 'transform.prescan' (ModuleNotFoundError: No module named 'transform')"
+   - "Continue from where you left off." (multiple times)
+   - "another bug, the .lock files were not removed"
+   - "is this the correct syntax for assigning env variable?" [PROV=value cmd --arg $PROV]
+   - "transform is hanging, after terminating the previous run. why? [2026-05-23 21:05:08] All 1 workers launched — waiting..."
+   - "duckdb.duckdb.IOException: IO Error: The file '/data/gemea/www/downloads/gemea/20260522/prov/prov-shared.nq' exists, but it is not a valid DuckDB database file!"
+   - "replace the order: s5, s2, s6, s1, s3, s4, s7 / change the prov-db to /data/gemea/www/downloads/gemea/20260524/duckdb/prov.duckdb" [selected transform commands in workflow doc] — CURRENT REQUEST
+
+7. Pending Tasks:
+   - Update transform commands in transform-workflow.md: reorder sectors as s5, s2, s6, s1, s3, s4, s7 and change --prov-db path to `/data/gemea/www/downloads/gemea/20260524/duckdb/prov.duckdb`
+
+8. Current Work:
+   The user selected lines 145-157 of transform-workflow.md showing 7 transform sector commands, and asked to:
+   1. Reorder to: s5, s2, s6, s1, s3, s4, s7
+   2. Change `--prov-db` path from `/data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb` to `/data/gemea/www/downloads/gemea/20260524/duckdb/prov.duckdb`
+
+   Current content of those lines:
+   ```
+   bash scripts/run-transform-sector.sh --merge --sector s1 --workers 20 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb
+   bash scripts/run-transform-sector.sh --merge --sector s2 --workers 50 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb
+   bash scripts/run-transform-sector.sh --merge --sector s3 --workers 1 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb
+   bash scripts/run-transform-sector.sh --merge --sector s4 --workers 1 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb
+   bash scripts/run-transform-sector.sh --merge --sector s5 --workers 15 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb
+   bash scripts/run-transform-sector.sh --merge --sector s6 --workers 15 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb
+   bash scripts/run-transform-sector.sh --merge --sector s7 --workers 1 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb
+   ```
+
+9. Optional Next Step:
+   Edit transform-workflow.md lines 145-157 to reorder sectors as s5, s2, s6, s1, s3, s4, s7 and change all `--prov-db` paths to `/data/gemea/www/downloads/gemea/20260524/duckdb/prov.duckdb`.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/mta/.claude/projects/-Users-mta-Documents-claude/0de9cbbf-84af-4e5a-9d27-80f146854276.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.
+
+---
+
+### Assistant *(2026-05-23T21:45:11.509Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/gemea/notes/infra/transform-workflow.md",
+  "offset": 140,
+  "limit": 30
+}
+```
+
+---
+
+### User *(2026-05-23T21:45:11.541Z)*
+
+**Tool result**
+```
+140	
+141	Pass `--prov-db` so workers suppress re-emitting shared PROV-O nodes already in prov.duckdb.
+142	
+143	```bash
+144	
+145	bash scripts/run-transform-sector.sh --merge --sector s1 --workers 20 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb
+146	
+147	bash scripts/run-transform-sector.sh --merge --sector s2 --workers 50 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb
+148	
+149	bash scripts/run-transform-sector.sh --merge --sector s3 --workers 1 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb
+150	
+151	bash scripts/run-transform-sector.sh --merge --sector s4 --workers 1 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb
+152	
+153	bash scripts/run-transform-sector.sh --merge --sector s5 --workers 15 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb
+154	
+155	bash scripts/run-transform-sector.sh --merge --sector s6 --workers 15 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb
+156	
+157	bash scripts/run-transform-sector.sh --merge --sector s7 --workers 1 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb
+158	```
+159	
+160	defaults:
+161	--output-dir /data/gemea/www/downloads/gemea/<yyyymmdd>
+162	--sqlite-dir /data/gemea/sqlite
+163	
+164	```
+165	
+166	```
+167	
+168	#### Step 2a. Test
+169	cd /data/gemea
+```
+
+---
+
+### Assistant *(2026-05-23T21:45:20.256Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/gemea/notes/infra/transform-workflow.md",
+  "old_string": "bash scripts/run-transform-sector.sh --merge --sector s1 --workers 20 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb\n\nbash scripts/run-transform-sector.sh --merge --sector s2 --workers 50 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb\n\nbash scripts/run-transform-sector.sh --merge --sector s3 --workers 1 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb\n\nbash scripts/run-transform-sector.sh --merge --sector s4 --workers 1 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb\n\nbash scripts/run-transform-sector.sh --merge --sector s5 --workers 15 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb\n\nbash scripts/run-transform-sector.sh --merge --sector s6 --workers 15 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb\n\nbash scripts/run-transform-sector.sh --merge --sector s7 --workers 1 --prov-db /data/gemea/www/downloads/gemea/20260522/prov/prov-shared.duckdb",
+  "new_string": "bash scripts/run-transform-sector.sh --merge --sector s5 --workers 15 --prov-db /data/gemea/www/downloads/gemea/20260524/duckdb/prov.duckdb\n\nbash scripts/run-transform-sector.sh --merge --sector s2 --workers 50 --prov-db /data/gemea/www/downloads/gemea/20260524/duckdb/prov.duckdb\n\nbash scripts/run-transform-sector.sh --merge --sector s6 --workers 15 --prov-db /data/gemea/www/downloads/gemea/20260524/duckdb/prov.duckdb\n\nbash scripts/run-transform-sector.sh --merge --sector s1 --workers 20 --prov-db /data/gemea/www/downloads/gemea/20260524/duckdb/prov.duckdb\n\nbash scripts/run-transform-sector.sh --merge --sector s3 --workers 1 --prov-db /data/gemea/www/downloads/gemea/20260524/duckdb/prov.duckdb\n\nbash scripts/run-transform-sector.sh --merge --sector s4 --workers 1 --prov-db /data/gemea/www/downloads/gemea/20260524/duckdb/prov.duckdb\n\nbash scripts/run-transform-sector.sh --merge --sector s7 --workers 1 --prov-db /data/gemea/www/downloads/gemea/20260524/duckdb/prov.duckdb"
+}
+```
+
+---
+
+### User *(2026-05-23T21:47:08.157Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/gemea/notes/infra/transform-workflow.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-23T21:47:10.489Z)*
+
+Done — sectors reordered to s5, s2, s6, s1, s3, s4, s7 and `--prov-db` updated to `/data/gemea/www/downloads/gemea/20260524/duckdb/prov.duckdb` on all seven commands.
+
+---
+
+### User *(2026-05-23T22:05:25.415Z)*
+
+Continue from where you left off.
+
+---
+
+### Assistant *(2026-05-23T22:05:25.415Z)*
+
+No response requested.
+
+---
+
+### User *(2026-05-23T23:04:53.359Z)*
+
+summarize this into a table, each row is sector, put number of workers, number of objects, and triples
+
+---
+
+### Assistant *(2026-05-23T23:05:04.640Z)*
+
+| Sector | Workers | Records | Triples |
+|--------|--------:|--------:|--------:|
+| s1 | 20 | 3,638,021 | 369,281,821 |
+| s2 | 50 | 18,570,245 | 1,369,235,282 |
+| s3 | 1 | 83,572 | 6,492,380 |
+| s4 | 10 | 1,227,252 | 97,369,784 |
+| s5 | 15 | 1,799,838 | 178,804,129 |
+| s6 | 15 | 2,117,728 | 151,360,421 |
+| s7 | 1 | 89,904 | 7,071,452 |
+| **Total** | | **27,526,560** | **2,179,615,269** |
+
+---
+
+### User *(2026-05-28T18:52:17.844Z)*
+
+Continue from where you left off.
+
+---
+
+### Assistant *(2026-05-28T18:52:17.844Z)*
+
+No response requested.
+
+---
+
+### User *(2026-05-28T18:52:55.157Z)*
+
+the qlever indexing failed because of some bugs from the provenance changes: 2026-05-28 18:51:13.065 - INFO: QLever index builder b7623fc, compiled on Sun Apr 12 04:30:08 UTC 2026 using git hash b7623f
+2026-05-28 18:51:13.066 - INFO: Locale was not specified in settings file, default is en_US
+2026-05-28 18:51:13.066 - INFO: You specified "locale = en_US" and "ignore-punctuation = 0"
+2026-05-28 18:51:13.066 - INFO: You specified "num-triples-per-batch = 20,000,000", choose a lower value if the index builder runs out of memory
+2026-05-28 18:51:13.066 - INFO: By default, integers that cannot be represented by QLever will throw an exception
+2026-05-28 18:51:13.066 - WARN: Implicitly using the parallel parser for a single input file for reasons of backward compatibility; this is deprecated, please use the command-line option --parallel-parsing or -p
+2026-05-28 18:51:13.066 - INFO: Processing triples from single input stream /dev/stdin (parallel = true) ...
+2026-05-28 18:51:13.067 - INFO: Parsing input triples and creating partial vocabularies, one per batch ...
+2026-05-28 18:51:13.146 - ERROR: Error detected during parallel parsing, waiting for workers to finish ...
+2026-05-28 18:51:13.439 - ERROR: Creating the index for QLever failed with the following exception:  Parse error at byte position 576117: A check for a required element failed
+The next 500 bytes are:
+Neuerwerbungen 2019" - LIDO"@de <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<urn:ddbedm:dataset:26342933677395720jdOc> <http://purl.org/dc/terms/type> <http://www.lido-schema.org/> <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<urn:ddbedm:dataset:26342933677395720jdOc> <http://www.w3.org/ns/prov#wasAttributedTo> <urn:ddbedm:provider:FKBVHZEFB6RYNEMU3RNQGTMCFOSV7463> <https://gemea.ise.fiz-karlsruhe.de/graph/prov> .
+<urn:ddbedm:dataset:39856015651738808YovY> <http://www.w3.org/1999/02/2
+
+---
+
+### Assistant *(2026-05-28T18:53:09.541Z)*
+
+The error is an unescaped double quote inside a literal in the prov-shared.nq output. The label `"Neuerwerbungen 2019" - LIDO` contains inner `"` characters that weren't escaped as `\"` in N-Triples format. Let me find where labels are written in prescan.py.
+
+---
+
+### Assistant *(2026-05-28T18:53:11.433Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "grep -n \"foaf:name\\|rdfs:label\\|nt_literal\\|escape\\|def _nt\\|def nt\\|f'\\\"' \\|f\\\"\\\\\\\"\" /Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py | head -40",
+  "description": "Find literal escaping and NQ emission code in prescan.py"
+}
+```
+
+---
+
+### User *(2026-05-28T18:53:11.568Z)*
+
+**Tool result**
+```
+483:      label        — foaf:name (provider) or rdfs:label (dataset)
+644:            conn.execute(f"""
+```
+
+---
+
+### Assistant *(2026-05-28T18:53:15.729Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "grep -n \"def regenerate\\|\\.write\\|nq_line\\|f\\\"<\\|f'<\\| \\\"@\\| '@\" /Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py | head -50",
+  "description": "Find NQ line construction in prescan.py"
+}
+```
+
+---
+
+### User *(2026-05-28T18:53:15.785Z)*
+
+**Tool result**
+```
+515:            # nq_lines column is obsolete — drop silently if present (DuckDB doesn't support DROP COLUMN easily, just ignore)
+548:def regenerate_prov_nq(prov_db_path: Path, prov_out_path: Path) -> int:
+564:        return make_nq(f"<{s}>", f"<{p}>", o, GRAPH_PROV)
+587:                _nq(uri, RDF_TYPE,        f"<{PROV_SW_AGENT}>"),
+589:                _nq(uri, PROV_ON_BEHALF,  f"<{DDB_BASE}>"),
+593:                _nq(uri, RDF_TYPE,  f"<{PROV_AGENT}>"),
+594:                _nq(uri, RDF_TYPE,  f"<{FOAF_ORG}>"),
+599:                _nq(uri, RDF_TYPE, f"<{PROV_AGENT}>"),
+600:                _nq(uri, RDF_TYPE, f"<{FOAF_ORG}>"),
+605:                lines.append(_nq(uri, SCHEMA_URL, f"<{url}>"))
+613:                _nq(uri, RDF_TYPE,   f"<{DCAT_DATASET}>"),
+614:                _nq(uri, RDF_TYPE,   f"<{PROV_ENTITY}>"),
+620:                lines.append(_nq(uri, DCTERMS_TYPE, f"<{rec_type}>"))
+622:                lines.append(_nq(uri, PROV_ATTRIBUTED, f"<{provider_uri}>"))
+627:            f.write(line + "\n")
+745:        parquet_writer.write_table(table)
+769:        cho_subj_nt = f"<{cho_uri}> "
+```
+
+---
+
+### Assistant *(2026-05-28T18:53:18.179Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "offset": 555,
+  "limit": 75
+}
+```
+
+---
+
+### User *(2026-05-28T18:53:18.266Z)*
+
+**Tool result**
+```
+555	        GRAPH_PROV, RDF_TYPE, DDB_BASE,
+556	        PROV_AGENT, PROV_SW_AGENT, PROV_ENTITY, PROV_ON_BEHALF, PROV_ATTRIBUTED,
+557	        FOAF_ORG, FOAF_NAME, DCAT_DATASET,
+558	        DCTERMS_ID, DCTERMS_TYPE, DCTERMS_HAS_VER, RDFS_LABEL,
+559	        SCHEMA_URL, MOCHO_ISIL,
+560	    )
+561	    from .utils import make_nq
+562	
+563	    def _nq(s: str, p: str, o: str) -> str:
+564	        return make_nq(f"<{s}>", f"<{p}>", o, GRAPH_PROV)
+565	
+566	    import duckdb
+567	    conn = duckdb.connect(str(prov_db_path), read_only=True)
+568	    cols = {r[0] for r in conn.execute(
+569	        "SELECT column_name FROM information_schema.columns WHERE table_name='prov_entities'"
+570	    ).fetchall()}
+571	    has_meta = "label" in cols
+572	    if has_meta:
+573	        raw = conn.execute(
+574	            "SELECT uri, entity_type, label, url, identifier, isil, rec_type, provider_uri "
+575	            "FROM prov_entities"
+576	        ).fetchall()
+577	    else:
+578	        raw = [(r[0], r[1], "", "", "", "", "", "")
+579	               for r in conn.execute("SELECT uri, entity_type FROM prov_entities").fetchall()]
+580	    conn.close()
+581	
+582	    lines: list[str] = []
+583	    for uri, etype, label, url, ident, isil, rec_type, provider_uri in raw:
+584	        if etype == "prov_xslt":
+585	            version = uri.rsplit(":", 1)[-1]
+586	            lines += [
+587	                _nq(uri, RDF_TYPE,        f"<{PROV_SW_AGENT}>"),
+588	                _nq(uri, DCTERMS_HAS_VER, f'"{version}"'),
+589	                _nq(uri, PROV_ON_BEHALF,  f"<{DDB_BASE}>"),
+590	            ]
+591	        elif etype == "prov_ddb":
+592	            lines += [
+593	                _nq(uri, RDF_TYPE,  f"<{PROV_AGENT}>"),
+594	                _nq(uri, RDF_TYPE,  f"<{FOAF_ORG}>"),
+595	                _nq(uri, FOAF_NAME, '"Deutsche Digitale Bibliothek"'),
+596	            ]
+597	        elif etype == "prov_provider":
+598	            lines += [
+599	                _nq(uri, RDF_TYPE, f"<{PROV_AGENT}>"),
+600	                _nq(uri, RDF_TYPE, f"<{FOAF_ORG}>"),
+601	            ]
+602	            if label:
+603	                lines.append(_nq(uri, FOAF_NAME, f'"{label}"'))
+604	            if url:
+605	                lines.append(_nq(uri, SCHEMA_URL, f"<{url}>"))
+606	            if ident:
+607	                lines.append(_nq(uri, DCTERMS_ID, f'"{ident}"'))
+608	            if isil:
+609	                lines.append(_nq(uri, MOCHO_ISIL, f'"{isil}"'))
+610	        elif etype == "prov_dataset":
+611	            dataset_id = uri.rsplit(":", 1)[-1]
+612	            lines += [
+613	                _nq(uri, RDF_TYPE,   f"<{DCAT_DATASET}>"),
+614	                _nq(uri, RDF_TYPE,   f"<{PROV_ENTITY}>"),
+615	                _nq(uri, DCTERMS_ID, f'"{dataset_id}"'),
+616	            ]
+617	            if label:
+618	                lines.append(_nq(uri, RDFS_LABEL, f'"{label}"@de'))
+619	            if rec_type:
+620	                lines.append(_nq(uri, DCTERMS_TYPE, f"<{rec_type}>"))
+621	            if provider_uri:
+622	                lines.append(_nq(uri, PROV_ATTRIBUTED, f"<{provider_uri}>"))
+623	
+624	    prov_out_path.parent.mkdir(parents=True, exist_ok=True)
+625	    with open(prov_out_path, "w", encoding="utf-8") as f:
+626	        for line in lines:
+627	            f.write(line + "\n")
+628	    return len(lines)
+629	
+```
+
+---
+
+### Assistant *(2026-05-28T18:53:32.732Z)*
+
+Found it. Lines 603, 607, 608, 615, 618 interpolate raw label/identifier values directly into N-Triples literal syntax without escaping inner `"` characters. A dataset label like `Neuerwerbungen 2019" - LIDO` becomes malformed N-Quads.
+
+The fix is a small escape helper:
+
+---
+
+### Assistant *(2026-05-28T18:53:32.818Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "offset": 548,
+  "limit": 20
+}
+```
+
+---
+
+### User *(2026-05-28T18:53:32.824Z)*
+
+**Tool result**
+```
+548	def regenerate_prov_nq(prov_db_path: Path, prov_out_path: Path) -> int:
+549	    """Generate prov-shared.nq from prov.duckdb metadata columns.
+550	
+551	    Overwrites prov_out_path. Returns number of lines written.
+552	    Run once after all sectors' prescan completes.
+553	    """
+554	    from .constants import (
+555	        GRAPH_PROV, RDF_TYPE, DDB_BASE,
+556	        PROV_AGENT, PROV_SW_AGENT, PROV_ENTITY, PROV_ON_BEHALF, PROV_ATTRIBUTED,
+557	        FOAF_ORG, FOAF_NAME, DCAT_DATASET,
+558	        DCTERMS_ID, DCTERMS_TYPE, DCTERMS_HAS_VER, RDFS_LABEL,
+559	        SCHEMA_URL, MOCHO_ISIL,
+560	    )
+561	    from .utils import make_nq
+562	
+563	    def _nq(s: str, p: str, o: str) -> str:
+564	        return make_nq(f"<{s}>", f"<{p}>", o, GRAPH_PROV)
+565	
+566	    import duckdb
+567	    conn = duckdb.connect(str(prov_db_path), read_only=True)
+```
+
+---
+
+### Assistant *(2026-05-28T18:53:37.565Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "old_string": "    def _nq(s: str, p: str, o: str) -> str:\n        return make_nq(f\"<{s}>\", f\"<{p}>\", o, GRAPH_PROV)",
+  "new_string": "    def _nq(s: str, p: str, o: str) -> str:\n        return make_nq(f\"<{s}>\", f\"<{p}>\", o, GRAPH_PROV)\n\n    def _lit(value: str, lang: str = \"\") -> str:\n        escaped = value.replace(\"\\\\\", \"\\\\\\\\\").replace('\"', '\\\\\"').replace(\"\\n\", \"\\\\n\").replace(\"\\r\", \"\\\\r\")\n        return f'\"{escaped}\"@{lang}' if lang else f'\"{escaped}\"'"
+}
+```
+
+---
+
+### User *(2026-05-28T18:53:42.961Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-28T18:53:45.090Z)*
+
+Now replace all the raw f-string literals with `_lit()` calls:
+
+---
+
+### Assistant *(2026-05-28T18:53:58.721Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "old_string": "        elif etype == \"prov_xslt\":\n            version = uri.rsplit(\":\", 1)[-1]\n            lines += [\n                _nq(uri, RDF_TYPE,        f\"<{PROV_SW_AGENT}>\"),\n                _nq(uri, DCTERMS_HAS_VER, f'\"{version}\"'),\n                _nq(uri, PROV_ON_BEHALF,  f\"<{DDB_BASE}>\"),\n            ]\n        elif etype == \"prov_ddb\":\n            lines += [\n                _nq(uri, RDF_TYPE,  f\"<{PROV_AGENT}>\"),\n                _nq(uri, RDF_TYPE,  f\"<{FOAF_ORG}>\"),\n                _nq(uri, FOAF_NAME, '\"Deutsche Digitale Bibliothek\"'),\n            ]\n        elif etype == \"prov_provider\":\n            lines += [\n                _nq(uri, RDF_TYPE, f\"<{PROV_AGENT}>\"),\n                _nq(uri, RDF_TYPE, f\"<{FOAF_ORG}>\"),\n            ]\n            if label:\n                lines.append(_nq(uri, FOAF_NAME, f'\"{label}\"'))\n            if url:\n                lines.append(_nq(uri, SCHEMA_URL, f\"<{url}>\"))\n            if ident:\n                lines.append(_nq(uri, DCTERMS_ID, f'\"{ident}\"'))\n            if isil:\n                lines.append(_nq(uri, MOCHO_ISIL, f'\"{isil}\"'))\n        elif etype == \"prov_dataset\":\n            dataset_id = uri.rsplit(\":\", 1)[-1]\n            lines += [\n                _nq(uri, RDF_TYPE,   f\"<{DCAT_DATASET}>\"),\n                _nq(uri, RDF_TYPE,   f\"<{PROV_ENTITY}>\"),\n                _nq(uri, DCTERMS_ID, f'\"{dataset_id}\"'),\n            ]\n            if label:\n                lines.append(_nq(uri, RDFS_LABEL, f'\"{label}\"@de'))\n            if rec_type:\n                lines.append(_nq(uri, DCTERMS_TYPE, f\"<{rec_type}>\"))\n            if provider_uri:\n                lines.append(_nq(uri, PROV_ATTRIBUTED, f\"<{provider_uri}>\"))",
+  "new_string": "        elif etype == \"prov_xslt\":\n            version = uri.rsplit(\":\", 1)[-1]\n            lines += [\n                _nq(uri, RDF_TYPE,        f\"<{PROV_SW_AGENT}>\"),\n                _nq(uri, DCTERMS_HAS_VER, _lit(version)),\n                _nq(uri, PROV_ON_BEHALF,  f\"<{DDB_BASE}>\"),\n            ]\n        elif etype == \"prov_ddb\":\n            lines += [\n                _nq(uri, RDF_TYPE,  f\"<{PROV_AGENT}>\"),\n                _nq(uri, RDF_TYPE,  f\"<{FOAF_ORG}>\"),\n                _nq(uri, FOAF_NAME, _lit(\"Deutsche Digitale Bibliothek\")),\n            ]\n        elif etype == \"prov_provider\":\n            lines += [\n                _nq(uri, RDF_TYPE, f\"<{PROV_AGENT}>\"),\n                _nq(uri, RDF_TYPE, f\"<{FOAF_ORG}>\"),\n            ]\n            if label:\n                lines.append(_nq(uri, FOAF_NAME, _lit(label)))\n            if url:\n                lines.append(_nq(uri, SCHEMA_URL, f\"<{url}>\"))\n            if ident:\n                lines.append(_nq(uri, DCTERMS_ID, _lit(ident)))\n            if isil:\n                lines.append(_nq(uri, MOCHO_ISIL, _lit(isil)))\n        elif etype == \"prov_dataset\":\n            dataset_id = uri.rsplit(\":\", 1)[-1]\n            lines += [\n                _nq(uri, RDF_TYPE,   f\"<{DCAT_DATASET}>\"),\n                _nq(uri, RDF_TYPE,   f\"<{PROV_ENTITY}>\"),\n                _nq(uri, DCTERMS_ID, _lit(dataset_id)),\n            ]\n            if label:\n                lines.append(_nq(uri, RDFS_LABEL, _lit(label, \"de\")))\n            if rec_type:\n                lines.append(_nq(uri, DCTERMS_TYPE, f\"<{rec_type}>\"))\n            if provider_uri:\n                lines.append(_nq(uri, PROV_ATTRIBUTED, f\"<{provider_uri}>\"))"
+}
+```
+
+---
+
+### User *(2026-05-28T18:53:58.725Z)*
+
+**Tool result** *(error)*
+```
+<tool_use_error>String to replace not found in file.
+String:         elif etype == "prov_xslt":
+            version = uri.rsplit(":", 1)[-1]
+            lines += [
+                _nq(uri, RDF_TYPE,        f"<{PROV_SW_AGENT}>"),
+                _nq(uri, DCTERMS_HAS_VER, f'"{version}"'),
+                _nq(uri, PROV_ON_BEHALF,  f"<{DDB_BASE}>"),
+            ]
+        elif etype == "prov_ddb":
+            lines += [
+                _nq(uri, RDF_TYPE,  f"<{PROV_AGENT}>"),
+                _nq(uri, RDF_TYPE,  f"<{FOAF_ORG}>"),
+                _nq(uri, FOAF_NAME, '"Deutsche Digitale Bibliothek"'),
+            ]
+        elif etype == "prov_provider":
+            lines += [
+                _nq(uri, RDF_TYPE, f"<{PROV_AGENT}>"),
+                _nq(uri, RDF_TYPE, f"<{FOAF_ORG}>"),
+            ]
+            if label:
+                lines.append(_nq(uri, FOAF_NAME, f'"{label}"'))
+            if url:
+                lines.append(_nq(uri, SCHEMA_URL, f"<{url}>"))
+            if ident:
+                lines.append(_nq(uri, DCTERMS_ID, f'"{ident}"'))
+            if isil:
+                lines.append(_nq(uri, MOCHO_ISIL, f'"{isil}"'))
+        elif etype == "prov_dataset":
+            dataset_id = uri.rsplit(":", 1)[-1]
+            lines += [
+                _nq(uri, RDF_TYPE,   f"<{DCAT_DATASET}>"),
+                _nq(uri, RDF_TYPE,   f"<{PROV_ENTITY}>"),
+                _nq(uri, DCTERMS_ID, f'"{dataset_id}"'),
+            ]
+            if label:
+                lines.append(_nq(uri, RDFS_LABEL, f'"{label}"@de'))
+            if rec_type:
+                lines.append(_nq(uri, DCTERMS_TYPE, f"<{rec_type}>"))
+            if provider_uri:
+                lines.append(_nq(uri, PROV_ATTRIBUTED, f"<{provider_uri}>"))</tool_use_error>
+```
+
+---
+
+### Assistant *(2026-05-28T18:54:01.978Z)*
+
+**Tool call:** `Read`
+```json
+{
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "offset": 585,
+  "limit": 45
+}
+```
+
+---
+
+### User *(2026-05-28T18:54:01.987Z)*
+
+**Tool result**
+```
+585	
+586	    lines: list[str] = []
+587	    for uri, etype, label, url, ident, isil, rec_type, provider_uri in raw:
+588	        if etype == "prov_xslt":
+589	            version = uri.rsplit(":", 1)[-1]
+590	            lines += [
+591	                _nq(uri, RDF_TYPE,        f"<{PROV_SW_AGENT}>"),
+592	                _nq(uri, DCTERMS_HAS_VER, f'"{version}"'),
+593	                _nq(uri, PROV_ON_BEHALF,  f"<{DDB_BASE}>"),
+594	            ]
+595	        elif etype == "prov_ddb":
+596	            lines += [
+597	                _nq(uri, RDF_TYPE,  f"<{PROV_AGENT}>"),
+598	                _nq(uri, RDF_TYPE,  f"<{FOAF_ORG}>"),
+599	                _nq(uri, FOAF_NAME, '"Deutsche Digitale Bibliothek"'),
+600	            ]
+601	        elif etype == "prov_provider":
+602	            lines += [
+603	                _nq(uri, RDF_TYPE, f"<{PROV_AGENT}>"),
+604	                _nq(uri, RDF_TYPE, f"<{FOAF_ORG}>"),
+605	            ]
+606	            if label:
+607	                lines.append(_nq(uri, FOAF_NAME, f'"{label}"'))
+608	            if url:
+609	                lines.append(_nq(uri, SCHEMA_URL, f"<{url}>"))
+610	            if ident:
+611	                lines.append(_nq(uri, DCTERMS_ID, f'"{ident}"'))
+612	            if isil:
+613	                lines.append(_nq(uri, MOCHO_ISIL, f'"{isil}"'))
+614	        elif etype == "prov_dataset":
+615	            dataset_id = uri.rsplit(":", 1)[-1]
+616	            lines += [
+617	                _nq(uri, RDF_TYPE,   f"<{DCAT_DATASET}>"),
+618	                _nq(uri, RDF_TYPE,   f"<{PROV_ENTITY}>"),
+619	                _nq(uri, DCTERMS_ID, f'"{dataset_id}"'),
+620	            ]
+621	            if label:
+622	                lines.append(_nq(uri, RDFS_LABEL, f'"{label}"@de'))
+623	            if rec_type:
+624	                lines.append(_nq(uri, DCTERMS_TYPE, f"<{rec_type}>"))
+625	            if provider_uri:
+626	                lines.append(_nq(uri, PROV_ATTRIBUTED, f"<{provider_uri}>"))
+627	
+628	    prov_out_path.parent.mkdir(parents=True, exist_ok=True)
+629	    with open(prov_out_path, "w", encoding="utf-8") as f:
+```
+
+---
+
+### Assistant *(2026-05-28T18:54:04.829Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "old_string": "                _nq(uri, DCTERMS_HAS_VER, f'\"{version}\"'),",
+  "new_string": "                _nq(uri, DCTERMS_HAS_VER, _lit(version)),"
+}
+```
+
+---
+
+### User *(2026-05-28T18:54:10.998Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-28T18:54:13.941Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "old_string": "                _nq(uri, FOAF_NAME, '\"Deutsche Digitale Bibliothek\"'),",
+  "new_string": "                _nq(uri, FOAF_NAME, _lit(\"Deutsche Digitale Bibliothek\")),"
+}
+```
+
+---
+
+### User *(2026-05-28T18:54:24.216Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-28T18:54:30.212Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "old_string": "            if label:\n                lines.append(_nq(uri, FOAF_NAME, f'\"{label}\"'))\n            if url:\n                lines.append(_nq(uri, SCHEMA_URL, f\"<{url}>\"))\n            if ident:\n                lines.append(_nq(uri, DCTERMS_ID, f'\"{ident}\"'))\n            if isil:\n                lines.append(_nq(uri, MOCHO_ISIL, f'\"{isil}\"'))",
+  "new_string": "            if label:\n                lines.append(_nq(uri, FOAF_NAME, _lit(label)))\n            if url:\n                lines.append(_nq(uri, SCHEMA_URL, f\"<{url}>\"))\n            if ident:\n                lines.append(_nq(uri, DCTERMS_ID, _lit(ident)))\n            if isil:\n                lines.append(_nq(uri, MOCHO_ISIL, _lit(isil)))"
+}
+```
+
+---
+
+### User *(2026-05-28T18:54:33.069Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-28T18:54:36.886Z)*
+
+**Tool call:** `Edit`
+```json
+{
+  "replace_all": false,
+  "file_path": "/Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py",
+  "old_string": "                _nq(uri, DCTERMS_ID, f'\"{dataset_id}\"'),\n            ]\n            if label:\n                lines.append(_nq(uri, RDFS_LABEL, f'\"{label}\"@de'))",
+  "new_string": "                _nq(uri, DCTERMS_ID, _lit(dataset_id)),\n            ]\n            if label:\n                lines.append(_nq(uri, RDFS_LABEL, _lit(label, \"de\")))"
+}
+```
+
+---
+
+### User *(2026-05-28T18:54:39.906Z)*
+
+**Tool result**
+```
+The file /Users/mta/Documents/claude/goethe-faust/scripts/transform/prescan.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+---
+
+### Assistant *(2026-05-28T18:54:42.381Z)*
+
+Now verify the tests still pass:
+
+---
+
+### Assistant *(2026-05-28T18:54:42.996Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "cd /Users/mta/Documents/claude/goethe-faust/scripts && python -m pytest transform/tests/test_prescan.py -q 2>&1 | tail -10",
+  "description": "Run prescan tests"
+}
+```
+
+---
+
+### User *(2026-05-28T18:54:45.787Z)*
+
+**Tool result**
+```
+/Users/mta/Documents/claude/gemea/.venv/bin/python: No module named pytest
+```
+
+---
+
+### Assistant *(2026-05-28T18:54:48.367Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "python3 -m pytest transform/tests/test_prescan.py -q 2>&1 | tail -10",
+  "description": "Run prescan tests with python3"
+}
+```
+
+---
+
+### User *(2026-05-28T18:54:50.324Z)*
+
+**Tool result**
+```
+/Users/mta/Documents/claude/gemea/.venv/bin/python3: No module named pytest
+```
+
+---
+
+### Assistant *(2026-05-28T18:54:52.825Z)*
+
+**Tool call:** `Bash`
+```json
+{
+  "command": "../.venv/bin/python -m pytest transform/tests/test_prescan.py -q 2>&1 | tail -10",
+  "description": "Run prescan tests with venv python"
+}
+```
+
+---
+
+### User *(2026-05-28T18:54:59.378Z)*
+
+**Tool result**
+```
+..........................                                               [100%]
+26 passed in 4.12s
 ```
 
 ---

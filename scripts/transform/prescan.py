@@ -563,6 +563,10 @@ def regenerate_prov_nq(prov_db_path: Path, prov_out_path: Path) -> int:
     def _nq(s: str, p: str, o: str) -> str:
         return make_nq(f"<{s}>", f"<{p}>", o, GRAPH_PROV)
 
+    def _lit(value: str, lang: str = "") -> str:
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r")
+        return f'"{escaped}"@{lang}' if lang else f'"{escaped}"'
+
     import duckdb
     conn = duckdb.connect(str(prov_db_path), read_only=True)
     cols = {r[0] for r in conn.execute(
@@ -585,14 +589,14 @@ def regenerate_prov_nq(prov_db_path: Path, prov_out_path: Path) -> int:
             version = uri.rsplit(":", 1)[-1]
             lines += [
                 _nq(uri, RDF_TYPE,        f"<{PROV_SW_AGENT}>"),
-                _nq(uri, DCTERMS_HAS_VER, f'"{version}"'),
+                _nq(uri, DCTERMS_HAS_VER, _lit(version)),
                 _nq(uri, PROV_ON_BEHALF,  f"<{DDB_BASE}>"),
             ]
         elif etype == "prov_ddb":
             lines += [
                 _nq(uri, RDF_TYPE,  f"<{PROV_AGENT}>"),
                 _nq(uri, RDF_TYPE,  f"<{FOAF_ORG}>"),
-                _nq(uri, FOAF_NAME, '"Deutsche Digitale Bibliothek"'),
+                _nq(uri, FOAF_NAME, _lit("Deutsche Digitale Bibliothek")),
             ]
         elif etype == "prov_provider":
             lines += [
@@ -600,22 +604,22 @@ def regenerate_prov_nq(prov_db_path: Path, prov_out_path: Path) -> int:
                 _nq(uri, RDF_TYPE, f"<{FOAF_ORG}>"),
             ]
             if label:
-                lines.append(_nq(uri, FOAF_NAME, f'"{label}"'))
+                lines.append(_nq(uri, FOAF_NAME, _lit(label)))
             if url:
                 lines.append(_nq(uri, SCHEMA_URL, f"<{url}>"))
             if ident:
-                lines.append(_nq(uri, DCTERMS_ID, f'"{ident}"'))
+                lines.append(_nq(uri, DCTERMS_ID, _lit(ident)))
             if isil:
-                lines.append(_nq(uri, MOCHO_ISIL, f'"{isil}"'))
+                lines.append(_nq(uri, MOCHO_ISIL, _lit(isil)))
         elif etype == "prov_dataset":
             dataset_id = uri.rsplit(":", 1)[-1]
             lines += [
                 _nq(uri, RDF_TYPE,   f"<{DCAT_DATASET}>"),
                 _nq(uri, RDF_TYPE,   f"<{PROV_ENTITY}>"),
-                _nq(uri, DCTERMS_ID, f'"{dataset_id}"'),
+                _nq(uri, DCTERMS_ID, _lit(dataset_id)),
             ]
             if label:
-                lines.append(_nq(uri, RDFS_LABEL, f'"{label}"@de'))
+                lines.append(_nq(uri, RDFS_LABEL, _lit(label, "de")))
             if rec_type:
                 lines.append(_nq(uri, DCTERMS_TYPE, f"<{rec_type}>"))
             if provider_uri:
