@@ -26,7 +26,7 @@ binary split:
 A documentary film is a complete editorial work with an authorial perspective and
 narrative structure. EBUCore Plus defines `EditorialObject` as content with
 editorial intent; `EditorialWork` is its most general named subclass. A documentary
-satisfies this definition regardless of sector. Sector: sparte005 (Museum).
+satisfies this definition regardless of sector. Sector: sparte005 (Media Library).
 
 ### Filmanfang → `ebucoreplus:MediaResource`
 
@@ -39,7 +39,7 @@ extracted from a carrier. No independent editorial status. Sector: sparte005.
 A stage production recording (`Inszenierung`) is a video documentation of a
 theatrical or musical performance. Despite being a recording of a live event, the
 production itself carries authorial intent and constitutes an editorial work.
-Sector: sparte006 (Research institution).
+Sector: sparte006 (Museum).
 
 ### Interview → `ebucoreplus:EditorialWork`
 
