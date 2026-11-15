@@ -308,6 +308,8 @@ video, and text WebResources are handled separately (Phase B).
 
 ## Decision 13: sparte002 Library htype Work-level dispatch — three htypes resolved
 
+**Status**: Superseded (2026-11-10, Ann). A Library ProvidedCHO is a Manifestation only; it is not also typed as a Work. Records with Work-level htypes (ht003, ht006, ht025, and ht021 Monografie in `transform-revised-plan.md` §1.1) are staged for GND Werk linking and may have no Work at all. When a link is found, the Work is a separate minted node linked by `mocho:isManifestationOf` (`transform-adr.md` D17; gemea `werklink-D08 own mocho:Work`). The text below is kept as the original decision.
+
 **Decision**: For sparte002 (Library) records, three htype codes receive dual `rdac:C10001` "Work" + `rdac:C10007` "Manifestation" assertions, in addition to any DoCO structural class already assigned:
 
 | htype | DE label | Rationale |
