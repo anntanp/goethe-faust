@@ -45,10 +45,10 @@ before implementing the transform. Run once per corpus; outputs feed
 
 ### `count_dctype_sparte004.py`
 Frequency table of (mediatype, htype, dc:type) combinations for a given sector,
-cross-referenced against `output/config/lookup_dctype_to_class.csv` to show current
+cross-referenced against `$GEMEA_DIR/config/transform/lookup_dctype_to_class.csv` to show current
 dispatch class. Accepts `--sector` to target any sparte.
 
-- **Input**: `data/items-all-goethe-faust.json`, `output/config/lookup_dctype_to_class.csv`
+- **Input**: `data/items-all-goethe-faust.json`, `$GEMEA_DIR/config/transform/lookup_dctype_to_class.csv`
 - **Output**: `output/dctype_<sector>.csv` (e.g. `dctype_sparte001.csv`)
 - **Usage**: `python scripts/count_dctype_sparte004.py [--sector sparteNNN]`
 - **Notes**: Default sector is sparte004. Run for all sectors before
@@ -128,7 +128,7 @@ Validates the dc:type dispatch table by sampling records per (mediatype, sector)
 cell, running the three-level lookup (exact → any-sector → any-mediatype → D9
 fallback) against `lookup_dctype_to_class.csv`, and reporting the assigned class.
 
-- **Input**: `data/items-all-goethe-faust.json`, `output/config/lookup_dctype_to_class.csv`
+- **Input**: `data/items-all-goethe-faust.json`, `$GEMEA_DIR/config/transform/lookup_dctype_to_class.csv`
 - **Output**: `output/dctype_dispatch_sample.csv`, `output/dctype_dispatch_summary.csv`
 - **Usage**: `python scripts/sample_type_dispatch.py [--sample-size N]`
 - **Notes**: 76.0% matched (no fabio classes emitted); Photo 100% exact;
@@ -403,9 +403,9 @@ DC_TYPE_OVERRIDE (dc:type lookup overrides base mediatype dispatch — expected)
 MISMATCH, NO_LOOKUP, or NO_EXAMPLE.
 
 - **Inputs**: `output/validation_sample.csv`,
-  `output/config/lookup_htype_doco_rico.csv`,
-  `output/config/lookup_mediatype_class.csv`,
-  `output/config/lookup_dctype_to_class.csv`
+  `$GEMEA_DIR/config/transform/lookup_htype_doco_rico.csv`,
+  `$GEMEA_DIR/config/transform/lookup_mediatype_class.csv`,
+  `$GEMEA_DIR/config/transform/lookup_dctype_to_class.csv`
 - **Output**: `output/validation_report.csv`
   (columns: sparte, mediatype, htype, dc_type, ddb_url,
   rule_w, rule_m, lookup_w, lookup_m, match, source)
