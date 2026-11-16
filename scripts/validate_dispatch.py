@@ -10,8 +10,8 @@
 #           python scripts/validate_dispatch.py --input data/items-excerpt-1000.json
 #
 # Inputs:   data/items-all-goethe-faust.json          — corpus (JSON array or JSONL)
-#           output/config/lookup_htype_doco_rico.csv   — htype_code → rdf_type (D3)
-#           output/config/audio_type2class.json        — dc_type → audio class (D16)
+#           $GEMEA_DIR/config/transform/lookup_htype_doco_rico.csv   — htype_code → rdf_type (D3)
+#           $GEMEA_DIR/config/transform/audio_type2class.json        — dc_type → audio class (D16)
 #
 # Outputs:  output/dispatch_validation.csv
 #           Columns: item_id, sector, mediatype, htype, dc_type,
@@ -29,14 +29,18 @@ import argparse
 import csv
 import json
 from collections import Counter, defaultdict
+import os
 from pathlib import Path
 
 ROOT   = Path(__file__).resolve().parents[1]
+# Lookup tables moved to gemea on 2026-11-15 (transform-migration-plan); GEMEA_DIR defaults to the sibling checkout.
+GEMEA_DIR = Path(os.environ.get("GEMEA_DIR", ROOT.parent / "gemea"))
+CONFIG = GEMEA_DIR / "config" / "transform"
 OUTDIR = ROOT / "output"
 
 DEFAULT_INPUT  = ROOT / "data" / "items-all-goethe-faust.json"
-DEFAULT_HTYPE  = ROOT / "output" / "config" / "lookup_htype_doco_rico.csv"
-DEFAULT_AUDIO  = ROOT / "output" / "config" / "audio_type2class.json"
+DEFAULT_HTYPE  = CONFIG / "lookup_htype_doco_rico.csv"
+DEFAULT_AUDIO  = CONFIG / "audio_type2class.json"
 OUTPUT         = OUTDIR / "dispatch_validation.csv"
 
 SPARTE = "http://ddb.vocnet.org/sparte/"

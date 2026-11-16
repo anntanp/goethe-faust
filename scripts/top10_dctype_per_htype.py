@@ -7,9 +7,9 @@
 # Usage:    python scripts/top10_dctype_per_htype.py
 # Inputs:   output/dispatch_signal_ratio.csv
 #           output/dctype_sparte*.csv
-#           output/config/lookup_dctype_to_class.csv
-#           output/config/image_type2class.json  (mt002)
-#           output/config/video_type2class.json  (mt005)
+#           $GEMEA_DIR/config/transform/lookup_dctype_to_class.csv
+#           $GEMEA_DIR/config/transform/image_type2class.json  (mt002)
+#           $GEMEA_DIR/config/transform/video_type2class.json  (mt005)
 #           scripts/old-config/audio_type2class.json  (mt001)
 # Outputs:  output/top10_dctype_per_htype.csv
 #           Columns: sector, sector_label, mediatype, dominant_signal,
@@ -27,9 +27,13 @@ import csv
 import json
 import re
 from collections import defaultdict
+import os
 from pathlib import Path
 
 ROOT   = Path(__file__).resolve().parents[1]
+# Lookup tables moved to gemea on 2026-11-15 (transform-migration-plan); GEMEA_DIR defaults to the sibling checkout.
+GEMEA_DIR = Path(os.environ.get("GEMEA_DIR", ROOT.parent / "gemea"))
+CONFIG = GEMEA_DIR / "config" / "transform"
 OUTDIR = ROOT / "output"
 OUTPUT = OUTDIR / "top10_dctype_per_htype.csv"
 
@@ -88,7 +92,7 @@ def load_signal_strata() -> dict[tuple, str]:
 
 def load_general_lookup() -> dict[tuple, dict]:
     """Return {(mt_iri_or_any, sector_iri_or_any, dc_type_de): row}."""
-    path = OUTDIR / "lookup_dctype_to_class.csv"
+    path = CONFIG / "lookup_dctype_to_class.csv"
     index: dict[tuple, dict] = {}
     with path.open(newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
@@ -123,15 +127,15 @@ def load_mt_configs() -> dict[str, dict]:
     """Load mediatype-specific config JSONs keyed by mt_code."""
     configs: dict[str, dict] = {}
 
-    img_path = OUTDIR / "config" / "image_type2class.json"
+    img_path = CONFIG / "image_type2class.json"
     if img_path.exists():
         configs["mt002"] = json.loads(img_path.read_text(encoding="utf-8"))
-        configs["mt002:source"] = "output/config/image_type2class.json"
+        configs["mt002:source"] = "gemea config/transform/image_type2class.json"
 
-    vid_path = OUTDIR / "config" / "video_type2class.json"
+    vid_path = CONFIG / "video_type2class.json"
     if vid_path.exists():
         configs["mt005"] = json.loads(vid_path.read_text(encoding="utf-8"))
-        configs["mt005:source"] = "output/config/video_type2class.json"
+        configs["mt005:source"] = "gemea config/transform/video_type2class.json"
 
     aud_path = ROOT / "scripts" / "old-config" / "audio_type2class.json"
     if aud_path.exists():

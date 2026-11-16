@@ -6,18 +6,13 @@ any working directory.
 
 ---
 
+> **Moved to gemea (2026-11-16):** the transform package, its drivers (`run_gemea_transform.sh`, `run-transform-sector.sh`, `run_gemea_dryrun.sh`, `monitor_transform.sh`, `setup_venv.sh`), the N-Quads tools, the config generators and `link_gnd_works.py` now live in [gemea](https://github.com/anntanp/gemea/tree/develop/scripts/transform), with the lookup tables in `config/transform/`. Scripts that stay here and read those tables (`validate_dispatch.py`, `validate_sample.py`, `sample_type_dispatch.py`, `top10_dctype_per_htype.py`, `count_dctype_sparte004.py`) find them through `GEMEA_DIR` (default: the sibling checkout `../gemea`).
+
 ## Post-processing
 
 ### `split_nq.py`
-Splits an N-Quads file into one N-Triples file per named graph. Graph IRI is
-stripped from each quad; the output filename encodes the target graph slug.
-NQ wrapping is deferred to QLever load time (transform-script-adr.md D28).
 
-- **Input**: `output/goethe-faust.nq` (or any `.nq` produced by the transform)
-- **Output**: `<out-dir>/<slug>.nt` per named graph (default: same dir as input)
-- **Usage**: `python scripts/split_nq.py output/goethe-faust.nq [--out-dir output/nt]`
-
----
+Moved to gemea on 2026-11-16: [`scripts/transform/tools/split_nq.py`](https://github.com/anntanp/gemea/blob/develop/scripts/transform/tools/split_nq.py).
 
 ## Ontology alignment (run in order)
 
@@ -35,41 +30,12 @@ JSON paths for `mocho:sector` (`provider-info.domains[0]`) and `mocho:mediaType`
   mediatype signal, no RDF traversal needed.
 
 ### `profile_edm_fields.py`
-Profiles all field keys present under `edm.RDF.*` entity types in the JSONL
-data file. Needed as input for `align_ddbedm_to_mocho.py`.
 
-- **Input**: `data/items-all-goethe-faust.json`
-- **Output**: `output/edm_field_profile.json`, `output/edm_field_profile.csv`
-- **Usage**: `python3 scripts/profile_edm_fields.py`
-- **Notes**: Reports per-entity-type field names with record counts and
-  coverage percentages. Counts > 100% indicate array-valued entities
-  (multiple agents/concepts/events per record).
+Moved to gemea on 2026-11-16: [`scripts/transform/config_gen/profile_edm_fields.py`](https://github.com/anntanp/gemea/blob/develop/scripts/transform/config_gen/profile_edm_fields.py).
 
 ### `align_ddbedm_to_mocho.py`
-Data-driven ontology alignment from DDB-EDM to mocho. Maps each EDM/DC
-property actually present in the data to its corresponding RDA properties
-in mocho, via the DC→RDA sub-property mapping from the mocho workflow.
 
-- **Input**: `output/edm_field_profile.json` (from above),
-  `~/Documents/claude/mocho/ontology/ddbedm_1.0.ttl`,
-  `~/Documents/claude/mocho/mocho-odk/src/ontology/mocho-full.owl`,
-  `~/Documents/claude/mocho/output/mapping_dct_to_rda.csv`
-- **Output**: `output/alignment_ddbedm_mocho.csv`,
-  `output/alignment_ddbedm_mocho.json`
-- **Usage**: `python3 scripts/align_ddbedm_to_mocho.py`
-- **Dependencies**: `rdflib`
-- **Notes**:
-  - One CSV row per (edm_field × rda_property) pair; high-fanout DC terms
-    (e.g. `dc:creator` → 232 RDA sub-properties) produce many rows per field
-  - 32 DC/DCT fields matched to RDA properties in mocho (1,271 alignment rows)
-  - 55 unmatched fields fall into expected categories: EDM-structural
-    (`edm:isShownAt`, `edm:begin/end`), DDB extensions (`ddb:hierarchyType`,
-    `ddb:aggregationEntity`), SKOS labels, geo coordinates, and two known
-    DCT→RDA gaps (`dc:identifier`, `dcterms:spatial`)
-  - `dcTermSubject` (DDB data variant of `dcterms:subject`) handled via
-    hard-coded override in `OVERRIDES` dict
-
----
+Moved to gemea on 2026-11-16: [`scripts/transform/config_gen/align_ddbedm_to_mocho.py`](https://github.com/anntanp/gemea/blob/develop/scripts/transform/config_gen/align_ddbedm_to_mocho.py).
 
 ## Corpus-driven transformation design
 
@@ -126,16 +92,8 @@ the top-10 dc:types by summed count.
 ## Transform pipeline (run in order)
 
 ### `transform_edm_to_mocho.py`
-Reference transform: DDB-EDM JSONL → mocho-aligned N-Triples + JSON-LD.
-Decisions documented in `notes/transform-adr.md` (D0) and `notes/transform-script-adr.md` (D1–D14).
 
-- **Input**: `data/items-all-goethe-faust.json`, `data/ids-all-goethe-faust.txt`,
-  `output/alignment_ddbedm_mocho.csv`, `output/config/lookup_htype_doco_rico.csv`
-- **Output**: `output/mocho-goethe-faust.nt`, `output/mocho-goethe-faust.jsonld`,
-  `output/transform_stats.json`
-- **Usage**: `python transform_edm_to_mocho.py [--jsonl FILE] [--ids FILE] [--limit N]`
-- **Notes**: Phase D will add dc:type dispatch (lookup_dctype_to_class.csv) and
-  WebResource typing for mt002. See `notes/transform-edm2mocho-plan.md`.
+Moved to gemea on 2026-11-16: [`scripts/transform/ (python -m transform)`](https://github.com/anntanp/gemea/blob/develop/scripts/transform/).
 
 ### `count_dctype_by_mediatype.py`
 Frequency count of dc:type × sector across all mediatypes. Prerequisite for
@@ -146,22 +104,12 @@ populating image and video config JSONs before Phase B.
 - **Usage**: `python count_dctype_by_mediatype.py`
 
 ### `gen_image_type2class.py`
-Generates `output/config/image_type2class.json` for mt002 dc:type dispatch.
-Implements group-based model from `notes/image-type-class-mapping.md` (D11–D12):
-Groups A–D (artwork, objects, photo, architecture) → W-slot classes; Group F → M-slot.
 
-- **Input**: `output/dctype_frequency_all.csv`
-- **Output**: `output/config/image_type2class.json`
-- **Usage**: `python gen_image_type2class.py [--summary]`
+Moved to gemea on 2026-11-16: [`scripts/transform/config_gen/gen_image_type2class.py`](https://github.com/anntanp/gemea/blob/develop/scripts/transform/config_gen/gen_image_type2class.py).
 
 ### `gen_video_type2class.py`
-Generates `output/config/video_type2class.json` for mt005 dc:type dispatch.
-EBUCore Plus split: `EditorialWork` (editorial content) vs `MediaResource` (carrier/fragment).
-Decisions in `notes/video-type-class-mapping.md`.
 
-- **Input**: `output/dctype_frequency_all.csv`
-- **Output**: `output/config/video_type2class.json`
-- **Usage**: `python gen_video_type2class.py`
+Moved to gemea on 2026-11-16: [`scripts/transform/config_gen/gen_video_type2class.py`](https://github.com/anntanp/gemea/blob/develop/scripts/transform/config_gen/gen_video_type2class.py).
 
 ### `count_dctype_gnd_coverage.py`
 Measures what fraction of dc:type values have a controlled-vocabulary URI
@@ -319,14 +267,8 @@ Prints a human-readable summary of `ddb-type2fabio.json`.
 - **Usage**: `python scripts/summarise_results.py`
 
 ### `gen_htype_doco_mapping.py`
-Matches htype label_en values against DoCO ontology class labels using four
-strategies (exact, Levenshtein, translated, embedding). Writes mapping table.
 
-- **Input**: `data/htype.csv`, `data/schemas/doco.owl`
-- **Output**: `~/Documents/claude/mocho/output/mapping_htype_doco.csv`,
-  `~/Documents/claude/mocho/output/mapping_htype_doco.json`
-- **Usage**: `python scripts/gen_htype_doco_mapping.py`
-- **Dependencies**: `rdflib`, `rapidfuzz`, `deep-translator`, `sentence-transformers`
+Moved to gemea on 2026-11-16: [`scripts/transform/config_gen/gen_htype_doco_mapping.py`](https://github.com/anntanp/gemea/blob/develop/scripts/transform/config_gen/gen_htype_doco_mapping.py).
 
 ### `check_isbd_titles.py`
 Checks how many `ProvidedCHO.title` values contain ISBD punctuation marks.

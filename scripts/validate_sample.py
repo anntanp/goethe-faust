@@ -3,9 +3,9 @@
 #           mismatches between §1.1 RULES-encoded classes and lookup table classes.
 # Usage:    python scripts/validate_sample.py
 # Inputs:   output/validation_sample.csv
-#           output/config/lookup_htype_doco_rico.csv
-#           output/config/lookup_mediatype_class.csv
-#           output/config/lookup_dctype_to_class.csv
+#           $GEMEA_DIR/config/transform/lookup_htype_doco_rico.csv
+#           $GEMEA_DIR/config/transform/lookup_mediatype_class.csv
+#           $GEMEA_DIR/config/transform/lookup_dctype_to_class.csv
 # Outputs:  output/validation_report.csv
 #           Columns: sparte, mediatype, htype, dc_type, ddb_url,
 #                    rule_w, rule_m, lookup_w, lookup_m, match, notes
@@ -16,13 +16,17 @@
 #   - sparte005 + dc_type: check lookup_dctype_to_class first; fall back to mediatype lookup
 
 import csv
+import os
 from pathlib import Path
 
 ROOT    = Path(__file__).resolve().parents[1]
+# Lookup tables moved to gemea on 2026-11-15 (transform-migration-plan); GEMEA_DIR defaults to the sibling checkout.
+GEMEA_DIR = Path(os.environ.get("GEMEA_DIR", ROOT.parent / "gemea"))
+CONFIG = GEMEA_DIR / "config" / "transform"
 SAMPLE  = ROOT / "output" / "validation_sample.csv"
-HTYPE   = ROOT / "output" / "config" / "lookup_htype_doco_rico.csv"
-MTCLS   = ROOT / "output" / "config" / "lookup_mediatype_class.csv"
-DCCLS   = ROOT / "output" / "config" / "lookup_dctype_to_class.csv"
+HTYPE   = CONFIG / "lookup_htype_doco_rico.csv"
+MTCLS   = CONFIG / "lookup_mediatype_class.csv"
+DCCLS   = CONFIG / "lookup_dctype_to_class.csv"
 OUTPUT  = ROOT / "output" / "validation_report.csv"
 
 SECTOR_PFX    = "http://ddb.vocnet.org/sparte/"

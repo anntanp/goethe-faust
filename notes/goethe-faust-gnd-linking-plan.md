@@ -203,7 +203,7 @@ the NER model is ready.
 
 ## Script
 
-**Location**: `goethe-faust/scripts/link_gnd_works.py`
+**Location**: `gemea/scripts/py/link_gnd_works.py` (moved 2026-11-16)
 
 **CLI**:
 ```

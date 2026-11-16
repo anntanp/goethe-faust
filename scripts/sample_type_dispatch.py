@@ -16,7 +16,7 @@ Usage:
 
 Inputs:
     data/items-all-goethe-faust.json        JSONL corpus
-    output/config/lookup_dctype_to_class.csv       dispatch table (Phase B)
+    $GEMEA_DIR/config/transform/lookup_dctype_to_class.csv       dispatch table (Phase B)
 
 Outputs:
     output/dctype_dispatch_sample.csv       sampled records with dispatch results
@@ -45,6 +45,7 @@ import csv
 import json
 import logging
 from collections import defaultdict
+import os
 from pathlib import Path
 
 logging.basicConfig(
@@ -54,8 +55,11 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[1]
+# Lookup tables moved to gemea on 2026-11-15 (transform-migration-plan); GEMEA_DIR defaults to the sibling checkout.
+GEMEA_DIR = Path(os.environ.get("GEMEA_DIR", ROOT.parent / "gemea"))
+CONFIG = GEMEA_DIR / "config" / "transform"
 JSONL = ROOT / "data" / "items-all-goethe-faust.json"
-LOOKUP = ROOT / "output" / "lookup_dctype_to_class.csv"
+LOOKUP = CONFIG / "lookup_dctype_to_class.csv"
 OUT_SAMPLE = ROOT / "output" / "dctype_dispatch_sample.csv"
 OUT_SUMMARY = ROOT / "output" / "dctype_dispatch_summary.csv"
 

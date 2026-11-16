@@ -5,7 +5,7 @@
 # Usage:    python scripts/count_dctype_sparte004.py [--sector sparteNNN]
 #           Default sector: sparte004
 # Inputs:   data/items-all-goethe-faust.json  (JSONL)
-#           output/config/lookup_dctype_to_class.csv
+#           $GEMEA_DIR/config/transform/lookup_dctype_to_class.csv
 # Outputs:  output/dctype_<sector>.csv
 #           Columns: mediatype, htype, dc_type_de, count,
 #                    rdf_type_w, rdf_type_m, notes, mapped
@@ -15,11 +15,15 @@ import argparse
 import csv
 import json
 from collections import Counter
+import os
 from pathlib import Path
 
 ROOT   = Path(__file__).resolve().parents[1]
+# Lookup tables moved to gemea on 2026-11-15 (transform-migration-plan); GEMEA_DIR defaults to the sibling checkout.
+GEMEA_DIR = Path(os.environ.get("GEMEA_DIR", ROOT.parent / "gemea"))
+CONFIG = GEMEA_DIR / "config" / "transform"
 JSONL  = ROOT / "data" / "items-all-goethe-faust.json"
-LOOKUP = ROOT / "output" / "lookup_dctype_to_class.csv"
+LOOKUP = CONFIG / "lookup_dctype_to_class.csv"
 
 MEDIATYPE_PFX   = "http://ddb.vocnet.org/medientyp/"
 SECTOR_PFX      = "http://ddb.vocnet.org/sparte/"
