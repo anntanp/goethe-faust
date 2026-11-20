@@ -49,14 +49,17 @@ OUT_CSV  = PROJECT / "output" / "items-dataframe-sample.csv"
 
 # ── lookup tables ─────────────────────────────────────────────────────────────
 
+# Codes follow the German sector names in alphabetical order (Archiv, Bibliothek,
+# Denkmalpflege, Forschung, Mediathek, Museum, Sonstige); labels match the sector
+# table in .claude/CLAUDE.md. Fixed 2026-10-08: 004-007 were previously shifted.
 SPARTE_LABELS = {
     "http://ddb.vocnet.org/sparte/sparte001": "Archive",
     "http://ddb.vocnet.org/sparte/sparte002": "Library",
-    "http://ddb.vocnet.org/sparte/sparte003": "Monument conservation",
-    "http://ddb.vocnet.org/sparte/sparte004": "Media library",
-    "http://ddb.vocnet.org/sparte/sparte005": "Museum",
-    "http://ddb.vocnet.org/sparte/sparte006": "Other",
-    "http://ddb.vocnet.org/sparte/sparte007": "Research institution",
+    "http://ddb.vocnet.org/sparte/sparte003": "Monument Preservation",
+    "http://ddb.vocnet.org/sparte/sparte004": "Research",
+    "http://ddb.vocnet.org/sparte/sparte005": "Media Library",
+    "http://ddb.vocnet.org/sparte/sparte006": "Museum",
+    "http://ddb.vocnet.org/sparte/sparte007": "Others",
 }
 
 RECORD_TYPE_LABELS = {
