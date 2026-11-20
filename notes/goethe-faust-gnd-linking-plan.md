@@ -132,7 +132,7 @@ Fast baseline; catches well-formed titles that match GND `preferredNameForTheWor
 
 ### Pass 2 — ISBD-stripped FTS
 
-Strip non-title-proper content from `dc_title` per `gemea/notes/ner/sr01_isbd-applicability.md §2.1`:
+Strip non-title-proper content from `dc_title` per `notes/fiz/bibner-werk/ner/sr01_isbd-applicability.md §2.1`:
 
 | Signal | Pattern | Action |
 |---|---|---|
