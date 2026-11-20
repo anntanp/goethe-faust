@@ -14,10 +14,11 @@
 services:
   qlever-goethe-faust:
     image: docker.io/adfreiburg/qlever:latest
+    user: "0"
     ports:
       - "${QLEVER_PORT:-7030}:7019"
     volumes:
-      - ${NT_INPUT_DIR}:/input:ro
+      - ${NQ_INPUT_DIR}:/input:ro
       - ${INDEX_DIR:-data/qlever-index}:/data
     working_dir: /data
     entrypoint: ["/bin/bash", "-c"]
@@ -25,18 +26,18 @@ services:
       - |
         set -e
         INDEX_NAME="${INDEX_NAME:-goethe-faust}"
-        NT_INPUT_GLOB="${NT_INPUT_GLOB:-*.nt}"
+        NQ_INPUT_GLOB="${NQ_INPUT_GLOB:-*.nq}"
 
         if [ -f /data/$${INDEX_NAME}.ready ]; then
           echo "Index already built, starting server..."
-          exec /qlever/qlever-server -i /data/$${INDEX_NAME} -p 7019 \
+          exec /qlever/qlever-server -i /data/$${INDEX_NAME} -p 7019 -t \
             -m $${QLEVER_MEMORY:-4GB} --default-query-timeout 60s
         fi
 
         echo "=== Building QLever index ==="
-        FILES=$$(ls /input/$${NT_INPUT_GLOB} 2>/dev/null | tr '\n' ' ')
+        FILES=$$(ls /input/$${NQ_INPUT_GLOB} 2>/dev/null | tr '\n' ' ')
         if [ -z "$$FILES" ]; then
-          echo "ERROR: no files matched /input/$${NT_INPUT_GLOB}" >&2
+          echo "ERROR: no files matched /input/$${NQ_INPUT_GLOB}" >&2
           exit 1
         fi
         echo "Input files: $$FILES"
@@ -61,16 +62,17 @@ services:
         SETTINGS
 
         /qlever/qlever-index -i /data/$${INDEX_NAME} \
-          -f $$FILES -F nt -s /data/settings.json 2>&1
+          -f $$FILES -F $${NQ_FORMAT:-nq} -W -s /data/settings.json 2>&1
 
         touch /data/$${INDEX_NAME}.ready
         echo "=== Index built. Starting server ==="
-        exec /qlever/qlever-server -i /data/$${INDEX_NAME} -p 7019 \
+        exec /qlever/qlever-server -i /data/$${INDEX_NAME} -p 7019 -t \
           -m $${QLEVER_MEMORY:-4GB} --default-query-timeout 60s
     environment:
       - QLEVER_MEMORY=${QLEVER_MEMORY:-4GB}
       - INDEX_NAME=${INDEX_NAME:-goethe-faust}
-      - NT_INPUT_GLOB=${NT_INPUT_GLOB:-*.nt}
+      - NQ_INPUT_GLOB=${NQ_INPUT_GLOB:-*.nq}
+      - NQ_FORMAT=${NQ_FORMAT:-nq}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:7019/?cmd=stats"]
       interval: 5s
