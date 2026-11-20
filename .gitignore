@@ -8,3 +8,21 @@ output/ddbedm-goethe-faust.nt
 config.env
 .env.runtime
 
+# Python environment
+.venv/
+
+# Session transcripts live in notes/transcripts-goethe-faust/ (notes repo)
+transcripts/
+
+# Large data: kept locally, never committed
+data/items-all-goethe-faust.json
+data/items-all-goethe-faust.json.gz
+data/ddb-search-*.json
+data/temp-items.json
+data/hf-cache/
+data/qlever-index/
+data/shmarql-store/
+output/ddbedm-goethe-faust.nt.gz
+output/mocho-transform/
+output/transform/20*/
+
